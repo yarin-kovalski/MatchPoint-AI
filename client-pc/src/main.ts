@@ -277,6 +277,7 @@ function loadRacketModel(): void {
     (gltf) => {
       const model = gltf.scene;
       normalizeLoadedRacket(model);
+      model.rotation.set(Math.PI, 0, 0);
       alignRacketHandleToPivot(model);
       console.log("racket model position", model.position);
       console.log("racket container position", racketContainer.position);
@@ -299,8 +300,6 @@ function normalizeLoadedRacket(model: THREE.Group): void {
   const scale = maxDimension > 0 ? targetHeight / maxDimension : 1;
 
   model.scale.setScalar(scale);
-  model.rotation.set(Math.PI / 2, 0, Math.PI);
-
   model.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;
