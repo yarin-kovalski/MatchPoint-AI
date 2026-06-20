@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 type BrokerStatus = {
   mobileClients: number;
@@ -70,13 +71,14 @@ let displayedSwingSpeedKmh = 0;
 let targetSwingSpeedKmh = 0;
 let peakSwingSpeedKmh = 0;
 
+const clock = new THREE.Clock();
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x020714);
-scene.fog = new THREE.Fog(0x020714, 10, 32);
+scene.background = new THREE.Color(0x010511);
+scene.fog = new THREE.FogExp2(0x010511, 0.045);
 
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 5.2, 8.8);
-camera.lookAt(0, 0.7, 0);
+camera.position.set(0, 4.9, 8.2);
+camera.lookAt(0, 0.82, -0.35);
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -86,6 +88,8 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.18;
 
 const ambientLight = new THREE.AmbientLight(0x5d7bff, 0.82);
 scene.add(ambientLight);
@@ -104,13 +108,24 @@ const blueBackLight = new THREE.PointLight(0x0b5cff, 18, 24);
 blueBackLight.position.set(4, 4, -8);
 scene.add(blueBackLight);
 
+const purpleVolumeLight = new THREE.PointLight(0x7f3cff, 10, 22);
+purpleVolumeLight.position.set(-6, 5, -10);
+scene.add(purpleVolumeLight);
+
 const court = createCourt();
 scene.add(court);
 
-const racketGroup = createTennisRacket();
-racketGroup.position.set(0, 1.45, 0);
-racketGroup.rotation.z = -0.1;
-scene.add(racketGroup);
+const racketModelRoot = new THREE.Group();
+racketModelRoot.position.set(0, 1.45, 0);
+racketModelRoot.rotation.z = -0.1;
+scene.add(racketModelRoot);
+loadRacketModel();
+
+const farCourtHaze = createFarCourtHaze();
+scene.add(farCourtHaze);
+
+const dustParticles = createDustParticles();
+scene.add(dustParticles);
 
 socket.on("connect", () => {
   socket.emit("client:hello", { role: "pc" });
@@ -147,11 +162,16 @@ function createCourt(): THREE.Group {
   const group = new THREE.Group();
 
   const planeGeometry = new THREE.PlaneGeometry(18, 24);
+  const courtTexture = createCourtTexture();
+  courtTexture.wrapS = THREE.RepeatWrapping;
+  courtTexture.wrapT = THREE.RepeatWrapping;
+  courtTexture.repeat.set(2, 3);
   const planeMaterial = new THREE.MeshStandardMaterial({
     color: 0x061223,
     emissive: 0x010919,
-    roughness: 0.86,
-    metalness: 0.05
+    map: courtTexture,
+    roughness: 0.46,
+    metalness: 0.22
   });
   const plane = new THREE.Mesh(planeGeometry, planeMaterial);
   plane.rotation.x = -Math.PI / 2;
@@ -162,8 +182,11 @@ function createCourt(): THREE.Group {
   grid.position.y = 0.012;
   group.add(grid);
 
-  const lineMaterial = new THREE.MeshBasicMaterial({
+  const lineMaterial = new THREE.MeshStandardMaterial({
     color: 0xb8ff2c,
+    emissive: 0xb8ff2c,
+    emissiveIntensity: 1.85,
+    roughness: 0.18,
     transparent: true,
     opacity: 0.92
   });
@@ -176,97 +199,230 @@ function createCourt(): THREE.Group {
   ];
 
   for (const spec of lineSpecs) {
-    const line = new THREE.Mesh(
-      new THREE.BoxGeometry(spec.width, 0.026, spec.depth),
-      lineMaterial
+    const groove = new THREE.Mesh(
+      new THREE.BoxGeometry(spec.width + 0.22, 0.018, spec.depth + 0.22),
+      new THREE.MeshStandardMaterial({
+        color: 0x02060d,
+        emissive: 0x001525,
+        roughness: 0.35,
+        metalness: 0.4
+      })
     );
-    line.position.set(spec.x, 0.034, spec.z);
+    groove.position.set(spec.x, 0.023, spec.z);
+    group.add(groove);
+
+    const line = createNeonTubeLine(spec.width, spec.depth, lineMaterial);
+    line.position.set(spec.x, 0.052, spec.z);
     group.add(line);
+
+    const glow = new THREE.Mesh(
+      new THREE.BoxGeometry(spec.width + 0.5, 0.012, spec.depth + 0.5),
+      new THREE.MeshBasicMaterial({
+        color: 0xb8ff2c,
+        transparent: true,
+        opacity: 0.105,
+        depthWrite: false
+      })
+    );
+    glow.position.set(spec.x, 0.061, spec.z);
+    group.add(glow);
+
+    const reflection = new THREE.Mesh(
+      new THREE.BoxGeometry(spec.width + 0.18, 0.01, spec.depth + 0.18),
+      new THREE.MeshBasicMaterial({
+        color: 0x76ff22,
+        transparent: true,
+        opacity: 0.075,
+        depthWrite: false
+      })
+    );
+    reflection.position.set(spec.x, 0.026, spec.z);
+    group.add(reflection);
+
+    const tubeLight = new THREE.PointLight(0xb8ff2c, 0.72, 6.2);
+    tubeLight.position.set(spec.x, 0.22, spec.z);
+    group.add(tubeLight);
   }
 
   return group;
 }
 
-function createTennisRacket(): THREE.Group {
+function createNeonTubeLine(
+  width: number,
+  depth: number,
+  material: THREE.MeshStandardMaterial
+): THREE.Group {
   const group = new THREE.Group();
+  const isHorizontal = width > depth;
+  const length = Math.max(width, depth);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, length, 18), material);
+  tube.rotation.z = isHorizontal ? Math.PI / 2 : 0;
+  tube.rotation.x = isHorizontal ? 0 : Math.PI / 2;
+  tube.castShadow = false;
+  group.add(tube);
+  return group;
+}
 
-  const frameMaterial = new THREE.MeshStandardMaterial({
-    color: 0xb8ff2c,
-    emissive: 0x6eff00,
-    emissiveIntensity: 0.95,
-    roughness: 0.28,
-    metalness: 0.34
-  });
-  const stringMaterial = new THREE.MeshBasicMaterial({
-    color: 0xcffff0,
-    transparent: true,
-    opacity: 0.86
-  });
-  const gripMaterial = new THREE.MeshStandardMaterial({
-    color: 0x111820,
-    emissive: 0x0b5cff,
-    emissiveIntensity: 0.3,
-    roughness: 0.52,
-    metalness: 0.18
-  });
+function loadRacketModel(): void {
+  const loader = new GLTFLoader();
 
-  const frame = new THREE.Mesh(new THREE.TorusGeometry(0.88, 0.055, 18, 72), frameMaterial);
-  frame.scale.y = 1.28;
-  frame.position.y = 0.52;
-  frame.castShadow = true;
-  group.add(frame);
+  loader.load(
+    "/pc/racket.glb",
+    (gltf) => {
+      const model = gltf.scene;
+      normalizeLoadedRacket(model);
+      racketModelRoot.add(model);
+    },
+    undefined,
+    (error) => {
+      console.error("Failed to load racket.glb", error);
+    }
+  );
+}
 
-  const throat = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.7, 16), frameMaterial);
-  throat.rotation.z = Math.PI / 2;
-  throat.position.y = -0.46;
-  throat.scale.x = 1.25;
-  throat.castShadow = true;
-  group.add(throat);
+function normalizeLoadedRacket(model: THREE.Group): void {
+  const box = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
 
-  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.135, 1.55, 18), gripMaterial);
-  handle.position.y = -1.3;
-  handle.castShadow = true;
-  group.add(handle);
+  const maxDimension = Math.max(size.x, size.y, size.z);
+  const targetHeight = 2.85;
+  const scale = maxDimension > 0 ? targetHeight / maxDimension : 1;
 
-  const handleBands = [-1.72, -1.44, -1.16, -0.88];
-  for (const y of handleBands) {
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.111, 0.012, 8, 24), frameMaterial);
-    band.rotation.x = Math.PI / 2;
-    band.position.y = y;
-    group.add(band);
+  model.scale.setScalar(scale);
+  model.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+  model.rotation.set(0, 0, Math.PI);
+
+  const normalizedSize = size.clone().multiplyScalar(scale);
+  if (normalizedSize.z > normalizedSize.y && normalizedSize.z > normalizedSize.x) {
+    model.rotation.x = Math.PI / 2;
+  } else if (normalizedSize.x > normalizedSize.y && normalizedSize.x > normalizedSize.z) {
+    model.rotation.z = Math.PI / 2;
   }
 
-  for (let i = -4; i <= 4; i += 1) {
-    const x = i * 0.16;
-    const string = new THREE.Mesh(new THREE.BoxGeometry(0.012, 1.75, 0.012), stringMaterial);
-    string.position.set(x, 0.52, 0.005);
-    group.add(string);
+  model.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      boostRacketMaterial(child);
+    }
+  });
+}
+
+function boostRacketMaterial(mesh: THREE.Mesh): void {
+  const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+
+  for (const material of materials) {
+    if (material instanceof THREE.MeshStandardMaterial) {
+      material.roughness = Math.min(material.roughness, 0.42);
+      material.metalness = Math.max(material.metalness, 0.18);
+      material.needsUpdate = true;
+    }
+  }
+}
+
+function createDustParticles(): THREE.Points {
+  const count = 620;
+  const positions = new Float32Array(count * 3);
+
+  for (let i = 0; i < count; i += 1) {
+    positions[i * 3] = (Math.random() - 0.5) * 18;
+    positions[i * 3 + 1] = Math.random() * 6.2 + 0.15;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 24;
   }
 
-  for (let i = -5; i <= 5; i += 1) {
-    const y = 0.52 + i * 0.15;
-    const width = 1.28 * Math.sqrt(Math.max(0.18, 1 - Math.abs(i) / 6.2));
-    const string = new THREE.Mesh(new THREE.BoxGeometry(width, 0.012, 0.012), stringMaterial);
-    string.position.set(0, y, 0.008);
-    group.add(string);
-  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
 
-  const glowPlate = new THREE.Mesh(
-    new THREE.CircleGeometry(0.78, 48),
-    new THREE.MeshBasicMaterial({
-      color: 0xb8ff2c,
+  return new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({
+      color: 0xc5ffd7,
+      size: 0.022,
       transparent: true,
-      opacity: 0.065,
-      side: THREE.DoubleSide
+      opacity: 0.38,
+      depthWrite: false
     })
   );
-  glowPlate.scale.y = 1.28;
-  glowPlate.position.y = 0.52;
-  glowPlate.position.z = -0.015;
-  group.add(glowPlate);
+}
 
-  group.rotation.x = -0.12;
+function createFarCourtHaze(): THREE.Group {
+  const group = new THREE.Group();
+  const hazeMaterial = new THREE.MeshBasicMaterial({
+    color: 0x2541ff,
+    transparent: true,
+    opacity: 0.075,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+
+  for (let i = 0; i < 4; i += 1) {
+    const material = hazeMaterial.clone();
+    material.opacity = 0.055 + i * 0.025;
+    const haze = new THREE.Mesh(new THREE.PlaneGeometry(18, 2.2), material);
+    haze.rotation.x = -Math.PI / 2;
+    haze.position.set(0, 0.06 + i * 0.025, -5.6 - i * 2.4);
+    haze.scale.x = 1 + i * 0.18;
+    group.add(haze);
+  }
+
   return group;
+}
+
+function createCourtTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = getCanvasContext(canvas);
+
+  context.fillStyle = "#07182c";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = 0; i < 1200; i += 1) {
+    const alpha = Math.random() * 0.1;
+    context.fillStyle = `rgba(180, 220, 255, ${alpha})`;
+    context.fillRect(Math.random() * 512, Math.random() * 512, Math.random() * 2.4, Math.random() * 2.4);
+  }
+
+  for (let i = 0; i < 110; i += 1) {
+    context.strokeStyle = `rgba(220, 245, 255, ${0.05 + Math.random() * 0.11})`;
+    context.lineWidth = 0.6 + Math.random() * 1.8;
+    context.beginPath();
+    context.moveTo(Math.random() * 512, Math.random() * 512);
+    context.lineTo(Math.random() * 512, Math.random() * 512);
+    context.stroke();
+  }
+
+  for (let i = 0; i < 42; i += 1) {
+    context.fillStyle = `rgba(230, 245, 255, ${0.035 + Math.random() * 0.07})`;
+    context.beginPath();
+    context.ellipse(
+      Math.random() * 512,
+      Math.random() * 512,
+      10 + Math.random() * 55,
+      2 + Math.random() * 10,
+      Math.random() * Math.PI,
+      0,
+      Math.PI * 2
+    );
+    context.fill();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function getCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("Could not create canvas 2D context");
+  }
+
+  return context;
 }
 
 function mapPacketToRotation(packet: BrokeredMotionPacket): { x: number; y: number } {
@@ -281,20 +437,27 @@ function mapPacketToRotation(packet: BrokeredMotionPacket): { x: number; y: numb
 
 function animate(): void {
   requestAnimationFrame(animate);
+  const elapsed = clock.getElapsedTime();
 
-  racketGroup.rotation.x = damp(racketGroup.rotation.x, targetRotationX, 0.32);
-  racketGroup.rotation.y = damp(racketGroup.rotation.y, targetRotationY, 0.32);
+  racketModelRoot.rotation.x = damp(racketModelRoot.rotation.x, targetRotationX, 0.32);
+  racketModelRoot.rotation.y = damp(racketModelRoot.rotation.y, targetRotationY, 0.32);
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
 
-  elements.rotationX.textContent = racketGroup.rotation.x.toFixed(3);
-  elements.rotationY.textContent = racketGroup.rotation.y.toFixed(3);
+  elements.rotationX.textContent = racketModelRoot.rotation.x.toFixed(3);
+  elements.rotationY.textContent = racketModelRoot.rotation.y.toFixed(3);
   elements.swingSpeed.textContent = `${Math.round(displayedSwingSpeedKmh)} km/h`;
   elements.peakSwingSpeed.textContent = `${Math.round(peakSwingSpeedKmh)} km/h`;
+  animateDust(elapsed);
   updateConnectionStatus();
   updatePacketAge();
 
   renderer.render(scene, camera);
+}
+
+function animateDust(elapsed: number): void {
+  dustParticles.rotation.y = elapsed * 0.018;
+  dustParticles.rotation.x = Math.sin(elapsed * 0.14) * 0.025;
 }
 
 function estimateSwingSpeedKmh(

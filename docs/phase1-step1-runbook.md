@@ -89,7 +89,12 @@ It includes:
 - Basic ambient, directional, and rim lighting.
 - Dark court plane.
 - Grid-pattern court helper.
-- A native Three.js neon tennis racket representing the controller.
+- External `racket.glb` model loaded with Three.js `GLTFLoader`.
+- The loaded racket model is centered, scaled to fit the view, and controlled by the same phone rotation data.
+- Procedural scuffed court texture.
+- Animated green impact ripple on the strings.
+- Neon court tube lines with local green light spill.
+- Blue/purple atmospheric haze and floating dust particles for a cinematic training-arena feel.
 - WebSocket mapping from phone data to cube rotation.
 
 Mapping:
