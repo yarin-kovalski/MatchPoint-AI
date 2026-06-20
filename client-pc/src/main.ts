@@ -67,9 +67,12 @@ let latestPacket: BrokeredMotionPacket | null = null;
 let previousPacket: BrokeredMotionPacket | null = null;
 let targetRotationX = 0;
 let targetRotationY = 0;
+let targetRotationZ = 0;
 let displayedSwingSpeedKmh = 0;
 let targetSwingSpeedKmh = 0;
 let peakSwingSpeedKmh = 0;
+const targetRacketQuaternion = new THREE.Quaternion();
+const targetRacketEuler = new THREE.Euler(0, 0, 0, "YXZ");
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
@@ -115,10 +118,10 @@ scene.add(purpleVolumeLight);
 const court = createCourt();
 scene.add(court);
 
-const racketModelRoot = new THREE.Group();
-racketModelRoot.position.set(0, 1.45, 0);
-racketModelRoot.rotation.z = -0.1;
-scene.add(racketModelRoot);
+const racketContainer = new THREE.Group();
+racketContainer.position.set(0, 1.45, 0);
+racketContainer.quaternion.identity();
+scene.add(racketContainer);
 loadRacketModel();
 
 const farCourtHaze = createFarCourtHaze();
@@ -147,6 +150,9 @@ socket.on("controller:state", (payload: unknown) => {
   const mappedRotation = mapPacketToRotation(latestPacket);
   targetRotationX = mappedRotation.x;
   targetRotationY = mappedRotation.y;
+  targetRotationZ = mappedRotation.z;
+  targetRacketEuler.set(targetRotationX, targetRotationY, targetRotationZ);
+  targetRacketQuaternion.setFromEuler(targetRacketEuler);
   targetSwingSpeedKmh = estimateSwingSpeedKmh(latestPacket, previousPacket);
   peakSwingSpeedKmh = Math.max(peakSwingSpeedKmh, targetSwingSpeedKmh);
 
@@ -271,7 +277,10 @@ function loadRacketModel(): void {
     (gltf) => {
       const model = gltf.scene;
       normalizeLoadedRacket(model);
-      racketModelRoot.add(model);
+      alignRacketHandleToPivot(model);
+      console.log("racket model position", model.position);
+      console.log("racket container position", racketContainer.position);
+      racketContainer.add(model);
     },
     undefined,
     (error) => {
@@ -283,24 +292,14 @@ function loadRacketModel(): void {
 function normalizeLoadedRacket(model: THREE.Group): void {
   const box = new THREE.Box3().setFromObject(model);
   const size = new THREE.Vector3();
-  const center = new THREE.Vector3();
   box.getSize(size);
-  box.getCenter(center);
 
   const maxDimension = Math.max(size.x, size.y, size.z);
   const targetHeight = 2.85;
   const scale = maxDimension > 0 ? targetHeight / maxDimension : 1;
 
   model.scale.setScalar(scale);
-  model.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
-  model.rotation.set(0, 0, Math.PI);
-
-  const normalizedSize = size.clone().multiplyScalar(scale);
-  if (normalizedSize.z > normalizedSize.y && normalizedSize.z > normalizedSize.x) {
-    model.rotation.x = Math.PI / 2;
-  } else if (normalizedSize.x > normalizedSize.y && normalizedSize.x > normalizedSize.z) {
-    model.rotation.z = Math.PI / 2;
-  }
+  model.rotation.set(Math.PI / 2, 0, Math.PI);
 
   model.traverse((child) => {
     if (child instanceof THREE.Mesh) {
@@ -308,6 +307,33 @@ function normalizeLoadedRacket(model: THREE.Group): void {
       child.receiveShadow = true;
       boostRacketMaterial(child);
     }
+  });
+}
+
+function alignRacketHandleToPivot(model: THREE.Group): void {
+  model.updateMatrixWorld(true);
+
+  const orientedBox = new THREE.Box3().setFromObject(model);
+  const orientedCenter = new THREE.Vector3();
+  orientedBox.getCenter(orientedCenter);
+
+  const handlePivot = new THREE.Vector3(
+    orientedCenter.x,
+    orientedBox.max.y,
+    orientedCenter.z
+  );
+
+  model.position.sub(handlePivot);
+  model.updateMatrixWorld(true);
+
+  const finalBox = new THREE.Box3().setFromObject(model);
+  const finalSize = new THREE.Vector3();
+  finalBox.getSize(finalSize);
+
+  console.log("racket aligned pivot", {
+    handlePivot,
+    finalBox,
+    finalSize
   });
 }
 
@@ -425,13 +451,15 @@ function getCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   return context;
 }
 
-function mapPacketToRotation(packet: BrokeredMotionPacket): { x: number; y: number } {
-  const beta = packet.orientation.beta ?? clamp(packet.acceleration.y ?? 0, -90, 90);
-  const gamma = packet.orientation.gamma ?? clamp(packet.acceleration.x ?? 0, -90, 90);
+function mapPacketToRotation(packet: BrokeredMotionPacket): { x: number; y: number; z: number } {
+  const beta = packet.orientation.beta ?? packet.acceleration.y ?? 0;
+  const gamma = packet.orientation.gamma ?? packet.acceleration.x ?? 0;
+  const alpha = packet.orientation.alpha ?? packet.rotationRate.alpha ?? 0;
 
   return {
-    x: clamp(degreesToRadians(beta), -Math.PI / 2, Math.PI / 2),
-    y: clamp(degreesToRadians(gamma), -Math.PI / 2, Math.PI / 2)
+    x: degreesToRadians(beta),
+    y: degreesToRadians(gamma),
+    z: degreesToRadians(alpha)
   };
 }
 
@@ -439,13 +467,13 @@ function animate(): void {
   requestAnimationFrame(animate);
   const elapsed = clock.getElapsedTime();
 
-  racketModelRoot.rotation.x = damp(racketModelRoot.rotation.x, targetRotationX, 0.32);
-  racketModelRoot.rotation.y = damp(racketModelRoot.rotation.y, targetRotationY, 0.32);
+  racketContainer.quaternion.slerp(targetRacketQuaternion, 0.32);
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
 
-  elements.rotationX.textContent = racketModelRoot.rotation.x.toFixed(3);
-  elements.rotationY.textContent = racketModelRoot.rotation.y.toFixed(3);
+  const displayedEuler = new THREE.Euler().setFromQuaternion(racketContainer.quaternion, "YXZ");
+  elements.rotationX.textContent = displayedEuler.x.toFixed(3);
+  elements.rotationY.textContent = displayedEuler.y.toFixed(3);
   elements.swingSpeed.textContent = `${Math.round(displayedSwingSpeedKmh)} km/h`;
   elements.peakSwingSpeed.textContent = `${Math.round(peakSwingSpeedKmh)} km/h`;
   animateDust(elapsed);
