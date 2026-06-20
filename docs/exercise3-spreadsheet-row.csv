@@ -1,0 +1,11 @@
+Column,Answer
+Project name,MatchPoint AI: Smart Motion Trainer
+Short description,"AI-powered tennis motion trainer using a smartphone as a realtime motion controller. The desktop browser visualizes motion in a 3D tennis arena and calculates coaching stats such as swing power, forehand/backhand guess, and timing feedback."
+Target users,"Beginner and intermediate tennis players, coaches, students, and anyone who wants low-cost motion feedback without special hardware."
+Competition,"SwingVision; Tennis AI 2.0; SevenSix Tennis; PlaySight SmartCourt; Tennis Swing Analyser; TennisKeeper"
+What competitors do,"Most competitors use camera AI, smart-court video systems, Apple Watch/Wear OS sensors, or racket sensors to analyze tennis motion and stats."
+What we do better/differently,"Use a normal smartphone as a live motion sensor and controller; run in the browser; provide realtime 3D visual feedback; expose the sensor pipeline clearly; use predictive hit logic and coaching labels."
+POC description,"Phone reads accelerometer and gyroscope data and sends it with Socket.io to a desktop React/Three.js page. The desktop 3D object rotates with phone orientation and shows one live motion stat."
+Critical feasibility risk,"Low-latency smartphone sensor streaming to a desktop browser with enough responsiveness for motion coaching."
+Wow factor,"Realtime phone-controlled 3D tennis trainer with predictive hit detection, ball squish animation, and neon coaching labels like Perfect Forehand and Late Hit."
+Main technologies,"React; TypeScript; Three.js; Node.js; Socket.io; Cannon.js; anime.js; optional MediaPipe"
