@@ -114,6 +114,28 @@ For testing:
 4. Move the phone or drag on the simulator pad.
 5. Confirm that the cube rotates with low latency.
 
+## Phase 1 Step 3: Live Stats Overlay
+
+The PC HUD now includes:
+
+- Estimated swing speed.
+- Peak swing speed.
+- Input mode.
+- Packet age.
+
+Estimated swing speed is calculated from the latest socket packets using:
+
+- Fast orientation changes between packets.
+- Acceleration or simulator drag speed magnitude.
+
+For testing:
+
+1. Open `http://localhost:3000/pc`.
+2. Open the mobile controller.
+3. Use real sensors or the touch simulator fallback.
+4. Perform a fast phone movement or a fast drag on the simulator pad.
+5. Confirm that `Estimated swing speed` jumps immediately and `peak` stores the highest value.
+
 ## Troubleshooting
 
 If the phone cannot open the page:

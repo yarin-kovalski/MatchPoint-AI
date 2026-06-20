@@ -55,14 +55,20 @@ const elements = {
   packetAge: getElement("packetAge"),
   inputMode: getElement("inputMode"),
   mobileClients: getElement("mobileClients"),
+  swingSpeed: getElement("swingSpeed"),
+  peakSwingSpeed: getElement("peakSwingSpeed"),
   rotationX: getElement("rotationX"),
   rotationY: getElement("rotationY")
 };
 
 let packetCount = 0;
 let latestPacket: BrokeredMotionPacket | null = null;
+let previousPacket: BrokeredMotionPacket | null = null;
 let targetRotationX = 0;
 let targetRotationY = 0;
+let displayedSwingSpeedKmh = 0;
+let targetSwingSpeedKmh = 0;
+let peakSwingSpeedKmh = 0;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070a);
@@ -117,12 +123,15 @@ socket.on("broker:status", (payload: unknown) => {
 });
 
 socket.on("controller:state", (payload: unknown) => {
+  previousPacket = latestPacket;
   latestPacket = payload as BrokeredMotionPacket;
   packetCount += 1;
 
   const mappedRotation = mapPacketToRotation(latestPacket);
   targetRotationX = mappedRotation.x;
   targetRotationY = mappedRotation.y;
+  targetSwingSpeedKmh = estimateSwingSpeedKmh(latestPacket, previousPacket);
+  peakSwingSpeedKmh = Math.max(peakSwingSpeedKmh, targetSwingSpeedKmh);
 
   elements.packetCount.textContent = String(packetCount);
   elements.inputMode.textContent = latestPacket.inputMode ?? "sensor";
@@ -190,13 +199,60 @@ function animate(): void {
 
   racketCube.rotation.x = damp(racketCube.rotation.x, targetRotationX, 0.32);
   racketCube.rotation.y = damp(racketCube.rotation.y, targetRotationY, 0.32);
+  targetSwingSpeedKmh *= 0.94;
+  displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
 
   elements.rotationX.textContent = racketCube.rotation.x.toFixed(3);
   elements.rotationY.textContent = racketCube.rotation.y.toFixed(3);
+  elements.swingSpeed.textContent = `${Math.round(displayedSwingSpeedKmh)} km/h`;
+  elements.peakSwingSpeed.textContent = `${Math.round(peakSwingSpeedKmh)} km/h`;
   updateConnectionStatus();
   updatePacketAge();
 
   renderer.render(scene, camera);
+}
+
+function estimateSwingSpeedKmh(
+  packet: BrokeredMotionPacket,
+  previous: BrokeredMotionPacket | null
+): number {
+  const orientationSpeed = estimateOrientationSpeed(packet, previous);
+  const accelerationSpeed = estimateAccelerationSpeed(packet);
+
+  return clamp(Math.max(orientationSpeed, accelerationSpeed), 0, 220);
+}
+
+function estimateOrientationSpeed(
+  packet: BrokeredMotionPacket,
+  previous: BrokeredMotionPacket | null
+): number {
+  if (!previous) {
+    return 0;
+  }
+
+  const currentBeta = packet.orientation.beta ?? packet.acceleration.y ?? 0;
+  const currentGamma = packet.orientation.gamma ?? packet.acceleration.x ?? 0;
+  const previousBeta = previous.orientation.beta ?? previous.acceleration.y ?? 0;
+  const previousGamma = previous.orientation.gamma ?? previous.acceleration.x ?? 0;
+  const deltaMs = Math.max(8, packet.serverReceivedAt - previous.serverReceivedAt);
+  const angularDistance = Math.hypot(currentBeta - previousBeta, currentGamma - previousGamma);
+  const degreesPerSecond = (angularDistance / deltaMs) * 1000;
+
+  return degreesPerSecond * 0.42;
+}
+
+function estimateAccelerationSpeed(packet: BrokeredMotionPacket): number {
+  const accelerationMagnitude = Math.hypot(
+    packet.acceleration.x ?? 0,
+    packet.acceleration.y ?? 0,
+    packet.acceleration.z ?? 0
+  );
+
+  if (packet.inputMode === "simulator") {
+    return accelerationMagnitude * 9.5;
+  }
+
+  return accelerationMagnitude * 3.6;
 }
 
 function updateConnectionStatus(): void {

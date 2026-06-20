@@ -34,3 +34,4 @@
 - Phase 1 Step 1 PC packet monitor created.
 - Phase 1 Step 2 Three.js court visualization created.
 - Phase 1 Step 2 phone-to-cube rotation mapping created.
+- Phase 1 Step 3 live estimated swing speed overlay created.
