@@ -32,10 +32,10 @@ Then open:
 http://localhost:3000/pc
 ```
 
-On the phone, open the LAN mobile URL printed by the server:
+On the phone, open the secure LAN mobile URL printed by the server:
 
 ```text
-http://YOUR_PC_LAN_IP:3000/mobile
+https://YOUR_PC_LAN_IP:3443/mobile
 ```
 
 More details are in `docs/phase1-step1-runbook.md`.

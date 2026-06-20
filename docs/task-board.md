@@ -14,7 +14,6 @@
 
 ## Ready
 
-- Phase 1 desktop cube visualization.
 - Phase 1 live stat overlay.
 - Optional Phase 1 basic ball/wall physics.
 
@@ -33,3 +32,5 @@
 - Phase 1 Step 1 TypeScript server scaffold created.
 - Phase 1 Step 1 mobile sensor debug page created.
 - Phase 1 Step 1 PC packet monitor created.
+- Phase 1 Step 2 Three.js court visualization created.
+- Phase 1 Step 2 phone-to-cube rotation mapping created.

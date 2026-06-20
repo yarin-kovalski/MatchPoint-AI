@@ -15,6 +15,15 @@
       </section>
 
       <button id="startButton" type="button">Enable motion sensors</button>
+      <button id="simulatorButton" class="secondary" type="button">Use touch simulator fallback</button>
+
+      <section class="panel simulator" id="simulatorPanel" hidden>
+        <h2>Touch Sensor Simulator</h2>
+        <p>Drag inside this pad if iPhone blocks real motion sensors.</p>
+        <div id="touchPad" class="touch-pad">
+          <span>drag here</span>
+        </div>
+      </section>
 
       <section class="panel">
         <h2>Orientation</h2>
@@ -56,6 +65,7 @@
         <p id="packetStatus">Packets sent: 0</p>
         <p id="permissionStatus">Permission: not requested</p>
         <p id="sensorStatus">Sensors: waiting</p>
+        <p id="sourceStatus">Source: real sensors</p>
       </section>
     </main>
 

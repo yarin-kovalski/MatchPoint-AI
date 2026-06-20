@@ -1,9 +1,36 @@
-import { createServer, IncomingMessage, ServerResponse } from "node:http";
+import { createServer as createHttpServer, IncomingMessage, ServerResponse } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { extname, normalize, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import { Server } from "socket.io";
+
+type SelfsignedAltName = {
+  type: 2 | 7;
+  value: string;
+};
+
+type SelfsignedCertificate = {
+  cert: string;
+  private: string;
+};
+
+type SelfsignedModule = {
+  generate(
+    attrs: Array<{ name: string; value: string }>,
+    options: {
+      days: number;
+      keySize: number;
+      extensions: Array<{
+        name: string;
+        altNames: SelfsignedAltName[];
+      }>;
+    }
+  ): SelfsignedCertificate;
+};
+
+const selfsigned = require("selfsigned") as SelfsignedModule;
 
 type NullableNumber = number | null;
 
@@ -39,8 +66,11 @@ type BrokeredMotionPacket = ControllerMotionPacket & {
 };
 
 const PORT = Number(process.env.PORT ?? 3000);
+const HTTPS_PORT = Number(process.env.HTTPS_PORT ?? 3443);
 const HOST = "0.0.0.0";
 const PROJECT_ROOT = process.cwd();
+const localUrls = getLocalUrls(PORT);
+const localHttpsUrls = getLocalUrls(HTTPS_PORT, "https");
 
 const staticRoutes = new Map<string, string>([
   ["/mobile", resolve(PROJECT_ROOT, "client-mobile", "public")],
@@ -51,7 +81,7 @@ let lastMotionPacket: BrokeredMotionPacket | null = null;
 let mobileClientCount = 0;
 let pcClientCount = 0;
 
-const httpServer = createServer(async (request, response) => {
+const httpServer = createHttpServer(async (request, response) => {
   try {
     await handleHttpRequest(request, response);
   } catch (error) {
@@ -61,13 +91,35 @@ const httpServer = createServer(async (request, response) => {
   }
 });
 
-const io = new Server(httpServer, {
-  cors: {
-    origin: "*"
+const certificate = createSelfSignedCertificate();
+const httpsServer = createHttpsServer({
+  key: certificate.private,
+  cert: certificate.cert
+}, async (request, response) => {
+  try {
+    await handleHttpRequest(request, response);
+  } catch (error) {
+    console.error("HTTPS error:", error);
+    response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Internal server error");
   }
 });
 
-io.on("connection", (socket) => {
+const ioServers = [
+  new Server(httpServer, {
+    cors: {
+      origin: "*"
+    }
+  }),
+  new Server(httpsServer, {
+    cors: {
+      origin: "*"
+    }
+  })
+];
+
+for (const io of ioServers) {
+  io.on("connection", (socket) => {
   console.log(`socket connected ${socket.id}`);
 
   socket.on("client:hello", (payload: { role?: "mobile" | "pc" } = {}) => {
@@ -94,7 +146,7 @@ io.on("connection", (socket) => {
       serverReceivedAt: Date.now()
     };
 
-    io.to("pc").emit("controller:state", lastMotionPacket);
+    emitToPcClients("controller:state", lastMotionPacket);
   });
 
   socket.on("disconnecting", () => {
@@ -111,17 +163,29 @@ io.on("connection", (socket) => {
     console.log(`socket disconnected ${socket.id}`);
     emitBrokerStatus();
   });
-});
+  });
+}
 
 httpServer.listen(PORT, HOST, () => {
-  const urls = getLocalUrls(PORT);
   console.log("");
-  console.log("MatchPoint AI broker is running.");
+  console.log("MatchPoint AI HTTP broker is running.");
   console.log(`Local PC page:      http://localhost:${PORT}/pc`);
   console.log(`Local mobile page:  http://localhost:${PORT}/mobile`);
   console.log("");
   console.log("Open one of these LAN URLs on your phone:");
-  for (const url of urls) {
+  for (const url of localUrls) {
+    console.log(`  ${url}/mobile`);
+  }
+  console.log("");
+});
+
+httpsServer.listen(HTTPS_PORT, HOST, () => {
+  console.log("MatchPoint AI HTTPS broker is running.");
+  console.log(`Secure PC page:      https://localhost:${HTTPS_PORT}/pc`);
+  console.log(`Secure mobile page:  https://localhost:${HTTPS_PORT}/mobile`);
+  console.log("");
+  console.log("Open one of these secure LAN URLs on your iPhone:");
+  for (const url of localHttpsUrls) {
     console.log(`  ${url}/mobile`);
   }
   console.log("");
@@ -217,12 +281,22 @@ function sendLandingPage(response: ServerResponse): void {
 }
 
 function emitBrokerStatus(): void {
-  io.emit("broker:status", {
+  const payload = {
     mobileClients: mobileClientCount,
     pcClients: pcClientCount,
     hasMotionPacket: lastMotionPacket !== null,
     t: Date.now()
-  });
+  };
+
+  for (const io of ioServers) {
+    io.emit("broker:status", payload);
+  }
+}
+
+function emitToPcClients(eventName: string, payload: BrokeredMotionPacket): void {
+  for (const io of ioServers) {
+    io.to("pc").emit(eventName, payload);
+  }
 }
 
 function getContentType(filePath: string): string {
@@ -242,17 +316,43 @@ function getContentType(filePath: string): string {
   }
 }
 
-function getLocalUrls(port: number): string[] {
+function getLocalUrls(port: number, protocol = "http"): string[] {
   const interfaces = networkInterfaces();
   const urls: string[] = [];
 
   for (const entries of Object.values(interfaces)) {
     for (const entry of entries ?? []) {
       if (entry.family === "IPv4" && !entry.internal) {
-        urls.push(`http://${entry.address}:${port}`);
+        urls.push(`${protocol}://${entry.address}:${port}`);
       }
     }
   }
 
   return urls;
+}
+
+function createSelfSignedCertificate(): SelfsignedCertificate {
+  const altNames: SelfsignedAltName[] = [
+    { type: 2, value: "localhost" },
+    { type: 7, value: "127.0.0.1" }
+  ];
+
+  for (const url of localHttpsUrls) {
+    const { hostname } = new URL(url);
+    altNames.push({ type: 7, value: hostname });
+  }
+
+  return selfsigned.generate(
+    [{ name: "commonName", value: "MatchPoint AI Local HTTPS" }],
+    {
+      days: 7,
+      keySize: 2048,
+      extensions: [
+        {
+          name: "subjectAltName",
+          altNames
+        }
+      ]
+    }
+  );
 }

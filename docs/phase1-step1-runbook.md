@@ -4,7 +4,7 @@
 
 - TypeScript Node.js Socket.io broker.
 - Mobile browser page for raw sensor debugging.
-- PC browser packet monitor for verifying that phone packets are echoed through the broker.
+- PC browser Three.js visualization for verifying that phone packets control a 3D object.
 
 ## Install
 
@@ -28,6 +28,12 @@ The server runs on:
 http://localhost:3000
 ```
 
+It also runs a local HTTPS server for iPhone sensor testing:
+
+```text
+https://localhost:3443
+```
+
 ## Pages
 
 Open on the PC:
@@ -44,6 +50,14 @@ http://YOUR_PC_LAN_IP:3000/mobile
 
 The phone and PC must be on the same Wi-Fi network.
 
+For iPhone motion sensor permission, prefer the secure LAN URL printed by the server:
+
+```text
+https://YOUR_PC_LAN_IP:3443/mobile
+```
+
+Safari may show a certificate warning because this is a temporary local development certificate. Open details and continue to the site.
+
 ## Expected Result
 
 On the phone:
@@ -57,8 +71,48 @@ On the PC:
 
 - Socket status should show connected.
 - Mobile client count should increase.
-- Latest controller packet should update continuously.
+- The dark grid court should render.
+- The neon-green racket cube should rotate when phone/simulator values change.
 - Packet age should stay low.
+
+## Phase 1 Step 2: PC Three.js Visualization
+
+The PC page is:
+
+```text
+http://localhost:3000/pc
+```
+
+It includes:
+
+- Perspective camera.
+- Basic ambient, directional, and rim lighting.
+- Dark court plane.
+- Grid-pattern court helper.
+- A neon-green cube representing the racket.
+- WebSocket mapping from phone data to cube rotation.
+
+Mapping:
+
+```text
+orientation.beta  -> cube.rotation.x
+orientation.gamma -> cube.rotation.y
+```
+
+If real orientation data is unavailable, the PC page falls back to simulator acceleration values:
+
+```text
+acceleration.y -> cube.rotation.x
+acceleration.x -> cube.rotation.y
+```
+
+For testing:
+
+1. Open `http://localhost:3000/pc` on the PC.
+2. Open `http://YOUR_PC_LAN_IP:3000/mobile` on the phone.
+3. Press `Enable motion sensors`, or use `Use touch simulator fallback`.
+4. Move the phone or drag on the simulator pad.
+5. Confirm that the cube rotates with low latency.
 
 ## Troubleshooting
 
@@ -72,8 +126,9 @@ If sensors do not update:
 
 - Press the enable button again after refreshing.
 - Try Chrome on Android or Safari on iPhone.
-- Some iPhone sensor APIs may require HTTPS. If that blocks us, we can add a local HTTPS tunnel in the next step.
-- If the phone shows `Permission: denied`, use `docs/ios-https-tunnel-fix.md`.
+- Some iPhone sensor APIs require HTTPS.
+- If the phone shows `Permission: denied`, use the secure local URL on port `3443`.
+- If local HTTPS still fails, use `docs/ios-https-tunnel-fix.md`.
 
 If packets appear on the phone but not PC:
 

@@ -11,9 +11,21 @@ Permission: denied
 Sensors: permission denied
 ```
 
-the next fix is to open the same local app through a temporary HTTPS tunnel.
+the first fix is to open the same local app through the built-in local HTTPS server.
 
-## Step 1: Keep The Server Running
+The server prints secure LAN URLs like:
+
+```text
+https://YOUR_PC_LAN_IP:3443/mobile
+```
+
+Use that URL on the iPhone. Safari may show a certificate warning because this is a local development certificate. Tap details and continue to the page.
+
+If local HTTPS does not work on your network, the backup fix is a temporary public HTTPS tunnel.
+
+We use Cloudflare Tunnel for the main fix because it is usually more reliable than localtunnel on iPhone.
+
+## Backup Tunnel Step 1: Keep The Server Running
 
 Terminal 1:
 
@@ -24,7 +36,7 @@ npm run dev
 
 Keep this terminal open.
 
-## Step 2: Open A Second Terminal
+## Backup Tunnel Step 2: Open A Second Terminal
 
 Terminal 2:
 
@@ -36,15 +48,15 @@ npm run tunnel
 This should print a temporary public HTTPS URL, for example:
 
 ```text
-your url is: https://something.loca.lt
+https://something.trycloudflare.com
 ```
 
-## Step 3: Open The HTTPS Mobile URL
+## Backup Tunnel Step 3: Open The HTTPS Mobile URL
 
 On the iPhone, open:
 
 ```text
-https://something.loca.lt/mobile
+https://something.trycloudflare.com/mobile
 ```
 
 Press:
@@ -59,7 +71,7 @@ Safari should now ask for permission. Tap:
 Allow
 ```
 
-## Step 4: Open The PC Monitor
+## Backup Tunnel Step 4: Open The PC Monitor
 
 On the PC, either use:
 
@@ -70,12 +82,12 @@ http://localhost:3000/pc
 or:
 
 ```text
-https://something.loca.lt/pc
+https://something.trycloudflare.com/pc
 ```
 
 ## Notes
 
 - The tunnel URL changes each time unless configured otherwise.
 - Keep both terminals open during testing.
-- If localtunnel asks for a password, it usually wants the public IP shown on the localtunnel page. We can switch to another tunnel tool if needed.
-
+- If Cloudflare prints several `https://...trycloudflare.com` links, use any one of them.
+- If the tunnel is closed, the URL stops working. Run `npm run tunnel` again to get a fresh URL.

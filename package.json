@@ -10,14 +10,18 @@
     "build:pc": "tsc -p client-pc/tsconfig.json",
     "dev": "tsc -p server/tsconfig.json && tsc -p client-mobile/tsconfig.json && tsc -p client-pc/tsconfig.json && node dist/server/index.js",
     "start": "node dist/server/index.js",
-    "tunnel": "localtunnel --port 3000",
+    "tunnel": "tools\\cloudflared.exe tunnel --edge-ip-version 4 --url http://localhost:3000",
+    "tunnel:localtunnel": "lt --port 3000 --local-host 127.0.0.1",
     "typecheck": "tsc -p server/tsconfig.json && tsc -p client-mobile/tsconfig.json && tsc -p client-pc/tsconfig.json"
   },
   "dependencies": {
-    "socket.io": "^4.7.5"
+    "selfsigned": "^5.5.0",
+    "socket.io": "^4.7.5",
+    "three": "^0.184.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
+    "@types/three": "^0.184.1",
     "localtunnel": "^2.0.2",
     "typescript": "^5.5.3"
   }

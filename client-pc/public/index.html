@@ -3,44 +3,54 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MatchPoint AI PC Packet Monitor</title>
+    <title>MatchPoint AI PC Visualization</title>
     <link rel="stylesheet" href="/pc/styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.181.2/build/three.module.js"
+        }
+      }
+    </script>
   </head>
   <body>
-    <main class="shell">
-      <section class="hero">
-        <p class="eyebrow">Phase 1 Broker Debug</p>
-        <h1>PC Packet Monitor</h1>
-        <p id="connectionStatus">Socket: disconnected</p>
-      </section>
+    <main class="app-shell">
+      <canvas id="sceneCanvas"></canvas>
 
-      <section class="stats">
-        <article>
-          <span>Packets</span>
-          <strong id="packetCount">0</strong>
-        </article>
-        <article>
-          <span>Packet age</span>
-          <strong id="packetAge">--</strong>
-        </article>
-        <article>
-          <span>Mobile clients</span>
-          <strong id="mobileClients">0</strong>
-        </article>
-        <article>
-          <span>PC clients</span>
-          <strong id="pcClients">0</strong>
-        </article>
-      </section>
+      <section class="hud">
+        <div class="hero">
+          <p class="eyebrow">Phase 1 Visualization</p>
+          <h1>MatchPoint AI Racket Cube</h1>
+          <p id="connectionStatus">Socket: disconnected</p>
+        </div>
 
-      <section class="panel">
-        <h2>Latest controller packet</h2>
-        <pre id="packetOutput">Waiting for phone data...</pre>
+        <div class="stats">
+          <article>
+            <span>Packets</span>
+            <strong id="packetCount">0</strong>
+          </article>
+          <article>
+            <span>Packet age</span>
+            <strong id="packetAge">--</strong>
+          </article>
+          <article>
+            <span>Input mode</span>
+            <strong id="inputMode">--</strong>
+          </article>
+          <article>
+            <span>Mobile clients</span>
+            <strong id="mobileClients">0</strong>
+          </article>
+        </div>
+
+        <div class="orientation-readout">
+          <span>rotation.x <strong id="rotationX">0.000</strong></span>
+          <span>rotation.y <strong id="rotationY">0.000</strong></span>
+        </div>
       </section>
     </main>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="/pc/assets/main.js"></script>
+    <script type="module" src="/pc/assets/main.js"></script>
   </body>
 </html>
-
