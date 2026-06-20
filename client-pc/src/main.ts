@@ -71,8 +71,8 @@ let targetSwingSpeedKmh = 0;
 let peakSwingSpeedKmh = 0;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x05070a);
-scene.fog = new THREE.Fog(0x05070a, 12, 34);
+scene.background = new THREE.Color(0x020714);
+scene.fog = new THREE.Fog(0x020714, 10, 32);
 
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
 camera.position.set(0, 5.2, 8.8);
@@ -87,28 +87,30 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-const ambientLight = new THREE.AmbientLight(0x7c8aa0, 1.2);
+const ambientLight = new THREE.AmbientLight(0x5d7bff, 0.82);
 scene.add(ambientLight);
 
-const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+const keyLight = new THREE.DirectionalLight(0xe8f6ff, 2.15);
 keyLight.position.set(4, 9, 5);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(1024, 1024);
 scene.add(keyLight);
 
-const rimLight = new THREE.PointLight(0xb8ff2c, 20, 18);
+const rimLight = new THREE.PointLight(0xb8ff2c, 26, 18);
 rimLight.position.set(-3, 3, -4);
 scene.add(rimLight);
+
+const blueBackLight = new THREE.PointLight(0x0b5cff, 18, 24);
+blueBackLight.position.set(4, 4, -8);
+scene.add(blueBackLight);
 
 const court = createCourt();
 scene.add(court);
 
-const racketCube = createRacketCube();
-racketCube.position.set(0, 1.25, 0);
-scene.add(racketCube);
-
-const axesHelper = new THREE.AxesHelper(1.35);
-racketCube.add(axesHelper);
+const racketGroup = createTennisRacket();
+racketGroup.position.set(0, 1.45, 0);
+racketGroup.rotation.z = -0.1;
+scene.add(racketGroup);
 
 socket.on("connect", () => {
   socket.emit("client:hello", { role: "pc" });
@@ -146,7 +148,8 @@ function createCourt(): THREE.Group {
 
   const planeGeometry = new THREE.PlaneGeometry(18, 24);
   const planeMaterial = new THREE.MeshStandardMaterial({
-    color: 0x121820,
+    color: 0x061223,
+    emissive: 0x010919,
     roughness: 0.86,
     metalness: 0.05
   });
@@ -155,33 +158,115 @@ function createCourt(): THREE.Group {
   plane.receiveShadow = true;
   group.add(plane);
 
-  const grid = new THREE.GridHelper(24, 24, 0x4dff88, 0x273542);
+  const grid = new THREE.GridHelper(24, 24, 0xb8ff2c, 0x123862);
   grid.position.y = 0.012;
   group.add(grid);
 
-  const centerLineGeometry = new THREE.BoxGeometry(0.045, 0.025, 22);
-  const centerLineMaterial = new THREE.MeshBasicMaterial({
-    color: 0xb8ff2c
+  const lineMaterial = new THREE.MeshBasicMaterial({
+    color: 0xb8ff2c,
+    transparent: true,
+    opacity: 0.92
   });
-  const centerLine = new THREE.Mesh(centerLineGeometry, centerLineMaterial);
-  centerLine.position.y = 0.03;
-  group.add(centerLine);
+  const lineSpecs = [
+    { width: 0.045, depth: 22, x: 0, z: 0 },
+    { width: 11, depth: 0.045, x: 0, z: -8 },
+    { width: 11, depth: 0.045, x: 0, z: 8 },
+    { width: 0.045, depth: 16, x: -5.5, z: 0 },
+    { width: 0.045, depth: 16, x: 5.5, z: 0 }
+  ];
+
+  for (const spec of lineSpecs) {
+    const line = new THREE.Mesh(
+      new THREE.BoxGeometry(spec.width, 0.026, spec.depth),
+      lineMaterial
+    );
+    line.position.set(spec.x, 0.034, spec.z);
+    group.add(line);
+  }
 
   return group;
 }
 
-function createRacketCube(): THREE.Mesh {
-  const geometry = new THREE.BoxGeometry(1.4, 1.4, 0.26);
-  const material = new THREE.MeshStandardMaterial({
+function createTennisRacket(): THREE.Group {
+  const group = new THREE.Group();
+
+  const frameMaterial = new THREE.MeshStandardMaterial({
     color: 0xb8ff2c,
-    emissive: 0x2f4a00,
-    roughness: 0.36,
+    emissive: 0x6eff00,
+    emissiveIntensity: 0.95,
+    roughness: 0.28,
+    metalness: 0.34
+  });
+  const stringMaterial = new THREE.MeshBasicMaterial({
+    color: 0xcffff0,
+    transparent: true,
+    opacity: 0.86
+  });
+  const gripMaterial = new THREE.MeshStandardMaterial({
+    color: 0x111820,
+    emissive: 0x0b5cff,
+    emissiveIntensity: 0.3,
+    roughness: 0.52,
     metalness: 0.18
   });
-  const cube = new THREE.Mesh(geometry, material);
-  cube.castShadow = true;
-  cube.receiveShadow = true;
-  return cube;
+
+  const frame = new THREE.Mesh(new THREE.TorusGeometry(0.88, 0.055, 18, 72), frameMaterial);
+  frame.scale.y = 1.28;
+  frame.position.y = 0.52;
+  frame.castShadow = true;
+  group.add(frame);
+
+  const throat = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.7, 16), frameMaterial);
+  throat.rotation.z = Math.PI / 2;
+  throat.position.y = -0.46;
+  throat.scale.x = 1.25;
+  throat.castShadow = true;
+  group.add(throat);
+
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.135, 1.55, 18), gripMaterial);
+  handle.position.y = -1.3;
+  handle.castShadow = true;
+  group.add(handle);
+
+  const handleBands = [-1.72, -1.44, -1.16, -0.88];
+  for (const y of handleBands) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.111, 0.012, 8, 24), frameMaterial);
+    band.rotation.x = Math.PI / 2;
+    band.position.y = y;
+    group.add(band);
+  }
+
+  for (let i = -4; i <= 4; i += 1) {
+    const x = i * 0.16;
+    const string = new THREE.Mesh(new THREE.BoxGeometry(0.012, 1.75, 0.012), stringMaterial);
+    string.position.set(x, 0.52, 0.005);
+    group.add(string);
+  }
+
+  for (let i = -5; i <= 5; i += 1) {
+    const y = 0.52 + i * 0.15;
+    const width = 1.28 * Math.sqrt(Math.max(0.18, 1 - Math.abs(i) / 6.2));
+    const string = new THREE.Mesh(new THREE.BoxGeometry(width, 0.012, 0.012), stringMaterial);
+    string.position.set(0, y, 0.008);
+    group.add(string);
+  }
+
+  const glowPlate = new THREE.Mesh(
+    new THREE.CircleGeometry(0.78, 48),
+    new THREE.MeshBasicMaterial({
+      color: 0xb8ff2c,
+      transparent: true,
+      opacity: 0.065,
+      side: THREE.DoubleSide
+    })
+  );
+  glowPlate.scale.y = 1.28;
+  glowPlate.position.y = 0.52;
+  glowPlate.position.z = -0.015;
+  group.add(glowPlate);
+
+  group.rotation.x = -0.12;
+  return group;
 }
 
 function mapPacketToRotation(packet: BrokeredMotionPacket): { x: number; y: number } {
@@ -197,13 +282,13 @@ function mapPacketToRotation(packet: BrokeredMotionPacket): { x: number; y: numb
 function animate(): void {
   requestAnimationFrame(animate);
 
-  racketCube.rotation.x = damp(racketCube.rotation.x, targetRotationX, 0.32);
-  racketCube.rotation.y = damp(racketCube.rotation.y, targetRotationY, 0.32);
+  racketGroup.rotation.x = damp(racketGroup.rotation.x, targetRotationX, 0.32);
+  racketGroup.rotation.y = damp(racketGroup.rotation.y, targetRotationY, 0.32);
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
 
-  elements.rotationX.textContent = racketCube.rotation.x.toFixed(3);
-  elements.rotationY.textContent = racketCube.rotation.y.toFixed(3);
+  elements.rotationX.textContent = racketGroup.rotation.x.toFixed(3);
+  elements.rotationY.textContent = racketGroup.rotation.y.toFixed(3);
   elements.swingSpeed.textContent = `${Math.round(displayedSwingSpeedKmh)} km/h`;
   elements.peakSwingSpeed.textContent = `${Math.round(peakSwingSpeedKmh)} km/h`;
   updateConnectionStatus();

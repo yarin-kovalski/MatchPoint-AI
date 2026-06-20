@@ -89,7 +89,7 @@ It includes:
 - Basic ambient, directional, and rim lighting.
 - Dark court plane.
 - Grid-pattern court helper.
-- A neon-green cube representing the racket.
+- A native Three.js neon tennis racket representing the controller.
 - WebSocket mapping from phone data to cube rotation.
 
 Mapping:
@@ -112,7 +112,7 @@ For testing:
 2. Open `http://YOUR_PC_LAN_IP:3000/mobile` on the phone.
 3. Press `Enable motion sensors`, or use `Use touch simulator fallback`.
 4. Move the phone or drag on the simulator pad.
-5. Confirm that the cube rotates with low latency.
+5. Confirm that the racket rotates with low latency.
 
 ## Phase 1 Step 3: Live Stats Overlay
 
