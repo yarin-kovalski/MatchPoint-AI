@@ -8,9 +8,37 @@ The 3D wall-tennis game is the demo environment, not the whole project. The main
 
 ## Current Status
 
-Planning only. Implementation has not started yet.
+Phase 1 Step 1 implementation has started.
 
 Current target: Phase 1 MVP / Proof of Concept.
+
+## Run Phase 1 Step 1
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Build and run the local broker:
+
+```bash
+npm run dev
+```
+
+Then open:
+
+```text
+http://localhost:3000/pc
+```
+
+On the phone, open the LAN mobile URL printed by the server:
+
+```text
+http://YOUR_PC_LAN_IP:3000/mobile
+```
+
+More details are in `docs/phase1-step1-runbook.md`.
 
 ## One-Week Goal
 

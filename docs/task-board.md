@@ -14,15 +14,13 @@
 
 ## Ready
 
-- Phase 1 server setup.
-- Phase 1 mobile controller.
 - Phase 1 desktop cube visualization.
 - Phase 1 live stat overlay.
 - Optional Phase 1 basic ball/wall physics.
 
 ## In Progress
 
-- Ready to begin Phase 1 MVP implementation when user confirms.
+- Phase 1 Step 1 local testing once Node.js is available.
 
 ## Done
 
@@ -32,3 +30,6 @@
 - Planning files created.
 - Project renamed to MatchPoint AI: Smart Motion Trainer.
 - Coaching logic documented.
+- Phase 1 Step 1 TypeScript server scaffold created.
+- Phase 1 Step 1 mobile sensor debug page created.
+- Phase 1 Step 1 PC packet monitor created.

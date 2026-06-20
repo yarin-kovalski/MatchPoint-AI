@@ -1,0 +1,24 @@
+{
+  "name": "matchpoint-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Smart tennis motion trainer POC using phone sensors, Socket.io, and TypeScript.",
+  "scripts": {
+    "build": "tsc -p server/tsconfig.json && tsc -p client-mobile/tsconfig.json && tsc -p client-pc/tsconfig.json",
+    "build:server": "tsc -p server/tsconfig.json",
+    "build:mobile": "tsc -p client-mobile/tsconfig.json",
+    "build:pc": "tsc -p client-pc/tsconfig.json",
+    "dev": "tsc -p server/tsconfig.json && tsc -p client-mobile/tsconfig.json && tsc -p client-pc/tsconfig.json && node dist/server/index.js",
+    "start": "node dist/server/index.js",
+    "tunnel": "localtunnel --port 3000",
+    "typecheck": "tsc -p server/tsconfig.json && tsc -p client-mobile/tsconfig.json && tsc -p client-pc/tsconfig.json"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "localtunnel": "^2.0.2",
+    "typescript": "^5.5.3"
+  }
+}

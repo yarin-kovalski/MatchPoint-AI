@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>MatchPoint AI Mobile Controller</title>
+    <link rel="stylesheet" href="/mobile/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Phase 1 Sensor POC</p>
+        <h1>Mobile Controller</h1>
+        <p class="status" id="connectionStatus">Socket: disconnected</p>
+      </section>
+
+      <button id="startButton" type="button">Enable motion sensors</button>
+
+      <section class="panel">
+        <h2>Orientation</h2>
+        <dl class="grid">
+          <div><dt>alpha</dt><dd id="alpha">--</dd></div>
+          <div><dt>beta</dt><dd id="beta">--</dd></div>
+          <div><dt>gamma</dt><dd id="gamma">--</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Acceleration</h2>
+        <dl class="grid">
+          <div><dt>x</dt><dd id="accelX">--</dd></div>
+          <div><dt>y</dt><dd id="accelY">--</dd></div>
+          <div><dt>z</dt><dd id="accelZ">--</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Acceleration Including Gravity</h2>
+        <dl class="grid">
+          <div><dt>x</dt><dd id="gravityX">--</dd></div>
+          <div><dt>y</dt><dd id="gravityY">--</dd></div>
+          <div><dt>z</dt><dd id="gravityZ">--</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel">
+        <h2>Rotation Rate</h2>
+        <dl class="grid">
+          <div><dt>alpha</dt><dd id="rotAlpha">--</dd></div>
+          <div><dt>beta</dt><dd id="rotBeta">--</dd></div>
+          <div><dt>gamma</dt><dd id="rotGamma">--</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel compact">
+        <p id="packetStatus">Packets sent: 0</p>
+        <p id="permissionStatus">Permission: not requested</p>
+        <p id="sensorStatus">Sensors: waiting</p>
+      </section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/mobile/assets/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MatchPoint AI PC Packet Monitor</title>
+    <link rel="stylesheet" href="/pc/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Phase 1 Broker Debug</p>
+        <h1>PC Packet Monitor</h1>
+        <p id="connectionStatus">Socket: disconnected</p>
+      </section>
+
+      <section class="stats">
+        <article>
+          <span>Packets</span>
+          <strong id="packetCount">0</strong>
+        </article>
+        <article>
+          <span>Packet age</span>
+          <strong id="packetAge">--</strong>
+        </article>
+        <article>
+          <span>Mobile clients</span>
+          <strong id="mobileClients">0</strong>
+        </article>
+        <article>
+          <span>PC clients</span>
+          <strong id="pcClients">0</strong>
+        </article>
+      </section>
+
+      <section class="panel">
+        <h2>Latest controller packet</h2>
+        <pre id="packetOutput">Waiting for phone data...</pre>
+      </section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/pc/assets/main.js"></script>
+  </body>
+</html>
+

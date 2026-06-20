@@ -1,0 +1,7 @@
+node_modules/
+dist/
+client-mobile/public/assets/
+client-pc/public/assets/
+*.log
+.env
+
