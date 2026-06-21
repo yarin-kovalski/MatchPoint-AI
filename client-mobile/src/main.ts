@@ -24,6 +24,15 @@ type ControllerMotionPacket = {
   inputMode: "sensor" | "simulator";
 };
 
+type StrokeType = "Forehand" | "Backhand";
+
+type StrokeDetectedPacket = {
+  t: number;
+  strokeType: StrokeType;
+  source: "mobile";
+  accelerationX: number;
+};
+
 type SocketLike = {
   connected: boolean;
   emit(eventName: string, payload: unknown): void;
@@ -60,6 +69,8 @@ type WindowWithGenericSensors = Window & {
 };
 
 const SEND_INTERVAL_MS = 1000 / 60;
+const STROKE_ACCELERATION_THRESHOLD_X = 15;
+const STROKE_COOLDOWN_MS = 1000;
 const genericSensorWindow = window as WindowWithGenericSensors;
 
 const socket = io();
@@ -68,6 +79,7 @@ let packetsSent = 0;
 let streaming = false;
 let lastSentAt = 0;
 let inputMode: "sensor" | "simulator" = "sensor";
+let isSwinging = false;
 let lastSimulatorSample = {
   x: 0,
   y: 0,
@@ -237,6 +249,7 @@ function startGenericAndroidSensors(): void {
       y: sanitizeNumber(accelerationSensor.y),
       z: sanitizeNumber(accelerationSensor.z)
     };
+    detectStrokeFromAcceleration(latestPacket.acceleration.x);
     elements.sensorStatus.textContent = "Sensors: receiving generic acceleration";
   });
 
@@ -311,6 +324,7 @@ async function requestOrientationPermission(): Promise<"granted" | "denied" | "n
 function handleDeviceMotion(event: DeviceMotionEvent): void {
   elements.sensorStatus.textContent = "Sensors: receiving motion";
   latestPacket.acceleration = vectorFromAcceleration(event.acceleration);
+  detectStrokeFromAcceleration(latestPacket.acceleration.x);
   latestPacket.accelerationIncludingGravity = vectorFromAcceleration(
     event.accelerationIncludingGravity
   );
@@ -395,7 +409,43 @@ function handleSimulatorPointer(event: PointerEvent): void {
     gamma: velocityX
   };
   latestPacket.interval = dt;
+  detectStrokeFromAcceleration(latestPacket.acceleration.x);
   elements.sensorStatus.textContent = "Sensors: simulated touch input";
+}
+
+function detectStrokeFromAcceleration(accelerationX: NullableNumber): void {
+  if (isSwinging || accelerationX === null) {
+    return;
+  }
+
+  let strokeType: StrokeType | null = null;
+
+  if (accelerationX > STROKE_ACCELERATION_THRESHOLD_X) {
+    strokeType = "Forehand";
+  }
+
+  if (accelerationX < -STROKE_ACCELERATION_THRESHOLD_X) {
+    strokeType = "Backhand";
+  }
+
+  if (!strokeType) {
+    return;
+  }
+
+  isSwinging = true;
+  const packet: StrokeDetectedPacket = {
+    t: Date.now(),
+    strokeType,
+    source: "mobile",
+    accelerationX
+  };
+
+  socket.emit("stroke_detected", packet);
+  elements.sensorStatus.textContent = `Sensors: ${strokeType} stroke detected`;
+
+  window.setTimeout(() => {
+    isSwinging = false;
+  }, STROKE_COOLDOWN_MS);
 }
 
 function resetSimulatorPointer(): void {

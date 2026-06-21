@@ -37,6 +37,16 @@ type BrokeredMotionPacket = {
   interval: number | null;
 };
 
+type StrokeType = "Forehand" | "Backhand";
+
+type BrokeredStrokeDetectedPacket = {
+  t: number;
+  strokeType: StrokeType;
+  source: "mobile";
+  accelerationX: number;
+  serverReceivedAt: number;
+};
+
 type SocketLike = {
   connected: boolean;
   emit(eventName: string, payload: unknown): void;
@@ -71,8 +81,11 @@ let targetRotationZ = 0;
 let displayedSwingSpeedKmh = 0;
 let targetSwingSpeedKmh = 0;
 let peakSwingSpeedKmh = 0;
+let activeStroke: { type: StrokeType; startedAt: number; durationMs: number } | null = null;
+const gyroQuaternion = new THREE.Quaternion();
+const gyroEuler = new THREE.Euler(0, 0, 0, "YXZ");
+const strokeQuaternion = new THREE.Quaternion();
 const targetRacketQuaternion = new THREE.Quaternion();
-const targetRacketEuler = new THREE.Euler(0, 0, 0, "YXZ");
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
@@ -151,13 +164,22 @@ socket.on("controller:state", (payload: unknown) => {
   targetRotationX = mappedRotation.x;
   targetRotationY = mappedRotation.y;
   targetRotationZ = mappedRotation.z;
-  targetRacketEuler.set(targetRotationX, targetRotationY, targetRotationZ);
-  targetRacketQuaternion.setFromEuler(targetRacketEuler);
   targetSwingSpeedKmh = estimateSwingSpeedKmh(latestPacket, previousPacket);
   peakSwingSpeedKmh = Math.max(peakSwingSpeedKmh, targetSwingSpeedKmh);
 
   elements.packetCount.textContent = String(packetCount);
   elements.inputMode.textContent = latestPacket.inputMode ?? "sensor";
+});
+
+socket.on("stroke_detected", (payload: unknown) => {
+  const strokePacket = payload as BrokeredStrokeDetectedPacket;
+  activeStroke = {
+    type: strokePacket.strokeType,
+    startedAt: performance.now(),
+    durationMs: 500
+  };
+  targetSwingSpeedKmh = Math.max(targetSwingSpeedKmh, estimateStrokeBurstSpeedKmh(strokePacket));
+  peakSwingSpeedKmh = Math.max(peakSwingSpeedKmh, targetSwingSpeedKmh);
 });
 
 window.addEventListener("resize", handleResize);
@@ -273,14 +295,16 @@ function loadRacketModel(): void {
   const loader = new GLTFLoader();
 
   loader.load(
-    "/pc/racket.glb",
+    "/pc/racket_new.glb",
     (gltf) => {
       const model = gltf.scene;
-      normalizeLoadedRacket(model);
-      model.rotation.set(Math.PI, 0, 0);
-      alignRacketHandleToPivot(model);
-      console.log("racket model position", model.position);
-      console.log("racket container position", racketContainer.position);
+      model.scale.setScalar(0.01);
+      model.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
       racketContainer.add(model);
     },
     undefined,
@@ -288,64 +312,6 @@ function loadRacketModel(): void {
       console.error("Failed to load racket.glb", error);
     }
   );
-}
-
-function normalizeLoadedRacket(model: THREE.Group): void {
-  const box = new THREE.Box3().setFromObject(model);
-  const size = new THREE.Vector3();
-  box.getSize(size);
-
-  const maxDimension = Math.max(size.x, size.y, size.z);
-  const targetHeight = 2.85;
-  const scale = maxDimension > 0 ? targetHeight / maxDimension : 1;
-
-  model.scale.setScalar(scale);
-  model.traverse((child) => {
-    if (child instanceof THREE.Mesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-      boostRacketMaterial(child);
-    }
-  });
-}
-
-function alignRacketHandleToPivot(model: THREE.Group): void {
-  model.updateMatrixWorld(true);
-
-  const orientedBox = new THREE.Box3().setFromObject(model);
-  const orientedCenter = new THREE.Vector3();
-  orientedBox.getCenter(orientedCenter);
-
-  const handlePivot = new THREE.Vector3(
-    orientedCenter.x,
-    orientedBox.max.y,
-    orientedCenter.z
-  );
-
-  model.position.sub(handlePivot);
-  model.updateMatrixWorld(true);
-
-  const finalBox = new THREE.Box3().setFromObject(model);
-  const finalSize = new THREE.Vector3();
-  finalBox.getSize(finalSize);
-
-  console.log("racket aligned pivot", {
-    handlePivot,
-    finalBox,
-    finalSize
-  });
-}
-
-function boostRacketMaterial(mesh: THREE.Mesh): void {
-  const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-
-  for (const material of materials) {
-    if (material instanceof THREE.MeshStandardMaterial) {
-      material.roughness = Math.min(material.roughness, 0.42);
-      material.metalness = Math.max(material.metalness, 0.18);
-      material.needsUpdate = true;
-    }
-  }
 }
 
 function createDustParticles(): THREE.Points {
@@ -453,12 +419,11 @@ function getCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 function mapPacketToRotation(packet: BrokeredMotionPacket): { x: number; y: number; z: number } {
   const beta = packet.orientation.beta ?? packet.acceleration.y ?? 0;
   const gamma = packet.orientation.gamma ?? packet.acceleration.x ?? 0;
-  const alpha = packet.orientation.alpha ?? packet.rotationRate.alpha ?? 0;
 
   return {
     x: degreesToRadians(beta),
     y: degreesToRadians(gamma),
-    z: degreesToRadians(alpha)
+    z: 0
   };
 }
 
@@ -466,6 +431,9 @@ function animate(): void {
   requestAnimationFrame(animate);
   const elapsed = clock.getElapsedTime();
 
+  gyroEuler.set(targetRotationX, targetRotationY, targetRotationZ);
+  gyroQuaternion.setFromEuler(gyroEuler);
+  targetRacketQuaternion.copy(gyroQuaternion).multiply(getStrokeActionQuaternion());
   racketContainer.quaternion.slerp(targetRacketQuaternion, 0.32);
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
@@ -480,6 +448,31 @@ function animate(): void {
   updatePacketAge();
 
   renderer.render(scene, camera);
+}
+
+function getStrokeActionQuaternion(): THREE.Quaternion {
+  strokeQuaternion.identity();
+
+  if (!activeStroke) {
+    return strokeQuaternion;
+  }
+
+  const elapsedMs = performance.now() - activeStroke.startedAt;
+  const progress = Math.min(elapsedMs / activeStroke.durationMs, 1);
+
+  if (progress >= 1) {
+    activeStroke = null;
+    return strokeQuaternion;
+  }
+
+  const swingDirection = activeStroke.type === "Forehand" ? 1 : -1;
+  const easedProgress = easeOutThenIn(progress);
+  const forwardArc = Math.sin(easedProgress * Math.PI) * 1.05;
+  const sideArc = Math.sin(easedProgress * Math.PI) * swingDirection * 0.38;
+  const actionEuler = new THREE.Euler(forwardArc, sideArc, 0, "YXZ");
+  strokeQuaternion.setFromEuler(actionEuler);
+
+  return strokeQuaternion;
 }
 
 function animateDust(elapsed: number): void {
@@ -530,6 +523,10 @@ function estimateAccelerationSpeed(packet: BrokeredMotionPacket): number {
   return accelerationMagnitude * 3.6;
 }
 
+function estimateStrokeBurstSpeedKmh(packet: BrokeredStrokeDetectedPacket): number {
+  return clamp(Math.abs(packet.accelerationX) * 7.5, 0, 220);
+}
+
 function updateConnectionStatus(): void {
   elements.connectionStatus.textContent = socket.connected
     ? "Socket: connected"
@@ -558,6 +555,12 @@ function degreesToRadians(value: number): number {
 
 function damp(current: number, target: number, factor: number): number {
   return current + (target - current) * factor;
+}
+
+function easeOutThenIn(value: number): number {
+  return value < 0.5
+    ? 2 * value * value
+    : 1 - Math.pow(-2 * value + 2, 2) / 2;
 }
 
 function clamp(value: number, min: number, max: number): number {

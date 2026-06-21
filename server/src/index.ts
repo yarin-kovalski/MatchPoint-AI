@@ -59,9 +59,23 @@ type ControllerMotionPacket = {
   };
   interval: NullableNumber;
   source: "mobile";
+  inputMode?: "sensor" | "simulator";
 };
 
 type BrokeredMotionPacket = ControllerMotionPacket & {
+  serverReceivedAt: number;
+};
+
+type StrokeType = "Forehand" | "Backhand";
+
+type StrokeDetectedPacket = {
+  t: number;
+  strokeType: StrokeType;
+  source: "mobile";
+  accelerationX: number;
+};
+
+type BrokeredStrokeDetectedPacket = StrokeDetectedPacket & {
   serverReceivedAt: number;
 };
 
@@ -120,49 +134,58 @@ const ioServers = [
 
 for (const io of ioServers) {
   io.on("connection", (socket) => {
-  console.log(`socket connected ${socket.id}`);
+    console.log(`socket connected ${socket.id}`);
 
-  socket.on("client:hello", (payload: { role?: "mobile" | "pc" } = {}) => {
-    if (payload.role === "mobile") {
-      socket.join("mobile");
-      mobileClientCount += 1;
-    }
-
-    if (payload.role === "pc") {
-      socket.join("pc");
-      pcClientCount += 1;
-
-      if (lastMotionPacket) {
-        socket.emit("controller:state", lastMotionPacket);
+    socket.on("client:hello", (payload: { role?: "mobile" | "pc" } = {}) => {
+      if (payload.role === "mobile") {
+        socket.join("mobile");
+        mobileClientCount += 1;
       }
-    }
 
-    emitBrokerStatus();
-  });
+      if (payload.role === "pc") {
+        socket.join("pc");
+        pcClientCount += 1;
 
-  socket.on("controller:motion", (payload: ControllerMotionPacket) => {
-    lastMotionPacket = {
-      ...payload,
-      serverReceivedAt: Date.now()
-    };
+        if (lastMotionPacket) {
+          socket.emit("controller:state", lastMotionPacket);
+        }
+      }
 
-    emitToPcClients("controller:state", lastMotionPacket);
-  });
+      emitBrokerStatus();
+    });
 
-  socket.on("disconnecting", () => {
-    if (socket.rooms.has("mobile")) {
-      mobileClientCount = Math.max(0, mobileClientCount - 1);
-    }
+    socket.on("controller:motion", (payload: ControllerMotionPacket) => {
+      lastMotionPacket = {
+        ...payload,
+        serverReceivedAt: Date.now()
+      };
 
-    if (socket.rooms.has("pc")) {
-      pcClientCount = Math.max(0, pcClientCount - 1);
-    }
-  });
+      emitToPcClients("controller:state", lastMotionPacket);
+    });
 
-  socket.on("disconnect", () => {
-    console.log(`socket disconnected ${socket.id}`);
-    emitBrokerStatus();
-  });
+    socket.on("stroke_detected", (payload: StrokeDetectedPacket) => {
+      const brokeredStroke: BrokeredStrokeDetectedPacket = {
+        ...payload,
+        serverReceivedAt: Date.now()
+      };
+
+      emitToPcClients("stroke_detected", brokeredStroke);
+    });
+
+    socket.on("disconnecting", () => {
+      if (socket.rooms.has("mobile")) {
+        mobileClientCount = Math.max(0, mobileClientCount - 1);
+      }
+
+      if (socket.rooms.has("pc")) {
+        pcClientCount = Math.max(0, pcClientCount - 1);
+      }
+    });
+
+    socket.on("disconnect", () => {
+      console.log(`socket disconnected ${socket.id}`);
+      emitBrokerStatus();
+    });
   });
 }
 
@@ -293,7 +316,7 @@ function emitBrokerStatus(): void {
   }
 }
 
-function emitToPcClients(eventName: string, payload: BrokeredMotionPacket): void {
+function emitToPcClients(eventName: string, payload: unknown): void {
   for (const io of ioServers) {
     io.to("pc").emit(eventName, payload);
   }
