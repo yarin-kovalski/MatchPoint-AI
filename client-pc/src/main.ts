@@ -37,13 +37,32 @@ type BrokeredMotionPacket = {
   interval: number | null;
 };
 
-type StrokeType = "Forehand" | "Backhand";
+type StrokeType = "forehand" | "backhand" | "Forehand" | "Backhand";
+
+type BrokeredContinuousOrientationPacket = {
+  t: number;
+  source: "expo-mobile";
+  serverReceivedAt: number;
+  rotation: {
+    x: number | null;
+    y: number | null;
+    z: number | null;
+  };
+  gyro: {
+    x: number | null;
+    y: number | null;
+    z: number | null;
+  };
+  intervalMs: number;
+};
 
 type BrokeredStrokeDetectedPacket = {
   t: number;
-  strokeType: StrokeType;
-  source: "mobile";
-  accelerationX: number;
+  strokeType?: StrokeType;
+  type?: StrokeType;
+  source: "mobile" | "expo-mobile";
+  accelerationX?: number;
+  peakAcceleration?: number;
   serverReceivedAt: number;
 };
 
@@ -75,6 +94,7 @@ const elements = {
 let packetCount = 0;
 let latestPacket: BrokeredMotionPacket | null = null;
 let previousPacket: BrokeredMotionPacket | null = null;
+let latestOrientationPacket: BrokeredContinuousOrientationPacket | null = null;
 let targetRotationX = 0;
 let targetRotationY = 0;
 let targetRotationZ = 0;
@@ -84,8 +104,9 @@ let peakSwingSpeedKmh = 0;
 let activeStroke: { type: StrokeType; startedAt: number; durationMs: number } | null = null;
 const gyroQuaternion = new THREE.Quaternion();
 const gyroEuler = new THREE.Euler(0, 0, 0, "YXZ");
-const strokeQuaternion = new THREE.Quaternion();
 const targetRacketQuaternion = new THREE.Quaternion();
+const neutralRacketPosition = new THREE.Vector3(0, 1.45, 0);
+const strokePositionOffset = new THREE.Vector3();
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
@@ -132,7 +153,7 @@ const court = createCourt();
 scene.add(court);
 
 const racketContainer = new THREE.Group();
-racketContainer.position.set(0, 1.45, 0);
+racketContainer.position.copy(neutralRacketPosition);
 racketContainer.quaternion.identity();
 scene.add(racketContainer);
 loadRacketModel();
@@ -156,6 +177,7 @@ socket.on("broker:status", (payload: unknown) => {
 });
 
 socket.on("controller:state", (payload: unknown) => {
+  latestOrientationPacket = null;
   previousPacket = latestPacket;
   latestPacket = payload as BrokeredMotionPacket;
   packetCount += 1;
@@ -171,12 +193,32 @@ socket.on("controller:state", (payload: unknown) => {
   elements.inputMode.textContent = latestPacket.inputMode ?? "sensor";
 });
 
+socket.on("continuous_orientation", (payload: unknown) => {
+  const orientationPacket = payload as BrokeredContinuousOrientationPacket;
+  latestPacket = null;
+  latestOrientationPacket = orientationPacket;
+  packetCount += 1;
+  targetRotationX = orientationPacket.rotation.x ?? 0;
+  targetRotationY = orientationPacket.rotation.y ?? 0;
+  targetRotationZ = orientationPacket.rotation.z ?? 0;
+
+  elements.packetCount.textContent = String(packetCount);
+  elements.inputMode.textContent = "expo";
+
+});
+
 socket.on("stroke_detected", (payload: unknown) => {
   const strokePacket = payload as BrokeredStrokeDetectedPacket;
+  const strokeType = normalizeStrokeType(strokePacket.strokeType ?? strokePacket.type);
+
+  if (!strokeType) {
+    return;
+  }
+
   activeStroke = {
-    type: strokePacket.strokeType,
+    type: strokeType,
     startedAt: performance.now(),
-    durationMs: 500
+    durationMs: 620
   };
   targetSwingSpeedKmh = Math.max(targetSwingSpeedKmh, estimateStrokeBurstSpeedKmh(strokePacket));
   peakSwingSpeedKmh = Math.max(peakSwingSpeedKmh, targetSwingSpeedKmh);
@@ -433,8 +475,9 @@ function animate(): void {
 
   gyroEuler.set(targetRotationX, targetRotationY, targetRotationZ);
   gyroQuaternion.setFromEuler(gyroEuler);
-  targetRacketQuaternion.copy(gyroQuaternion).multiply(getStrokeActionQuaternion());
+  targetRacketQuaternion.copy(gyroQuaternion);
   racketContainer.quaternion.slerp(targetRacketQuaternion, 0.32);
+  racketContainer.position.copy(neutralRacketPosition).add(getStrokePositionOffset());
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
 
@@ -450,11 +493,10 @@ function animate(): void {
   renderer.render(scene, camera);
 }
 
-function getStrokeActionQuaternion(): THREE.Quaternion {
-  strokeQuaternion.identity();
-
+function getStrokePositionOffset(): THREE.Vector3 {
+  strokePositionOffset.set(0, 0, 0);
   if (!activeStroke) {
-    return strokeQuaternion;
+    return strokePositionOffset;
   }
 
   const elapsedMs = performance.now() - activeStroke.startedAt;
@@ -462,17 +504,18 @@ function getStrokeActionQuaternion(): THREE.Quaternion {
 
   if (progress >= 1) {
     activeStroke = null;
-    return strokeQuaternion;
+    return strokePositionOffset;
   }
 
-  const swingDirection = activeStroke.type === "Forehand" ? 1 : -1;
+  const swingDirection = normalizeStrokeType(activeStroke.type) === "forehand" ? 1 : -1;
   const easedProgress = easeOutThenIn(progress);
-  const forwardArc = Math.sin(easedProgress * Math.PI) * 1.05;
-  const sideArc = Math.sin(easedProgress * Math.PI) * swingDirection * 0.38;
-  const actionEuler = new THREE.Euler(forwardArc, sideArc, 0, "YXZ");
-  strokeQuaternion.setFromEuler(actionEuler);
+  const arc = Math.sin(easedProgress * Math.PI);
+  const forwardTravel = arc * -1.35;
+  const upwardTravel = arc * 0.52;
+  const sideCurve = arc * swingDirection * 0.38;
 
-  return strokeQuaternion;
+  strokePositionOffset.set(sideCurve, upwardTravel, forwardTravel);
+  return strokePositionOffset;
 }
 
 function animateDust(elapsed: number): void {
@@ -524,7 +567,8 @@ function estimateAccelerationSpeed(packet: BrokeredMotionPacket): number {
 }
 
 function estimateStrokeBurstSpeedKmh(packet: BrokeredStrokeDetectedPacket): number {
-  return clamp(Math.abs(packet.accelerationX) * 7.5, 0, 220);
+  const acceleration = packet.peakAcceleration ?? packet.accelerationX ?? 0;
+  return clamp(Math.abs(acceleration) * 7.5, 0, 220);
 }
 
 function updateConnectionStatus(): void {
@@ -534,12 +578,14 @@ function updateConnectionStatus(): void {
 }
 
 function updatePacketAge(): void {
-  if (!latestPacket) {
+  const packetTime = latestPacket?.serverReceivedAt ?? latestOrientationPacket?.serverReceivedAt;
+
+  if (!packetTime) {
     elements.packetAge.textContent = "--";
     return;
   }
 
-  const ageMs = Date.now() - latestPacket.serverReceivedAt;
+  const ageMs = Date.now() - packetTime;
   elements.packetAge.textContent = `${ageMs} ms`;
 }
 
@@ -561,6 +607,20 @@ function easeOutThenIn(value: number): number {
   return value < 0.5
     ? 2 * value * value
     : 1 - Math.pow(-2 * value + 2, 2) / 2;
+}
+
+function normalizeStrokeType(value: StrokeType | undefined): "forehand" | "backhand" | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.toLowerCase();
+
+  if (normalized === "forehand" || normalized === "backhand") {
+    return normalized;
+  }
+
+  return null;
 }
 
 function clamp(value: number, min: number, max: number): number {

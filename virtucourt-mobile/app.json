@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "VirtuCourt Mobile",
+    "slug": "virtucourt-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSMotionUsageDescription": "VirtuCourt uses motion sensors to control the tennis racket."
+      }
+    },
+    "android": {
+      "package": "com.virtucourt.mobile"
+    }
+  }
+}

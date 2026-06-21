@@ -68,11 +68,33 @@ type BrokeredMotionPacket = ControllerMotionPacket & {
 
 type StrokeType = "Forehand" | "Backhand";
 
+type ContinuousOrientationPacket = {
+  t: number;
+  source: "expo-mobile";
+  rotation: {
+    x: NullableNumber;
+    y: NullableNumber;
+    z: NullableNumber;
+  };
+  gyro: {
+    x: NullableNumber;
+    y: NullableNumber;
+    z: NullableNumber;
+  };
+  intervalMs: number;
+};
+
+type BrokeredContinuousOrientationPacket = ContinuousOrientationPacket & {
+  serverReceivedAt: number;
+};
+
 type StrokeDetectedPacket = {
   t: number;
-  strokeType: StrokeType;
-  source: "mobile";
-  accelerationX: number;
+  strokeType?: StrokeType | Lowercase<StrokeType>;
+  type?: StrokeType | Lowercase<StrokeType>;
+  source: "mobile" | "expo-mobile";
+  accelerationX?: number;
+  peakAcceleration?: number;
 };
 
 type BrokeredStrokeDetectedPacket = StrokeDetectedPacket & {
@@ -161,6 +183,15 @@ for (const io of ioServers) {
       };
 
       emitToPcClients("controller:state", lastMotionPacket);
+    });
+
+    socket.on("continuous_orientation", (payload: ContinuousOrientationPacket) => {
+      const brokeredOrientation: BrokeredContinuousOrientationPacket = {
+        ...payload,
+        serverReceivedAt: Date.now()
+      };
+
+      emitToPcClients("continuous_orientation", brokeredOrientation);
     });
 
     socket.on("stroke_detected", (payload: StrokeDetectedPacket) => {
