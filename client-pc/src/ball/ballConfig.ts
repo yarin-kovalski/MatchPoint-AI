@@ -27,9 +27,9 @@ export const BALL_CONFIG = {
   bounds: { x: 9, y: 12, zBehindPlayer: 4.5, zFar: -13 },
   launch: {
     launchPosition: [0, 1.85, -7.5],
-    easyForehand: { contactSideOffset: 1.15, contactHeight: 0.02, depthOffset: 0, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
-    easyBackhand: { contactSideOffset: -1.15, contactHeight: 0.02, depthOffset: 0, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
-    centerPractice: { contactSideOffset: 0, contactHeight: 0.02, depthOffset: 0, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
+    easyForehand: { contactSideOffset: 1.15, contactHeight: 0.02, depthOffset: 0.12, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
+    easyBackhand: { contactSideOffset: -1.15, contactHeight: 0.02, depthOffset: 0.12, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
+    centerPractice: { contactSideOffset: 0, contactHeight: 0.02, depthOffset: 0.12, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
     bounceDepth: -4.35,
     netDepth: -5.5,
     netHeight: 0.914,

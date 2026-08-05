@@ -259,7 +259,7 @@ let ballVisualScaleMultiplier: number = BALL_CONFIG.scale.visualScaleMultiplier;
 let contactHeightOffset = 0.02;
 let forehandSideOffset = 1.15;
 let backhandSideOffset = -1.15;
-let contactDepthOffset = 0;
+let contactDepthOffset = 0.12;
 let showBallAtContactPreview = false;
 const gyroQuaternion = new THREE.Quaternion();
 const relativeOrientationQuaternion = new THREE.Quaternion();
@@ -1419,10 +1419,10 @@ function readDeliveryTuning(): void {
 function resetBallVisualSettings(): void {
   elements.ballVisualSizeSelect.value = "readable";
   elements.ballVisualScaleInput.value = String(BALL_CONFIG.scale.visualScaleMultiplier);
-  elements.contactHeightPreset.value = "0.05";
-  elements.forehandSidePreset.value = "0.94";
-  elements.backhandSidePreset.value = "0.94";
-  elements.contactDepthInput.value = "0";
+  elements.contactHeightPreset.value = String(BALL_CONFIG.launch.easyForehand.contactHeight);
+  elements.forehandSidePreset.value = String(Math.abs(BALL_CONFIG.launch.easyForehand.contactSideOffset));
+  elements.backhandSidePreset.value = String(Math.abs(BALL_CONFIG.launch.easyBackhand.contactSideOffset));
+  elements.contactDepthInput.value = String(BALL_CONFIG.launch.easyForehand.depthOffset);
   elements.showContactTargetToggle.checked = false;
   elements.showTrajectoryToggle.checked = false;
   elements.showStringCenterToggle.checked = false;
