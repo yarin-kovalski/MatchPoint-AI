@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { NormalizedSensorFrame } from "../motion/sensorNormalization.js";
+import { BallHitEvent, BallMissEvent, BallSpeedPreset, LaunchPreset } from "../ball/ballTypes.js";
+import { Handedness } from "./strokeTypes.js";
 
 export type RecordingLabel =
   | "forehand"
@@ -43,6 +45,10 @@ export type MotionRecording = {
   label: RecordingLabel;
   createdAt: number;
   frames: RecordedMotionFrame[];
+  gameplay: {
+    launch: { preset: LaunchPreset; handedness: Handedness; speed: BallSpeedPreset; timestamp: number } | null;
+    result: { type: "hit"; event: BallHitEvent } | { type: "miss"; event: BallMissEvent } | null;
+  };
 };
 
 export class MotionRecorder {
@@ -52,7 +58,13 @@ export class MotionRecorder {
   constructor(private readonly maximumFrames = 4000) {}
 
   start(label: RecordingLabel): void {
-    this.recording = { version: 1, label, createdAt: Date.now(), frames: [] };
+    this.recording = {
+      version: 1,
+      label,
+      createdAt: Date.now(),
+      frames: [],
+      gameplay: { launch: null, result: null }
+    };
   }
 
   capture(frame: NormalizedSensorFrame): void {
@@ -77,6 +89,14 @@ export class MotionRecorder {
 
   getLastRecording(): MotionRecording | null {
     return this.lastRecording;
+  }
+
+  recordBallLaunch(preset: LaunchPreset, handedness: Handedness, speed: BallSpeedPreset, timestamp: number): void {
+    if (this.recording) this.recording.gameplay.launch = { preset, handedness, speed, timestamp };
+  }
+
+  recordBallResult(result: { type: "hit"; event: BallHitEvent } | { type: "miss"; event: BallMissEvent }): void {
+    if (this.recording) this.recording.gameplay.result = result;
   }
 }
 
@@ -149,4 +169,3 @@ function vector(values: number[]): THREE.Vector3 {
 function quaternion(values: number[]): THREE.Quaternion {
   return new THREE.Quaternion(values[0], values[1], values[2], values[3]);
 }
-

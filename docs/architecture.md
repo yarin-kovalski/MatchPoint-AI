@@ -267,3 +267,9 @@ Mitigation: Phase 1 focuses on proving transport, orientation, and one simple re
 The reusable forehand/backhand detector, thresholds, recording workflow, debug
 signals, contact contract, and physical test instructions are documented in
 [`phase-c-stroke-detection.md`](phase-c-stroke-detection.md).
+
+## Phase D Ball Prototype
+
+The deterministic ball controller, swept string-bed collision, return response,
+spin approximation, assistance modes, tests, and tuning values are documented
+in [`phase-d-ball-prototype.md`](phase-d-ball-prototype.md).

@@ -101,6 +101,40 @@
           <button id="stopReplayButton" type="button" disabled>Stop replay</button>
         </div>
 
+        <section class="ball-panel" aria-label="Ball prototype controls">
+          <div class="ball-actions">
+            <button id="launchForehandBall" type="button">Launch Forehand Ball</button>
+            <button id="launchBackhandBall" type="button">Launch Backhand Ball</button>
+            <button id="resetBall" type="button">Reset Ball</button>
+          </div>
+          <div class="ball-options">
+            <label>Assist
+              <select id="assistModeSelect">
+                <option value="off">Off</option>
+                <option value="prototype" selected>Prototype</option>
+                <option value="easy">Easy</option>
+              </select>
+            </label>
+            <label>Speed
+              <select id="ballSpeedSelect">
+                <option value="slow">Slow</option>
+                <option value="normal" selected>Normal</option>
+                <option value="fast">Fast</option>
+              </select>
+            </label>
+            <label class="check-label"><input id="autoRelaunchToggle" type="checkbox"> Auto relaunch</label>
+            <label class="check-label"><input id="ballDebugToggle" type="checkbox"> Ball debug</label>
+          </div>
+          <div class="ball-status">
+            <span>Ball <strong id="ballState">IDLE</strong></span>
+            <span>Result <strong id="ballResult">--</strong></span>
+            <span>In <strong id="incomingBallSpeed">0.0 m/s</strong></span>
+            <span>Out <strong id="outgoingBallSpeed">0.0 m/s</strong></span>
+            <span>Spin <strong id="ballSpin">flat</strong></span>
+            <span>Bounces <strong id="ballBounces">0</strong></span>
+          </div>
+        </section>
+
         <button id="calibrateButton" class="hud-calibrate" type="button" disabled>
           Calibrate Ready Pose
         </button>
@@ -132,6 +166,10 @@
             <dt>Rejection</dt><dd id="debugStrokeRejection">none</dd>
             <dt>Last stroke</dt><dd id="debugLastStroke">none</dd>
             <dt>Last contact time</dt><dd id="debugLastContactTimestamp">none</dd>
+            <dt>Ball motion</dt><dd id="debugBallMotion">IDLE</dd>
+            <dt>Ball collision</dt><dd id="debugBallCollision">--</dd>
+            <dt>Ball validity</dt><dd id="debugBallValidity">--</dd>
+            <dt>Ball result</dt><dd id="debugBallResult">none</dd>
             <dt>Timeline</dt><dd id="debugStrokeTimeline">READY</dd>
             <dt>Mapping</dt><dd>phone +X → world +X; phone +Y → world -Z; phone +Z → world +Y</dd>
           </dl>

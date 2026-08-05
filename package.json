@@ -13,6 +13,7 @@
     "start": "node dist/server/index.js",
     "test:phase-b": "tsc -p tests/tsconfig.json && node --test dist-tests/tests/phase-b.test.js",
     "test:phase-c": "tsc -p tests/tsconfig.json && node --test dist-tests/tests/phase-c.test.js",
+    "test:phase-d": "tsc -p tests/tsconfig.json && node --test dist-tests/tests/phase-d.test.js",
     "test": "tsc -p tests/tsconfig.json && node --test dist-tests/tests/*.test.js",
     "tunnel": "tools\\cloudflared.exe tunnel --edge-ip-version 4 --url http://localhost:3000",
     "tunnel:localtunnel": "lt --port 3000 --local-host 127.0.0.1",

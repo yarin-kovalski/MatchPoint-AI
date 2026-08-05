@@ -1,5 +1,8 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { BallController } from "./ball/BallController.js";
+import { BALL_CONFIG } from "./ball/ballConfig.js";
+import { AssistMode, BallHitEvent, BallMissEvent, BallSpeedPreset, LaunchPreset } from "./ball/ballTypes.js";
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
 import {
   NormalizedSensorFrame,
@@ -189,6 +192,23 @@ const elements = {
   debugStrokeRejection: getElement("debugStrokeRejection"),
   debugLastStroke: getElement("debugLastStroke"),
   debugLastContactTimestamp: getElement("debugLastContactTimestamp"),
+  launchForehandBall: getElement<HTMLButtonElement>("launchForehandBall"),
+  launchBackhandBall: getElement<HTMLButtonElement>("launchBackhandBall"),
+  resetBall: getElement<HTMLButtonElement>("resetBall"),
+  assistModeSelect: getElement<HTMLSelectElement>("assistModeSelect"),
+  ballSpeedSelect: getElement<HTMLSelectElement>("ballSpeedSelect"),
+  autoRelaunchToggle: getElement<HTMLInputElement>("autoRelaunchToggle"),
+  ballDebugToggle: getElement<HTMLInputElement>("ballDebugToggle"),
+  ballState: getElement("ballState"),
+  ballResult: getElement("ballResult"),
+  incomingBallSpeed: getElement("incomingBallSpeed"),
+  outgoingBallSpeed: getElement("outgoingBallSpeed"),
+  ballSpin: getElement("ballSpin"),
+  ballBounces: getElement("ballBounces"),
+  debugBallMotion: getElement("debugBallMotion"),
+  debugBallCollision: getElement("debugBallCollision"),
+  debugBallValidity: getElement("debugBallValidity"),
+  debugBallResult: getElement("debugBallResult"),
   debugStrokeTimeline: getElement("debugStrokeTimeline")
 };
 
@@ -213,6 +233,12 @@ let activeStroke: { type: StrokeType; startedAt: number; durationMs: number } | 
 let replayActive = false;
 let replayTimer: number | null = null;
 let contactFlashUntil = 0;
+let assistMode: AssistMode = "prototype";
+let ballSpeedPreset: BallSpeedPreset = "normal";
+let activeLaunchPreset: LaunchPreset = "easyForehand";
+let lastBallFrameAt = performance.now();
+let lastBallBounceCount = 0;
+let ballRelaunchAt = 0;
 const gyroQuaternion = new THREE.Quaternion();
 const relativeOrientationQuaternion = new THREE.Quaternion();
 const calibrationBaselineInverse = new THREE.Quaternion();
@@ -313,6 +339,64 @@ modelCorrectionPivot.name = "modelCorrectionPivot";
 modelCorrectionPivot.quaternion.copy(racketModelCorrectionQuaternion);
 orientationPivot.add(modelCorrectionPivot);
 
+const racketStringCollider = new THREE.Group();
+racketStringCollider.name = "racketStringCollider";
+racketStringCollider.position.set(...BALL_CONFIG.collision.headCenterLocal);
+modelCorrectionPivot.add(racketStringCollider);
+
+const colliderPoints: THREE.Vector3[] = [];
+for (let index = 0; index < 48; index += 1) {
+  const angle = index / 48 * Math.PI * 2;
+  colliderPoints.push(new THREE.Vector3(
+    Math.cos(angle) * BALL_CONFIG.collision.halfWidthLocal,
+    Math.sin(angle) * BALL_CONFIG.collision.halfHeightLocal,
+    0
+  ));
+}
+const colliderDebug = new THREE.LineLoop(
+  new THREE.BufferGeometry().setFromPoints(colliderPoints),
+  new THREE.LineBasicMaterial({ color: 0x39d9ff, transparent: true, opacity: 0.85, depthTest: false })
+);
+colliderDebug.visible = false;
+colliderDebug.renderOrder = 30;
+racketStringCollider.add(colliderDebug);
+
+const ballMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(BALL_CONFIG.radius, 24, 16),
+  new THREE.MeshStandardMaterial({ color: 0xc8ff32, emissive: 0x5b8200, emissiveIntensity: 0.5, roughness: 0.72 })
+);
+ballMesh.castShadow = true;
+ballMesh.receiveShadow = true;
+ballMesh.visible = false;
+scene.add(ballMesh);
+
+const ballController = new BallController(onBallHit, onBallMiss);
+const ballDebugGroup = new THREE.Group();
+ballDebugGroup.visible = false;
+scene.add(ballDebugGroup);
+const ballVelocityArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(), 1, 0x39d9ff);
+const racketNormalArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(), 0.8, 0xff5b89);
+ballDebugGroup.add(ballVelocityArrow, racketNormalArrow);
+const predictedPathGeometry = new THREE.BufferGeometry();
+const predictedPathLine = new THREE.Line(
+  predictedPathGeometry,
+  new THREE.LineBasicMaterial({ color: 0x8dff75, transparent: true, opacity: 0.5 })
+);
+ballDebugGroup.add(predictedPathLine);
+const contactMarker = new THREE.Mesh(
+  new THREE.SphereGeometry(0.055, 12, 8),
+  new THREE.MeshBasicMaterial({ color: 0xff476f, transparent: true, opacity: 0.85 })
+);
+contactMarker.visible = false;
+ballDebugGroup.add(contactMarker);
+const bounceMarker = new THREE.Mesh(
+  new THREE.RingGeometry(0.08, 0.16, 28),
+  new THREE.MeshBasicMaterial({ color: 0xc8ff32, transparent: true, opacity: 0.75, side: THREE.DoubleSide })
+);
+bounceMarker.rotation.x = -Math.PI / 2;
+bounceMarker.visible = false;
+scene.add(bounceMarker);
+
 const calibrationGuide = new THREE.Group();
 calibrationGuide.position.copy(neutralRacketPosition);
 calibrationGuide.quaternion.copy(baseReadyPoseQuaternion);
@@ -338,6 +422,7 @@ const strokeStateMachine = new StrokeStateMachine(
   onEstimatedRacketContact
 );
 wireStrokeControls();
+wireBallControls();
 loadRacketModel();
 
 const farCourtHaze = createFarCourtHaze();
@@ -728,6 +813,9 @@ function mapPacketToRotation(packet: BrokeredMotionPacket): { x: number; y: numb
 function animate(): void {
   requestAnimationFrame(animate);
   const elapsed = clock.getElapsedTime();
+  const now = performance.now();
+  const ballDeltaSeconds = Math.min((now - lastBallFrameAt) / 1000, 0.1);
+  lastBallFrameAt = now;
 
   if (latestOrientationPacket) {
     if (latestSensorFrame?.valid) {
@@ -750,6 +838,17 @@ function animate(): void {
   if (USE_LEGACY_STROKE_DETECTOR) {
     racketRoot.position.add(getStrokePositionOffset());
   }
+  scene.updateMatrixWorld(true);
+  const detectorSnapshot = latestStrokeSnapshot ?? strokeStateMachine.getSnapshot(Date.now());
+  ballController.update(
+    ballDeltaSeconds,
+    Date.now(),
+    racketStringCollider.matrixWorld,
+    detectorSnapshot,
+    lastContactEvent,
+    assistMode
+  );
+  updateBallVisuals(ballDeltaSeconds);
   rimLight.intensity = performance.now() < contactFlashUntil ? 42 : 26;
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
@@ -767,6 +866,7 @@ function animate(): void {
   updateCalibrationGuide(elapsed);
   updateOrientationDebug();
   updateStrokeDebug();
+  updateBallDebug();
   updateConnectionStatus();
   updatePacketAge();
 
@@ -1083,6 +1183,22 @@ function replayLastRecording(): void {
   elements.replayRecordingButton.disabled = true;
   elements.stopReplayButton.disabled = false;
   const frames = recording.frames.map(deserializeFrame);
+  const replayOffset = Date.now() - frames[0].timestamp;
+  for (const frame of frames) {
+    frame.timestamp += replayOffset;
+    frame.sensorTimestamp += replayOffset / 1000;
+  }
+  if (recording.gameplay?.launch) {
+    activeLaunchPreset = recording.gameplay.launch.preset;
+    ballSpeedPreset = recording.gameplay.launch.speed;
+    ballController.launch(
+      recording.gameplay.launch.preset,
+      recording.gameplay.launch.handedness,
+      recording.gameplay.launch.speed,
+      Date.now()
+    );
+    ballMesh.visible = true;
+  }
   strokeStateMachine.reset(frames[0].timestamp, "replay started");
 
   const playFrame = (index: number): void => {
@@ -1109,6 +1225,137 @@ function stopReplay(): void {
   }
   elements.stopReplayButton.disabled = true;
   elements.replayRecordingButton.disabled = motionRecorder.getLastRecording() === null;
+}
+
+function wireBallControls(): void {
+  elements.launchForehandBall.addEventListener("click", () => launchBall("easyForehand"));
+  elements.launchBackhandBall.addEventListener("click", () => launchBall("easyBackhand"));
+  elements.resetBall.addEventListener("click", () => {
+    ballController.reset();
+    ballMesh.visible = false;
+    elements.ballResult.textContent = "--";
+  });
+  elements.assistModeSelect.addEventListener("change", () => {
+    assistMode = elements.assistModeSelect.value as AssistMode;
+  });
+  elements.ballSpeedSelect.addEventListener("change", () => {
+    ballSpeedPreset = elements.ballSpeedSelect.value as BallSpeedPreset;
+  });
+  elements.ballDebugToggle.addEventListener("change", () => {
+    const visible = elements.ballDebugToggle.checked;
+    ballDebugGroup.visible = visible;
+    colliderDebug.visible = visible;
+  });
+}
+
+function launchBall(preset: LaunchPreset): void {
+  activeLaunchPreset = preset;
+  ballController.launch(preset, strokeStateMachine.getHandedness(), ballSpeedPreset, Date.now());
+  motionRecorder.recordBallLaunch(
+    preset,
+    strokeStateMachine.getHandedness(),
+    ballSpeedPreset,
+    Date.now()
+  );
+  ballMesh.visible = true;
+  bounceMarker.visible = false;
+  contactMarker.visible = false;
+  lastBallBounceCount = 0;
+  elements.ballResult.textContent = "--";
+}
+
+function onBallHit(event: BallHitEvent): void {
+  contactMarker.position.copy(event.contactPointWorld);
+  contactMarker.visible = true;
+  elements.ballResult.textContent = "HIT";
+  elements.outgoingBallSpeed.textContent = `${event.outgoingSpeed.toFixed(1)} m/s`;
+  contactFlashUntil = performance.now() + 150;
+  motionRecorder.recordBallResult({ type: "hit", event });
+  console.info("Ball hit", event);
+}
+
+function onBallMiss(event: BallMissEvent): void {
+  elements.ballResult.textContent = "MISS";
+  ballRelaunchAt = performance.now() + BALL_CONFIG.resetDelayMs;
+  motionRecorder.recordBallResult({ type: "miss", event });
+  console.info("Ball miss", event);
+}
+
+function updateBallVisuals(deltaSeconds: number): void {
+  const ball = ballController.ball;
+  ballMesh.visible = ball.active || ball.state === "OUT";
+  ballMesh.position.copy(ball.position);
+  if (ball.spinVector.lengthSq() > 0) {
+    ballMesh.rotateOnWorldAxis(ball.spinVector.clone().normalize(), ball.spinStrength * deltaSeconds);
+  } else if (ball.velocity.lengthSq() > 0) {
+    ballMesh.rotation.x += ball.velocity.length() * deltaSeconds * 0.8;
+  }
+  if (ball.bounceCount > lastBallBounceCount) {
+    bounceMarker.position.set(ball.position.x, BALL_CONFIG.courtHeight + 0.006, ball.position.z);
+    bounceMarker.visible = true;
+    lastBallBounceCount = ball.bounceCount;
+  }
+  if (elements.autoRelaunchToggle.checked && !ball.active &&
+    (ball.state === "IDLE" || ball.state === "MISSED") && performance.now() >= ballRelaunchAt) {
+    ballRelaunchAt = performance.now() + BALL_CONFIG.resetDelayMs;
+    launchBall(activeLaunchPreset);
+  }
+  updateBallDebugGeometry();
+}
+
+function updateBallDebugGeometry(): void {
+  if (!ballDebugGroup.visible) return;
+  const ball = ballController.ball;
+  const speed = ball.velocity.length();
+  ballVelocityArrow.position.copy(ball.position);
+  if (speed > 0.01) ballVelocityArrow.setDirection(ball.velocity.clone().normalize());
+  ballVelocityArrow.setLength(Math.min(2, speed * 0.12), 0.18, 0.1);
+  const colliderPosition = new THREE.Vector3();
+  const colliderQuaternion = new THREE.Quaternion();
+  const colliderScale = new THREE.Vector3();
+  racketStringCollider.matrixWorld.decompose(colliderPosition, colliderQuaternion, colliderScale);
+  racketNormalArrow.position.copy(colliderPosition);
+  racketNormalArrow.setDirection(new THREE.Vector3(0, 0, 1).applyQuaternion(colliderQuaternion).normalize());
+  const points: THREE.Vector3[] = [];
+  const position = ball.position.clone();
+  const velocity = ball.velocity.clone();
+  for (let index = 0; index < 32; index += 1) {
+    points.push(position.clone());
+    velocity.y += BALL_CONFIG.gravity * 0.04;
+    position.addScaledVector(velocity, 0.04);
+  }
+  predictedPathGeometry.setFromPoints(points);
+}
+
+function updateBallDebug(): void {
+  const ball = ballController.ball;
+  const collision = ballController.lastCollision;
+  elements.ballState.textContent = ball.state;
+  elements.incomingBallSpeed.textContent = `${ball.velocity.length().toFixed(1)} m/s`;
+  elements.ballSpin.textContent = `${ball.spinType} ${ball.spinStrength.toFixed(1)}`;
+  elements.ballBounces.textContent = String(ball.bounceCount);
+  elements.debugBallMotion.textContent =
+    `${ball.state} ${formatVector(ball.position)} v${formatVector(ball.velocity)} ` +
+    `${ball.velocity.length().toFixed(2)} m/s, bounce ${ball.bounceCount}, preset ${ball.launchPreset ?? "none"}`;
+  elements.debugBallCollision.textContent = collision
+    ? `local ${formatVector(collision.currentLocalPosition)}, width ${collision.insideWidth}, ` +
+      `height ${collision.insideHeight}, plane ${collision.planeDistance.toFixed(2)}, ` +
+      `ellipse ${collision.ellipseValue.toFixed(2)}, candidate ${collision.candidate}`
+    : "waiting";
+  const contactAge = lastContactEvent ? Math.abs(Date.now() - lastContactEvent.timestamp) : null;
+  const timeToZone = ball.velocity.z > 0
+    ? Math.max(0, (BALL_CONFIG.contactZone.minimumZ - ball.position.z) / ball.velocity.z)
+    : Number.POSITIVE_INFINITY;
+  elements.debugBallValidity.textContent =
+    `active ${ball.active}, hit ${ball.hit}, stroke ${latestStrokeSnapshot?.currentState ?? "READY"}, ` +
+    `contact age ${contactAge === null ? "none" : `${Math.round(contactAge)} ms`}, assist ${assistMode}, ` +
+    `zone ETA ${Number.isFinite(timeToZone) ? `${timeToZone.toFixed(2)} s` : "--"}, ` +
+    `racket distance ${collision?.closestDistance.toFixed(2) ?? "--"} m, magnus ${formatVector(ball.magnusAcceleration)}`;
+  elements.debugBallResult.textContent = ballController.lastHit
+    ? `HIT ${ballController.lastHit.strokeType}, assisted ${ballController.lastHit.assisted}`
+    : ballController.lastMiss
+      ? `MISS ${ballController.lastMiss.reason}`
+      : "none";
 }
 
 function completeCalibration(): void {

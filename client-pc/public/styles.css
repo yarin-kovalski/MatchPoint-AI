@@ -114,6 +114,8 @@ body {
   top: 20px;
   left: 20px;
   width: min(560px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   padding: 16px;
   border: 1px solid rgba(184, 255, 44, 0.26);
   border-radius: 8px;
@@ -278,6 +280,69 @@ article strong {
 .recording-controls button:disabled {
   cursor: not-allowed;
   opacity: 0.38;
+}
+
+.ball-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(117, 168, 66, 0.35);
+}
+
+.ball-actions,
+.ball-options,
+.ball-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.ball-actions button {
+  min-height: 32px;
+  border: 1px solid rgba(184, 255, 44, 0.45);
+  background: rgba(5, 17, 28, 0.92);
+  color: #ecf8e8;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ball-options {
+  margin-top: 7px;
+  align-items: end;
+}
+
+.ball-options label {
+  display: grid;
+  gap: 3px;
+  color: #93a3b7;
+  font-size: 0.7rem;
+}
+
+.ball-options select {
+  min-height: 29px;
+  border: 1px solid rgba(184, 255, 44, 0.35);
+  background: #07111d;
+  color: #f2f7ef;
+}
+
+.ball-options .check-label {
+  display: flex;
+  align-items: center;
+  min-height: 29px;
+  color: #dce8d8;
+}
+
+.ball-status {
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: #93a3b7;
+}
+
+.ball-status span {
+  white-space: nowrap;
+}
+
+.ball-status strong {
+  color: #eff9ea;
 }
 
 .orientation-debug {
