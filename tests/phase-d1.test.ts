@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
-import { getBallDeliveryTarget, getExpectedRacketContactTransform, projectPixelDiameter, solveVelocity } from "../client-pc/src/ball/ballDelivery.js";
+import { getBallDeliveryTarget, getExpectedRacketContactTransform, getStationaryReachVolume, isInsideStationaryReachVolume, projectPixelDiameter, solveVelocity } from "../client-pc/src/ball/ballDelivery.js";
 import { getLaunchParameters } from "../client-pc/src/ball/ballLauncher.js";
 import { stepBallPhysics } from "../client-pc/src/ball/ballPhysics.js";
 import { calculateOutgoingVelocity } from "../client-pc/src/ball/ballResponse.js";
@@ -78,6 +78,14 @@ test("forehand and backhand targets mirror in world X", () => {
   const forehand = getBallDeliveryTarget({ preset: "easyForehand", handedness: "right", backhandStyle: "one-handed" });
   const backhand = getBallDeliveryTarget({ preset: "easyBackhand", handedness: "right", backhandStyle: "one-handed" });
   assert.ok(Math.abs(forehand.x + backhand.x) < 1e-8);
+});
+test("both Easy targets lie inside their stationary reach volumes", () => {
+  for (const preset of ["easyForehand", "easyBackhand"] as const) {
+    const strokeType = preset === "easyForehand" ? "forehand" : "backhand";
+    const target = getBallDeliveryTarget({ preset, handedness: "right", backhandStyle: "one-handed" });
+    const volume = getStationaryReachVolume({ strokeType, handedness: "right", backhandStyle: "one-handed" });
+    assert.equal(isInsideStationaryReachVolume(target, volume), true);
+  }
 });
 test("target height follows expected string center with comfort offset", () => {
   const target = getBallDeliveryTarget({ preset: "easyForehand", handedness: "right", backhandStyle: "one-handed" });

@@ -1132,7 +1132,7 @@ function updateProceduralPosition(): void {
     target = [
       Math.abs(BALL_CONFIG.launch.easyForehand.contactSideOffset),
       path.contactWindow[1] + BALL_CONFIG.launch.easyContactPoseLift,
-      path.contactWindow[2]
+      path.contactWindow[2] + BALL_CONFIG.launch.easyContactPoseDepthShift
     ];
   } else if (snapshot) {
     switch (snapshot.currentState) {
@@ -1152,7 +1152,7 @@ function updateProceduralPosition(): void {
         target = [
           Math.abs(BALL_CONFIG.launch.easyForehand.contactSideOffset),
           path.contactWindow[1] + BALL_CONFIG.launch.easyContactPoseLift,
-          path.contactWindow[2]
+          path.contactWindow[2] + BALL_CONFIG.launch.easyContactPoseDepthShift
         ];
         break;
       case "FOLLOW_THROUGH":

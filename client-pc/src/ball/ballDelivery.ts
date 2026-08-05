@@ -18,6 +18,13 @@ export type ExpectedContactTransform = {
   recommendedBallDirection: THREE.Vector3;
 };
 
+export type StationaryReachVolume = {
+  center: THREE.Vector3;
+  depthTolerance: number;
+  lateralTolerance: number;
+  verticalTolerance: number;
+};
+
 export function getExpectedRacketContactTransform(options: {
   strokeType: "forehand" | "backhand";
   handedness: Handedness;
@@ -28,7 +35,7 @@ export function getExpectedRacketContactTransform(options: {
   const contactPath = [
     configuredContactReach,
     STROKE_CONFIG.proceduralPath.contactWindow[1] + BALL_CONFIG.launch.easyContactPoseLift,
-    STROKE_CONFIG.proceduralPath.contactWindow[2]
+    STROKE_CONFIG.proceduralPath.contactWindow[2] + BALL_CONFIG.launch.easyContactPoseDepthShift
   ] as const;
   const handSign = options.handedness === "right" ? 1 : -1;
   const strokeSign = options.strokeType === "forehand" ? handSign : -handSign;
@@ -58,6 +65,21 @@ export function getExpectedRacketContactTransform(options: {
     stringBedCenter: position.clone(),
     recommendedBallDirection: new THREE.Vector3(0, 0, 1)
   };
+}
+
+export function getStationaryReachVolume(options: {
+  strokeType: "forehand" | "backhand";
+  handedness: Handedness;
+  backhandStyle: BackhandStyle;
+}): StationaryReachVolume {
+  const expected = getExpectedRacketContactTransform(options);
+  return { center: expected.stringBedCenter.clone(), ...BALL_CONFIG.easyAssist.stationaryReach };
+}
+
+export function isInsideStationaryReachVolume(point: THREE.Vector3, volume: StationaryReachVolume): boolean {
+  return Math.abs(point.x - volume.center.x) <= volume.lateralTolerance &&
+    Math.abs(point.y - volume.center.y) <= volume.verticalTolerance &&
+    Math.abs(point.z - volume.center.z) <= volume.depthTolerance;
 }
 
 export function getBallDeliveryTarget(options: {

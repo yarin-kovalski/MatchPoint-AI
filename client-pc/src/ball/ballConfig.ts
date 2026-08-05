@@ -35,8 +35,9 @@ export const BALL_CONFIG = {
     netHeight: 0.914,
     netClearance: 0.28,
     expectedContactSampleFraction: 0.5,
-    expectedContactPositionSmoothing: 0.65,
+    expectedContactPositionSmoothing: 0.85,
     easyContactPoseLift: 0.22,
+    easyContactPoseDepthShift: 0.24,
     referenceFramesPerSecond: 60,
     speedMultipliers: { slow: 0.86, normal: 1, fast: 1.14 }
   },
@@ -50,7 +51,8 @@ export const BALL_CONFIG = {
     secondBounceSafetyMarginMs: 350,
     minimumAngularSpeed: 0.65,
     maximumFaceAngleRadians: 1.55,
-    assistedStringBedRadius: 0.42
+    assistedStringBedRadius: 0.42,
+    stationaryReach: { depthTolerance: 0.18, lateralTolerance: 0.2, verticalTolerance: 0.24 }
   },
   collision: {
     headCenterLocal: [0, 245, 0],
