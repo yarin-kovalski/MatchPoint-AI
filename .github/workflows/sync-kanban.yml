@@ -1,0 +1,57 @@
+name: Sync Kanban
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "client-mobile/**"
+      - "client-pc/**"
+      - "server/**"
+      - "docs/**"
+      - "scripts/kanban/board.json"
+      - "scripts/kanban/*.mjs"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-matchpoint-kanban
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TRELLO_KEY: ${{ secrets.TRELLO_KEY }}
+      TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
+      TRELLO_BOARD_ID: ${{ secrets.TRELLO_BOARD_ID }}
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate board data
+        run: node scripts/kanban/load-board.mjs
+
+      - name: Test kanban automation
+        run: npm run test:kanban
+
+      - name: Add unambiguous pushed commits to History
+        run: node scripts/kanban/update-board-from-git.mjs --write
+
+      - name: Synchronize existing Trello board
+        run: node scripts/kanban/sync-trello.mjs --sync

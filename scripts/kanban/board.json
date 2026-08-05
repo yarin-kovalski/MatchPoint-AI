@@ -1,0 +1,236 @@
+{
+  "board": {
+    "name": "MatchPoint AI — Final Project",
+    "desc": "MatchPoint AI is a smartphone-controlled tennis motion trainer built for the 2026 From Idea To Reality — App Using AI course. Expo and native phone sensors stream through a Node.js and Socket.io broker to a TypeScript and Three.js desktop trainer with calibrated racket motion, stroke analysis, and custom ball physics. Repository: https://github.com/yarin-kovalski/Assignment4_exe3",
+    "prefs_background": "blue"
+  },
+  "git": {
+    "lastProcessedCommit": "03eb4dde11c390ac3ea66156592a14df5791d62c"
+  },
+  "lists": ["Backlog", "To Do", "In Progress", "Done", "Cancelled / Parked"],
+  "labels": [
+    { "name": "Product & Research", "color": "blue" },
+    { "name": "Realtime & Server", "color": "green" },
+    { "name": "Mobile Sensors", "color": "red" },
+    { "name": "3D Racket & Scene", "color": "purple" },
+    { "name": "Motion Analytics", "color": "orange" },
+    { "name": "Stroke Detection", "color": "sky" },
+    { "name": "Ball Physics", "color": "lime" },
+    { "name": "Infra & Deploy", "color": "black" },
+    { "name": "Docs & Course", "color": "yellow" }
+  ],
+  "cards": [
+    {
+      "key": "COURSE-FINAL-VIDEO",
+      "list": "To Do",
+      "name": "Record the final gameplay video",
+      "labels": ["Docs & Course"],
+      "due": "2026-09-30T18:00:00+03:00",
+      "desc": "The repository documents a required final gameplay demonstration, but no commit proves that the final course video has been recorded. September 30 is used as a working completion date immediately before the stated October 1 submission deadline.",
+      "checklist": []
+    },
+    {
+      "key": "COURSE-SUBMISSION-PDF",
+      "list": "To Do",
+      "name": "Write the Moodle submission PDF",
+      "labels": ["Docs & Course"],
+      "due": "2026-09-30T18:00:00+03:00",
+      "desc": "The graded submission still needs a PDF that explains the project and includes the final kanban-board screenshot. This remains future course work; no screenshot or PDF is claimed to exist yet.",
+      "checklist": []
+    },
+    {
+      "key": "COURSE-SOURCE-ARCHIVE",
+      "list": "To Do",
+      "name": "Package the final source archive",
+      "labels": ["Infra & Deploy", "Docs & Course"],
+      "due": "2026-09-30T18:00:00+03:00",
+      "desc": "A historical ZIP exists in the August startup commit, but the current Phase D.1 work is newer. A fresh archive must be generated from the approved final source rather than presenting the older ZIP as complete.",
+      "checklist": []
+    },
+    {
+      "key": "COURSE-INVITE-INSTRUCTOR",
+      "list": "To Do",
+      "name": "Invite the instructor to the repository",
+      "labels": ["Infra & Deploy", "Docs & Course"],
+      "due": "2026-09-30T18:00:00+03:00",
+      "desc": "Repository access is a submission action outside the code history. It must be completed and verified against the correct instructor account before the October 1 deadline.",
+      "checklist": []
+    },
+    {
+      "key": "KANBAN-PUBLISH-RECORD",
+      "list": "To Do",
+      "name": "Publish the approved kanban record",
+      "labels": ["Docs & Course"],
+      "due": "2026-09-30T18:00:00+03:00",
+      "desc": "The board must first be reviewed locally. Publication and screenshot capture are intentionally blocked until explicit approval, and the published board must be described honestly as a reconstructed project record rather than a board used from day one.",
+      "checklist": []
+    },
+    {
+      "key": "BALL-D1-READABILITY",
+      "list": "In Progress",
+      "name": "Improve ball readability and racket-aligned delivery",
+      "labels": ["Ball Physics", "3D Racket & Scene", "Docs & Course"],
+      "desc": "Phase D.1 separates physical and visual ball radii, derives delivery from the transformed string bed, adds procedural felt and seams, and improves camera readability. The work exists in the current worktree but has no commit yet, so no historical start or due date is invented.",
+      "checklist": []
+    },
+    {
+      "key": "PRODUCT-PHASED-PLAN",
+      "list": "Done",
+      "name": "Define the product and phased project plan",
+      "labels": ["Product & Research", "Docs & Course"],
+      "start": "2026-06-20T09:00:00+03:00",
+      "due": "2026-06-20T18:00:00+03:00",
+      "desc": "The project needed a defensible problem, competitive context, architecture, risk register, and strict phase gate before implementation. The decision was to treat the tennis scene as a demonstration surface for motion analysis rather than build a game first.",
+      "checklist": ["7d6c979 2026-06-20 MatchPoint start"]
+    },
+    {
+      "key": "SENSOR-REALTIME-PIPELINE",
+      "list": "Done",
+      "name": "Build the phone-to-PC sensor pipeline",
+      "labels": ["Realtime & Server", "Mobile Sensors"],
+      "start": "2026-06-20T09:00:00+03:00",
+      "due": "2026-06-20T18:00:00+03:00",
+      "desc": "The first technical risk was whether phone motion could reach the desktop reliably over the local network. This work established the TypeScript server, mobile sensor controls, calibration flow, desktop packet monitor, and HTTPS fallback notes before richer graphics were attempted.",
+      "checklist": ["a1ac923 2026-06-20 Seting up the phone caliberate"]
+    },
+    {
+      "key": "SCENE-THREEJS-POC",
+      "list": "Done",
+      "name": "Create the Three.js desktop proof of concept",
+      "labels": ["3D Racket & Scene", "Realtime & Server"],
+      "start": "2026-06-20T09:00:00+03:00",
+      "due": "2026-06-20T18:00:00+03:00",
+      "desc": "Raw packets were not enough for a convincing proof. The desktop was upgraded to a visible Three.js court and live phone-controlled object so latency and orientation behavior could be evaluated directly.",
+      "checklist": ["f105b4e 2026-06-20 Add Three.js PC Visualization"]
+    },
+    {
+      "key": "MOTION-LIVE-SWING-SPEED",
+      "list": "Done",
+      "name": "Expose a live swing-speed signal",
+      "labels": ["Motion Analytics", "3D Racket & Scene"],
+      "start": "2026-06-20T09:00:00+03:00",
+      "due": "2026-06-20T18:00:00+03:00",
+      "desc": "The Phase 1 acceptance criteria required a player-facing analytic signal rather than motion visualization alone. A conservative estimated swing-speed overlay was added to demonstrate that incoming sensor data could drive coaching-oriented metrics.",
+      "checklist": ["0109170 2026-06-20 Add Estimated swing speed"]
+    },
+    {
+      "key": "RACKET-CENTERED-MODEL",
+      "list": "Done",
+      "name": "Replace the proxy with a centered racket model",
+      "labels": ["3D Racket & Scene"],
+      "start": "2026-06-20T09:00:00+03:00",
+      "due": "2026-06-21T18:00:00+03:00",
+      "desc": "A generic 3D proxy could not communicate tennis orientation clearly. The GLB racket was introduced, centered, and repeatedly corrected around its local X axis until its head, grip, and face followed the phone in a believable orientation.",
+      "checklist": [
+        "644ecbc 2026-06-20 Add racket vizualization",
+        "9aa41a7 2026-06-20 Add Racket Model Centering",
+        "c7ff28d 2026-06-20 improve racket flip",
+        "f38ebd7 2026-06-20 Flip GLB Racket Around Local X Axis",
+        "d6a9fff 2026-06-21 fix racket flip 3D"
+      ]
+    },
+    {
+      "key": "MOBILE-EXPO-CONTROLLER",
+      "list": "Done",
+      "name": "Migrate the controller to Expo Go",
+      "labels": ["Mobile Sensors", "Realtime & Server", "Infra & Deploy"],
+      "start": "2026-06-21T09:00:00+03:00",
+      "due": "2026-06-21T18:00:00+03:00",
+      "desc": "Browser sensor permissions and secure-context behavior made the controller fragile. The project adopted an Expo-native controller while retaining Socket.io transport, giving clearer sensor diagnostics and a practical QR-code workflow for the real phone demo.",
+      "checklist": ["8ec5be2 2026-06-21 Infrastructure: Unified Startup Orchestrator - Full Pipeline Automation"]
+    },
+    {
+      "key": "INFRA-LOCAL-STARTUP",
+      "list": "Done",
+      "name": "Automate the complete local startup workflow",
+      "labels": ["Infra & Deploy", "Docs & Course"],
+      "start": "2026-06-21T09:00:00+03:00",
+      "due": "2026-08-05T18:00:00+03:00",
+      "desc": "Running the broker and Expo manually caused wrong directories, stale LAN addresses, and repeated terminal setup. PowerShell orchestration was introduced and later hardened into `npm run all`, which discovers the current LAN IP, builds clients, starts both processes, and documents shutdown and troubleshooting.",
+      "checklist": [
+        "6b53e0d 2026-06-21 Add One Click PowerShell Startup Automation",
+        "59f1d87 2026-08-05 add a shorcut runable version"
+      ]
+    },
+    {
+      "key": "RACKET-QUATERNION-CALIBRATION",
+      "list": "Done",
+      "name": "Calibrate absolute phone orientation to the racket",
+      "labels": ["Mobile Sensors", "3D Racket & Scene", "Motion Analytics"],
+      "start": "2026-08-05T09:00:00+03:00",
+      "due": "2026-08-05T18:00:00+03:00",
+      "desc": "Direct device attitude did not provide a reliable tennis-ready neutral pose. The implementation captured a quaternion baseline, converted phone axes into the Three.js court basis, added a ghost-racket alignment step, and preserved recalibration without integrating gyro drift.",
+      "checklist": ["275f6f2 2026-08-05 feat: add calibrated phone-to-racket quaternion mapping"]
+    },
+    {
+      "key": "SENSOR-PHASE-B-NORMALIZATION",
+      "list": "Done",
+      "name": "Normalize and validate motion sensor frames",
+      "labels": ["Mobile Sensors", "Motion Analytics"],
+      "start": "2026-08-05T09:00:00+03:00",
+      "due": "2026-08-05T18:00:00+03:00",
+      "desc": "Stroke logic could not safely depend on raw platform-specific sensor values. Phase B established SI-unit acceleration, quaternion-derived angular velocity, smoothing paths, racket basis vectors, packet-gap and spike rejection, diagnostics, and repeatable unit tests while preserving the calibrated pose.",
+      "checklist": ["3c2d425 2026-08-05 feat: add normalized motion processing and racket sensor diagnostics"]
+    },
+    {
+      "key": "STROKE-PHASE-C-DETECTION",
+      "list": "Done",
+      "name": "Detect reusable forehand and backhand strokes",
+      "labels": ["Stroke Detection", "Motion Analytics", "Mobile Sensors"],
+      "start": "2026-08-05T09:00:00+03:00",
+      "due": "2026-08-05T18:00:00+03:00",
+      "desc": "The legacy 1.5g threshold could not distinguish deliberate tennis motion from noise. Phase C replaced it by default with one guarded state machine shared by mirrored forehand and backhand profiles, one contact event per stroke, experimental spin evidence, recording/replay, rejection reasons, and tests; the legacy path remained disabled behind a flag for safe migration.",
+      "checklist": ["f0c28ca 2026-08-05 feat: add reusable forehand and backhand stroke state machine"]
+    },
+    {
+      "key": "BALL-PHASE-D-COLLISION",
+      "list": "Done",
+      "name": "Add deterministic ball flight and racket collision",
+      "labels": ["Ball Physics", "3D Racket & Scene", "Stroke Detection"],
+      "start": "2026-08-05T09:00:00+03:00",
+      "due": "2026-08-05T18:00:00+03:00",
+      "desc": "The trainer needed a playable proof without introducing a heavy physics engine or rally rules. Phase D added deterministic launches, fixed-step custom physics, one-bounce delivery, swept elliptical string-bed collision, contact-window validation, bounded return response, spin effects, assistance modes, one-shot hit/miss events, replay data, and tests.",
+      "checklist": ["03eb4dd 2026-08-05 feat: add 3D ball flight and racket collision prototype"]
+    },
+    {
+      "key": "PARK-MEDIAPIPE-POSE",
+      "list": "Cancelled / Parked",
+      "name": "Defer MediaPipe body-pose tracking",
+      "labels": ["Motion Analytics", "Product & Research"],
+      "start": "2026-06-20T09:00:00+03:00",
+      "due": "2026-06-20T18:00:00+03:00",
+      "desc": "Body-pose tracking was documented as an optional future capability, but it was parked because the course prototype first needed reliable racket motion from one ordinary phone. No claim is made that player biomechanics beyond the tracked device are measured.",
+      "checklist": ["7d6c979 2026-06-20 MatchPoint start"]
+    },
+    {
+      "key": "PARK-COACHING-ARCADE",
+      "list": "Cancelled / Parked",
+      "name": "Park the full coaching and arcade expansion",
+      "labels": ["Product & Research", "Motion Analytics", "Docs & Course"],
+      "start": "2026-06-20T09:00:00+03:00",
+      "due": "2026-06-20T18:00:00+03:00",
+      "desc": "Session statistics, target scoring, improvement advice, early/perfect/late feedback, wall gameplay, and animated ball deformation were intentionally left outside the verified prototype. The phased plan prioritized transport, motion classification, and fair racket-ball interaction instead of implying that the larger coaching product was complete.",
+      "checklist": ["7d6c979 2026-06-20 MatchPoint start"]
+    },
+    {
+      "key": "PARK-HEAVY-PHYSICS",
+      "list": "Cancelled / Parked",
+      "name": "Reject a heavyweight physics engine for the prototype",
+      "labels": ["Ball Physics", "3D Racket & Scene"],
+      "start": "2026-08-05T09:00:00+03:00",
+      "due": "2026-08-05T18:00:00+03:00",
+      "desc": "Cannon.js appeared in the early roadmap, but Phase D deliberately used small deterministic Three.js-compatible physics modules. This kept collision and replay testable and avoided adding engine complexity before scoring, opponents, or rally logic existed.",
+      "checklist": ["03eb4dd 2026-08-05 feat: add 3D ball flight and racket collision prototype"]
+    },
+    {
+      "key": "PARK-RALLY-AI",
+      "list": "Cancelled / Parked",
+      "name": "Defer opponent, serving, scoring, and rally AI",
+      "labels": ["Ball Physics", "Product & Research"],
+      "start": "2026-08-05T09:00:00+03:00",
+      "due": "2026-08-05T18:00:00+03:00",
+      "desc": "Phase D was explicitly constrained to one launch, one player contact, one return, and reset. Opponent behavior, serves, scoring, and rally state were parked so spatial collision and stroke timing could be verified independently.",
+      "checklist": ["03eb4dd 2026-08-05 feat: add 3D ball flight and racket collision prototype"]
+    }
+  ]
+}

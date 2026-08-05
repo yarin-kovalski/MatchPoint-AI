@@ -6,3 +6,5 @@ client-pc/public/assets/
 tools/cloudflared.exe
 *.log
 .env
+scripts/kanban/.sync-state.json
+scripts/kanban/board.json.tmp
