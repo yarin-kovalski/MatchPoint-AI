@@ -25,7 +25,7 @@ function simulatedDelivery(preset: "easyForehand" | "easyBackhand", handedness: 
     contactTimeAfterBounce: launch.contactTimeAfterBounce, contactDeadline: 0, secondBounceDeadline: 0
   };
   let bouncedAt = -1;
-  for (let time = 0; time < 2; time += 0.005) {
+  for (let time = 0; time < 2.6; time += 0.005) {
     const bounced = stepBallPhysics(value, 0.005);
     if (bounced && bouncedAt < 0) {
       bouncedAt = time;
@@ -149,7 +149,7 @@ test("both easy trajectories pass inside the expected Easy racket envelope", () 
     const halfWidth = BALL_CONFIG.collision.halfWidthLocal * 0.01 * BALL_CONFIG.easyAssist.contactEllipseMultiplier;
     const halfHeight = BALL_CONFIG.collision.halfHeightLocal * 0.01 * BALL_CONFIG.easyAssist.contactEllipseMultiplier;
     const ellipse = localWorld.x ** 2 / halfWidth ** 2 + localWorld.y ** 2 / halfHeight ** 2;
-    assert.ok(ellipse < 1);
+    assert.ok(ellipse < 0.35);
     assert.ok(Math.abs(localWorld.z) < 0.1);
     assert.equal(result.value.bounceCount, 1);
   }

@@ -2,8 +2,8 @@ export const BALL_CONFIG = {
   scale: {
     metersPerWorldUnit: 1,
     physicalRadiusMeters: 0.0335,
-    visualScaleMultiplier: 2.5,
-    maximumVisualScaleMultiplier: 3,
+    visualScaleMultiplier: 3.1,
+    maximumVisualScaleMultiplier: 3.5,
     minimumReadablePixelDiameter: 16,
     measuredRacketHeadWorldWidth: 1.2281404495239258,
     measuredRacketHeadWorldHeight: 1.6398126983642578
@@ -27,25 +27,26 @@ export const BALL_CONFIG = {
   bounds: { x: 9, y: 12, zBehindPlayer: 4.5, zFar: -13 },
   launch: {
     launchPosition: [0, 1.85, -7.5],
-    easyForehand: { contactSideOffset: 0.94, contactHeight: 0.05, depthOffset: 0, bounceTime: 1.25, contactTimeAfterBounce: 0.75 },
-    easyBackhand: { contactSideOffset: -0.94, contactHeight: 0.05, depthOffset: 0, bounceTime: 1.25, contactTimeAfterBounce: 0.75 },
-    centerPractice: { contactSideOffset: 0, contactHeight: 0.05, depthOffset: 0, bounceTime: 1.25, contactTimeAfterBounce: 0.75 },
+    easyForehand: { contactSideOffset: 1.15, contactHeight: 0.02, depthOffset: 0, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
+    easyBackhand: { contactSideOffset: -1.15, contactHeight: 0.02, depthOffset: 0, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
+    centerPractice: { contactSideOffset: 0, contactHeight: 0.02, depthOffset: 0, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
     bounceDepth: -4.35,
     netDepth: -5.5,
     netHeight: 0.914,
     netClearance: 0.28,
     expectedContactSampleFraction: 0.5,
-    expectedContactPositionSmoothing: 0.35,
+    expectedContactPositionSmoothing: 0.65,
+    easyContactPoseLift: 0.22,
     referenceFramesPerSecond: 60,
     speedMultipliers: { slow: 0.86, normal: 1, fast: 1.14 }
   },
   contactZone: { maximumTargetDistance: 0.45, maximumTimeToContactMs: 150 },
   easyAssist: {
-    contactEllipseMultiplier: 1.75,
-    contactTimingToleranceMs: 220,
-    targetRadius: 0.55,
-    minimumTargetHeight: 1.9,
-    maximumTargetHeight: 2.55,
+    contactEllipseMultiplier: 2,
+    contactTimingToleranceMs: 300,
+    targetRadius: 0.3,
+    minimumTargetHeight: 2.1,
+    maximumTargetHeight: 2.7,
     secondBounceSafetyMarginMs: 350
   },
   collision: {
@@ -56,7 +57,7 @@ export const BALL_CONFIG = {
     contactEventToleranceMs: 130,
     minimumStrokeSpeed: 4.8,
     maximumFaceAngleRadians: 1.45,
-    assistScale: { off: 1, prototype: 1.08, easy: 1.75 },
+    assistScale: { off: 1, prototype: 1.08, easy: 2 },
     movingRacketToleranceLocal: { off: 0, prototype: 2.5, easy: 5 }
   },
   response: {

@@ -255,9 +255,9 @@ let lastBallFrameAt = performance.now();
 let lastBallBounceCount = 0;
 let ballRelaunchAt = 0;
 let ballVisualScaleMultiplier: number = BALL_CONFIG.scale.visualScaleMultiplier;
-let contactHeightOffset = 0.05;
-let forehandSideOffset = 0.94;
-let backhandSideOffset = -0.94;
+let contactHeightOffset = 0.02;
+let forehandSideOffset = 1.15;
+let backhandSideOffset = -1.15;
 let contactDepthOffset = 0;
 let showBallAtContactPreview = false;
 const gyroQuaternion = new THREE.Quaternion();
@@ -1137,7 +1137,11 @@ function updateProceduralPosition(): void {
         target = path.forwardSwing;
         break;
       case "CONTACT_WINDOW":
-        target = [Math.abs(BALL_CONFIG.launch.easyForehand.contactSideOffset), path.contactWindow[1], path.contactWindow[2]];
+        target = [
+          Math.abs(BALL_CONFIG.launch.easyForehand.contactSideOffset),
+          path.contactWindow[1] + BALL_CONFIG.launch.easyContactPoseLift,
+          path.contactWindow[2]
+        ];
         break;
       case "FOLLOW_THROUGH":
         target = path.followThrough;
