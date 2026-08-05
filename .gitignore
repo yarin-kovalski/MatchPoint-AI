@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-tests/
 client-mobile/public/assets/
 client-pc/public/assets/
 tools/cloudflared.exe

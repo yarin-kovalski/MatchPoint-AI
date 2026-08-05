@@ -62,6 +62,20 @@ Mitigation:
 - Use absolute `DeviceMotion.rotation` rather than integrating gyroscope rates.
 - Apply phone motion relative to a captured quaternion baseline.
 
+## Cross-Platform Sensor Units
+
+Risk: Expo exposes absolute attitude, rotation rate, and acceleration through
+different native APIs whose axis labels and timing details can vary by platform.
+
+Mitigation:
+
+- Preserve `alpha/beta/gamma` rotation-rate metadata instead of relabeling it as
+  literal world axes.
+- Derive angular velocity from consecutive normalized quaternions.
+- Normalize acceleration to m/s² and vectors to the Three.js basis in one module.
+- Use transport timestamps for frame timing and retain sensor timestamps for
+  diagnostics.
+
 ## Predictive Hit Fairness
 
 Risk: Real collision detection may feel unfair if phone and ball positions are slightly out of sync.

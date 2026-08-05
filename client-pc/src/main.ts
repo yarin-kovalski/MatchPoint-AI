@@ -1,5 +1,10 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MOTION_CONFIG } from "./motion/motionConfig.js";
+import {
+  NormalizedSensorFrame,
+  SensorNormalizer
+} from "./motion/sensorNormalization.js";
 
 type BrokerStatus = {
   mobileClients: number;
@@ -41,6 +46,7 @@ type StrokeType = "forehand" | "backhand" | "Forehand" | "Backhand";
 
 type BrokeredContinuousOrientationPacket = {
   t: number;
+  sensorTimestamp: number;
   source: "expo-mobile";
   serverReceivedAt: number;
   rotation: {
@@ -54,11 +60,27 @@ type BrokeredContinuousOrientationPacket = {
     z: number;
     w: number;
   };
+  rotationRate: {
+    alpha: number | null;
+    beta: number | null;
+    gamma: number | null;
+  };
   gyro: {
     x: number | null;
     y: number | null;
     z: number | null;
   };
+  acceleration: {
+    x: number | null;
+    y: number | null;
+    z: number | null;
+  } | null;
+  accelerationIncludingGravity: {
+    x: number | null;
+    y: number | null;
+    z: number | null;
+  };
+  screenOrientation: 0 | 90 | 180 | -90;
   intervalMs: number;
 };
 
@@ -123,13 +145,21 @@ const elements = {
   debugConvertedQuaternion: getElement("debugConvertedQuaternion"),
   debugNeutralQuaternion: getElement("debugNeutralQuaternion"),
   debugRelativeQuaternion: getElement("debugRelativeQuaternion"),
-  debugFinalQuaternion: getElement("debugFinalQuaternion")
+  debugFinalQuaternion: getElement("debugFinalQuaternion"),
+  debugAngularSpeed: getElement("debugAngularSpeed"),
+  debugAcceleration: getElement("debugAcceleration"),
+  debugJerk: getElement("debugJerk"),
+  debugMotionScores: getElement("debugMotionScores"),
+  debugRacketBasis: getElement("debugRacketBasis"),
+  debugFaceAngle: getElement("debugFaceAngle"),
+  debugSensorValidity: getElement("debugSensorValidity")
 };
 
 let packetCount = 0;
 let latestPacket: BrokeredMotionPacket | null = null;
 let previousPacket: BrokeredMotionPacket | null = null;
 let latestOrientationPacket: BrokeredContinuousOrientationPacket | null = null;
+let latestSensorFrame: NormalizedSensorFrame | null = null;
 let targetRotationX = 0;
 let targetRotationY = 0;
 let targetRotationZ = 0;
@@ -153,7 +183,6 @@ const displayedRelativeQuaternion = new THREE.Quaternion();
 const finalRacketQuaternion = new THREE.Quaternion();
 const identityQuaternion = new THREE.Quaternion();
 const neutralRacketPosition = new THREE.Vector3(0, 1.45, 0);
-const ORIENTATION_SMOOTHING_FACTOR = 0.16;
 const SHOW_ORIENTATION_DEBUG = true;
 const SHOW_AXIS_HELPERS = false;
 const PHONE_TO_THREE_BASIS = new THREE.Quaternion().setFromAxisAngle(
@@ -174,6 +203,7 @@ const ghostMaterials: THREE.MeshBasicMaterial[] = [];
 const ghostFarColor = new THREE.Color(0xff3048);
 const ghostAlignedColor = new THREE.Color(0x8dff75);
 const ghostCurrentColor = new THREE.Color();
+const sensorNormalizer = new SensorNormalizer();
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
@@ -308,6 +338,24 @@ socket.on("continuous_orientation", (payload: unknown) => {
     orientationPacket.quaternion.w
   ).normalize();
   phoneQuaternionToThreeQuaternion(rawPhoneQuaternion, convertedPhoneQuaternion);
+  const packetRelativeQuaternion = hasCalibrationBaseline
+    ? calibrationBaselineInverse.clone().multiply(convertedPhoneQuaternion)
+    : convertedPhoneQuaternion.clone();
+  const packetRacketQuaternion = baseReadyPoseQuaternion
+    .clone()
+    .multiply(packetRelativeQuaternion)
+    .multiply(racketModelCorrectionQuaternion);
+  latestSensorFrame = sensorNormalizer.process({
+    timestamp: orientationPacket.t,
+    sensorTimestamp: orientationPacket.sensorTimestamp,
+    currentPhoneQuaternion: rawPhoneQuaternion,
+    relativePhoneQuaternion: packetRelativeQuaternion,
+    mappedRacketQuaternion: packetRacketQuaternion,
+    accelerationMps2: nullableVectorToThree(orientationPacket.acceleration),
+    accelerationIncludingGravityMps2: nullableVectorToThree(
+      orientationPacket.accelerationIncludingGravity
+    )
+  });
 
   elements.packetCount.textContent = String(packetCount);
   elements.inputMode.textContent = "expo";
@@ -620,12 +668,8 @@ function animate(): void {
   const elapsed = clock.getElapsedTime();
 
   if (latestOrientationPacket) {
-    if (hasCalibrationBaseline) {
-      relativeOrientationQuaternion
-        .copy(calibrationBaselineInverse)
-        .multiply(convertedPhoneQuaternion);
-    } else {
-      relativeOrientationQuaternion.copy(convertedPhoneQuaternion);
+    if (latestSensorFrame?.valid) {
+      relativeOrientationQuaternion.copy(latestSensorFrame.relativePhoneQuaternion);
     }
   } else {
     gyroEuler.set(targetRotationX, targetRotationY, targetRotationZ);
@@ -634,7 +678,10 @@ function animate(): void {
   }
 
   targetRacketQuaternion.copy(relativeOrientationQuaternion);
-  orientationPivot.quaternion.slerp(targetRacketQuaternion, ORIENTATION_SMOOTHING_FACTOR);
+  orientationPivot.quaternion.slerp(
+    targetRacketQuaternion,
+    MOTION_CONFIG.smoothing.visualizationOrientation
+  );
   displayedRelativeQuaternion.copy(orientationPivot.quaternion);
   racketRoot.position.copy(neutralRacketPosition).add(getStrokePositionOffset());
   targetSwingSpeedKmh *= 0.94;
@@ -709,6 +756,8 @@ function calibrateFromLatestPhonePose(): void {
 function beginCalibration(currentPhoneQuaternion: THREE.Quaternion): void {
   neutralPhoneQuaternion.copy(currentPhoneQuaternion).normalize();
   calibrationBaselineInverse.copy(neutralPhoneQuaternion).invert();
+  sensorNormalizer.reset();
+  latestSensorFrame = null;
   hasCalibrationBaseline = true;
   isCalibrated = false;
   calibrationRequested = true;
@@ -759,10 +808,51 @@ function updateOrientationDebug(): void {
     : "not captured";
   elements.debugRelativeQuaternion.textContent = formatQuaternion(displayedRelativeQuaternion);
   elements.debugFinalQuaternion.textContent = formatQuaternion(finalRacketQuaternion);
+
+  if (!latestSensorFrame) {
+    elements.debugAngularSpeed.textContent = "--";
+    elements.debugAcceleration.textContent = "--";
+    elements.debugJerk.textContent = "--";
+    elements.debugMotionScores.textContent = "--";
+    elements.debugRacketBasis.textContent = "--";
+    elements.debugFaceAngle.textContent = "--";
+    elements.debugSensorValidity.textContent = "waiting";
+    return;
+  }
+
+  elements.debugAngularSpeed.textContent =
+    `${latestSensorFrame.angularSpeed.toFixed(2)} rad/s`;
+  elements.debugAcceleration.textContent =
+    `${formatVector(latestSensorFrame.smoothedAcceleration)} ` +
+    `${latestSensorFrame.accelerationMagnitude.toFixed(2)} m/s²`;
+  elements.debugJerk.textContent = `${latestSensorFrame.jerk.toFixed(2)} m/s³`;
+  elements.debugMotionScores.textContent =
+    `forward ${latestSensorFrame.motionForwardScore.toFixed(2)}, ` +
+    `up ${latestSensorFrame.motionUpwardScore.toFixed(2)}, ` +
+    `side ${latestSensorFrame.motionSidewaysScore.toFixed(2)}`;
+  elements.debugRacketBasis.textContent =
+    `F${formatVector(latestSensorFrame.racketForwardVector)} ` +
+    `U${formatVector(latestSensorFrame.racketUpVector)} ` +
+    `S${formatVector(latestSensorFrame.racketSideVector)}`;
+  elements.debugFaceAngle.textContent =
+    `${THREE.MathUtils.radToDeg(latestSensorFrame.racketFaceAngleToCourtRadians).toFixed(1)}°`;
+  elements.debugSensorValidity.textContent = latestSensorFrame.valid
+    ? "valid"
+    : `rejected: ${latestSensorFrame.rejectionReason}`;
 }
 
 function formatQuaternion(value: THREE.Quaternion): string {
   return `[${value.x.toFixed(3)}, ${value.y.toFixed(3)}, ${value.z.toFixed(3)}, ${value.w.toFixed(3)}]`;
+}
+
+function formatVector(value: THREE.Vector3): string {
+  return `[${value.x.toFixed(2)}, ${value.y.toFixed(2)}, ${value.z.toFixed(2)}]`;
+}
+
+function nullableVectorToThree(
+  value: { x: number | null; y: number | null; z: number | null } | null
+): THREE.Vector3 {
+  return new THREE.Vector3(value?.x ?? 0, value?.y ?? 0, value?.z ?? 0);
 }
 
 function completeCalibration(): void {

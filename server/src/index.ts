@@ -70,6 +70,7 @@ type StrokeType = "Forehand" | "Backhand";
 
 type ContinuousOrientationPacket = {
   t: number;
+  sensorTimestamp: number;
   source: "expo-mobile";
   rotation: {
     x: NullableNumber;
@@ -82,11 +83,19 @@ type ContinuousOrientationPacket = {
     z: number;
     w: number;
   };
+  rotationRate: {
+    alpha: NullableNumber;
+    beta: NullableNumber;
+    gamma: NullableNumber;
+  };
   gyro: {
     x: NullableNumber;
     y: NullableNumber;
     z: NullableNumber;
   };
+  acceleration: SensorVector | null;
+  accelerationIncludingGravity: SensorVector;
+  screenOrientation: 0 | 90 | 180 | -90;
   intervalMs: number;
 };
 

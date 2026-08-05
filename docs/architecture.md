@@ -146,6 +146,38 @@ For the Expo racket after calibration:
 racket.quaternion = baseReady * mappedRelativePhone * modelCorrection
 ```
 
+## Phase B Sensor Processing
+
+Expo sends one `continuous_orientation` packet at a requested interval of 16ms.
+The packet contains:
+
+- Normalized absolute phone quaternion, unitless.
+- Attitude angles in radians.
+- Rotation rate in degrees per second, retained as `alpha/beta/gamma` metadata.
+- Gravity-compensated DeviceMotion acceleration in m/s².
+- Acceleration including gravity in m/s².
+- Sensor timestamp in seconds and transport timestamp in Unix milliseconds.
+- Screen orientation in degrees: `0`, `90`, `180`, or `-90`.
+
+`SensorNormalizer` converts phone vectors explicitly with
+`(x, y, z) -> (x, z, -y)`, clamps packet delta time to 8-50ms, and rejects packet
+gaps above 250ms. Angular velocity is derived from quaternion differences in
+rad/s instead of trusting platform-dependent rotation-rate axis labels.
+
+Two acceleration paths are maintained:
+
+- Visualization/filter path: EMA factor `0.25`.
+- Peak-response path: EMA factor `0.65`.
+
+Frames are rejected for non-finite or zero-length quaternions, quaternion lengths
+outside `0.5-1.5`, acceleration above `80 m/s²`, angular speed above `25 rad/s`,
+or invalid packet timing. Quaternion signs are corrected against the previous
+sample to prevent long-path interpolation flips.
+
+Each normalized frame exposes racket forward, up/face-normal, and side vectors;
+angular velocity; smoothed and fast acceleration; jerk; signed forward/up/side
+motion scores; racket-face angle; validity; and an explicit rejection reason.
+
 Swing strength:
 
 ```text

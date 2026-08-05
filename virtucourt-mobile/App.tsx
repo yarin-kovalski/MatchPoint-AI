@@ -183,14 +183,33 @@ export default function App() {
         if (socketRef.current?.connected) {
           socketRef.current.emit("continuous_orientation", {
             t: now,
+            sensorTimestamp: sample.rotation.timestamp,
             source: "expo-mobile",
             rotation: orientationRef.current,
             quaternion,
+            rotationRate: {
+              alpha: sample.rotationRate?.alpha ?? 0,
+              beta: sample.rotationRate?.beta ?? 0,
+              gamma: sample.rotationRate?.gamma ?? 0
+            },
             gyro: {
               x: sample.rotationRate?.alpha ?? 0,
               y: sample.rotationRate?.beta ?? 0,
               z: sample.rotationRate?.gamma ?? 0
             },
+            acceleration: sample.acceleration
+              ? {
+                  x: sample.acceleration.x,
+                  y: sample.acceleration.y,
+                  z: sample.acceleration.z
+                }
+              : null,
+            accelerationIncludingGravity: {
+              x: sample.accelerationIncludingGravity.x,
+              y: sample.accelerationIncludingGravity.y,
+              z: sample.accelerationIncludingGravity.z
+            },
+            screenOrientation: sample.orientation,
             intervalMs: sample.interval
           });
           setPacketCount((count) => count + 1);

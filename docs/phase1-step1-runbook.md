@@ -160,6 +160,23 @@ For testing:
 If the neutral racket position drifts, hold the phone in the intended start pose
 and tap **Calibrated - Set Again**.
 
+### Phase B Motion Debugging
+
+Expand **Orientation debug** on the PC page and verify:
+
+- Sensor validity remains `valid` during ordinary movement.
+- Acceleration is displayed in m/s² and returns near zero while stationary.
+- Angular speed is displayed in rad/s.
+- Forward, up, and side scores respond with the expected sign.
+- Racket basis `F`, `U`, and `S` vectors change smoothly without sign flips.
+- A pause longer than 250ms reports `packet gap` and recovers on the next packet.
+
+Run the pure Phase B tests with:
+
+```powershell
+npm run test:phase-b
+```
+
 ## Troubleshooting
 
 If the phone cannot open the page:
