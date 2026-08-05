@@ -12,7 +12,7 @@ Phase 1 Step 1 implementation has started.
 
 Current target: Phase 1 MVP / Proof of Concept.
 
-## Run Phase 1 Step 1
+## Run the Phone-to-Racket Demo
 
 Install dependencies:
 
@@ -20,25 +20,36 @@ Install dependencies:
 npm install
 ```
 
-Build and run the local broker:
+Start the complete Phase 1 demo from the project root:
 
 ```bash
-npm run dev
+npm run all
 ```
 
-Then open:
+This builds the server and browser clients, starts the Socket.io broker, launches
+Expo, and opens the PC racket page automatically:
 
 ```text
 http://localhost:3000/pc
 ```
 
-On the phone, open the secure LAN mobile URL printed by the server:
+On the phone, open Expo Go and scan the QR code in the Expo terminal. The app is
+configured with the current PC LAN address automatically. Then tap **Connect** and
+**Start**.
+
+The browser controller remains available at the secure LAN URL printed by the
+server:
 
 ```text
 https://YOUR_PC_LAN_IP:3443/mobile
 ```
 
+Keep both terminals open while using the demo.
+
+`npm run dev` remains available when automatic browser opening is not wanted.
+
 More details are in `docs/phase1-step1-runbook.md`.
+The one-command reference is in `docs/startup-shortcut.md`.
 
 ## One-Week Goal
 

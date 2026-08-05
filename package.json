@@ -4,6 +4,7 @@
   "private": true,
   "description": "Smart tennis motion trainer POC using phone sensors, Socket.io, and TypeScript.",
   "scripts": {
+    "all": "powershell -NoProfile -ExecutionPolicy Bypass -File ./start.ps1",
     "build": "tsc -p server/tsconfig.json && tsc -p client-mobile/tsconfig.json && tsc -p client-pc/tsconfig.json",
     "build:server": "tsc -p server/tsconfig.json",
     "build:mobile": "tsc -p client-mobile/tsconfig.json",

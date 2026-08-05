@@ -29,6 +29,18 @@ Phone and PC should be on the same local network.
 
 During development, the server should print the LAN URL so the user can open the mobile controller from the phone.
 
+## Phase 1 Runtime Command
+
+The supported end-to-end demo starts with:
+
+```text
+npm run all
+```
+
+The command detects the current PC LAN address, passes it to the Expo controller,
+starts Expo and the HTTP/HTTPS broker, and opens `/pc`. The browser mobile
+controller remains available as a fallback.
+
 ## Motion Payload Draft
 
 ```ts

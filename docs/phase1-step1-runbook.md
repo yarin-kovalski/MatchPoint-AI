@@ -16,11 +16,18 @@ From the project root:
 npm install
 ```
 
-## Build and Run
+## Build and Run Everything
 
 ```bash
-npm run dev
+npm run all
 ```
+
+This is the main shortcut for the phone-to-racket demo. It builds all three
+TypeScript projects, starts the HTTP and HTTPS Socket.io broker, launches Expo
+with the current LAN server address, and opens the PC racket page. Scan the Expo
+QR code with Expo Go, then tap **Connect** and **Start**.
+
+Use `npm run dev` only when you do not want the PC browser to open automatically.
 
 The server runs on:
 

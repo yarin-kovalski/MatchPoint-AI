@@ -23,9 +23,11 @@ type SocketState = "offline" | "connecting" | "connected" | "error";
 const SENSOR_INTERVAL_MS = 16;
 const STROKE_THRESHOLD_G = 1.5;
 const STROKE_COOLDOWN_MS = 1000;
+const DEFAULT_SERVER_URL =
+  process.env.EXPO_PUBLIC_SERVER_URL ?? "http://10.0.0.25:3000";
 
 export default function App() {
-  const [serverUrl, setServerUrl] = useState("http://10.100.102.20:3000");
+  const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
   const [connected, setConnected] = useState(false);
   const [socketState, setSocketState] = useState<SocketState>("offline");
   const [loadingSensors, setLoadingSensors] = useState(true);
@@ -166,16 +168,18 @@ export default function App() {
           z: orientationRef.current.z + sample.z * dt
         };
 
-        socketRef.current?.emit("continuous_orientation", {
-          t: now,
-          source: "expo-mobile",
-          rotation: orientationRef.current,
-          gyro: sample,
-          intervalMs
-        });
-
         setGyro(orientationRef.current);
-        setPacketCount((count) => count + 1);
+
+        if (socketRef.current?.connected) {
+          socketRef.current.emit("continuous_orientation", {
+            t: now,
+            source: "expo-mobile",
+            rotation: orientationRef.current,
+            gyro: sample,
+            intervalMs
+          });
+          setPacketCount((count) => count + 1);
+        }
       });
 
       const accelSubscription = Accelerometer.addListener((sample) => {
@@ -317,7 +321,7 @@ function getConnectButtonLabel(state: SocketState): string {
     case "connected":
       return "Connected";
     case "error":
-      return "Error";
+      return "Retry";
     case "offline":
     default:
       return "Connect";
