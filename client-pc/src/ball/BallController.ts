@@ -4,15 +4,18 @@ import { BALL_CONFIG } from "./ballConfig.js";
 import { getLaunchParameters } from "./ballLauncher.js";
 import { isBallOutOfBounds, stepBallPhysics } from "./ballPhysics.js";
 import { calculateOutgoingVelocity } from "./ballResponse.js";
-import { solveVelocity } from "./ballDelivery.js";
+import { estimateSecondBounceDelay, solveVelocity } from "./ballDelivery.js";
 import { sweepBallAgainstRacket } from "./racketCollider.js";
 import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset, LaunchPreset, RacketCollisionResult } from "./ballTypes.js";
 
-export function shouldEnterContactZone(ball: BallSnapshot, now: number): boolean {
+export function shouldEnterContactZone(ball: BallSnapshot, now: number, assistMode: AssistMode = "prototype"): boolean {
   const timeToContact = ball.contactDeadline - now;
+  const targetRadius = assistMode === "easy" ? BALL_CONFIG.easyAssist.targetRadius : BALL_CONFIG.contactZone.maximumTargetDistance;
   return !ball.hit && ball.bounceCount === 1 && ball.velocity.z > 0 &&
     timeToContact >= 0 && timeToContact <= BALL_CONFIG.contactZone.maximumTimeToContactMs &&
-    ball.position.distanceTo(ball.contactTarget) <= BALL_CONFIG.contactZone.maximumTargetDistance;
+    ball.position.distanceTo(ball.contactTarget) <= targetRadius &&
+    ball.position.y >= BALL_CONFIG.easyAssist.minimumTargetHeight &&
+    ball.position.y <= BALL_CONFIG.easyAssist.maximumTargetHeight;
 }
 
 export class BallController {
@@ -24,7 +27,7 @@ export class BallController {
     visualRadius: BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier,
     bounceCount: 0, hit: false, active: false, launchTimestamp: 0, launchPreset: null,
     contactTarget: new THREE.Vector3(), bouncePoint: new THREE.Vector3(), contactTimeAfterBounce: 0,
-    contactDeadline: 0
+    contactDeadline: 0, secondBounceDeadline: 0
   };
   lastCollision: RacketCollisionResult | null = null;
   lastHit: BallHitEvent | null = null;
@@ -67,6 +70,7 @@ export class BallController {
     this.ball.bouncePoint.copy(launch.bouncePoint);
     this.ball.contactTimeAfterBounce = launch.contactTimeAfterBounce;
     this.ball.contactDeadline = 0;
+    this.ball.secondBounceDeadline = 0;
     this.finalResultEmitted = false;
     this.closestDistance = Number.POSITIVE_INFINITY;
     this.lastCollision = null;
@@ -81,6 +85,7 @@ export class BallController {
     this.ball.spinVector.set(0, 0, 0);
     this.ball.angularVelocity.set(0, 0, 0);
     this.ball.contactDeadline = 0;
+    this.ball.secondBounceDeadline = 0;
     this.lastCollision = null;
   }
 
@@ -101,6 +106,9 @@ export class BallController {
       if (this.ball.hit) {
         this.ball.state = "OUT";
         this.resetAt = now + BALL_CONFIG.resetDelayMs;
+      } else if (this.ball.bounceCount >= 2) {
+        this.emitMiss(now, "second bounce before contact", stroke, contact, colliderWorldMatrix);
+        return;
       } else {
         this.ball.state = "BOUNCED";
         this.ball.velocity.copy(solveVelocity(
@@ -109,9 +117,10 @@ export class BallController {
           this.ball.contactTimeAfterBounce
         ));
         this.ball.contactDeadline = now + this.ball.contactTimeAfterBounce * 1000;
+        this.ball.secondBounceDeadline = now + estimateSecondBounceDelay(this.ball.velocity.y) * 1000;
       }
     }
-    if (shouldEnterContactZone(this.ball, now)) {
+    if (shouldEnterContactZone(this.ball, now, assistMode)) {
       this.ball.state = "CONTACT_ZONE";
     }
     if (!this.ball.hit && this.ball.velocity.z > 0) {
@@ -119,7 +128,7 @@ export class BallController {
         this.ball.previousPosition, this.ball.position, this.ball.physicsRadius, colliderWorldMatrix, assistMode
       );
       this.closestDistance = Math.min(this.closestDistance, this.lastCollision.closestDistance);
-      if (this.lastCollision.candidate) this.tryHit(now, stroke, contact);
+      if (this.lastCollision.candidate) this.tryHit(now, stroke, contact, assistMode);
     }
     if (!this.ball.hit && this.ball.position.z > BALL_CONFIG.bounds.zBehindPlayer) {
       this.emitMiss(now, this.lastCollision?.candidate ? "contact window mismatch" : "ball passed behind racket", stroke, contact, colliderWorldMatrix);
@@ -131,11 +140,14 @@ export class BallController {
     if (this.ball.state === "OUT" && now >= this.resetAt) this.reset();
   }
 
-  private tryHit(now: number, stroke: StrokeDetectorSnapshot, contact: EstimatedRacketContact | null): void {
+  private tryHit(now: number, stroke: StrokeDetectorSnapshot, contact: EstimatedRacketContact | null, assistMode: AssistMode = "prototype"): void {
     if (this.ball.hit || !contact || !this.lastCollision) return;
     const contactAge = Math.abs(now - contact.timestamp);
+    const timingTolerance = assistMode === "easy"
+      ? BALL_CONFIG.easyAssist.contactTimingToleranceMs
+      : BALL_CONFIG.collision.contactEventToleranceMs;
     const validWindow = stroke.currentState === "CONTACT_WINDOW" ||
-      contactAge <= BALL_CONFIG.collision.contactEventToleranceMs;
+      contactAge <= timingTolerance;
     if (!validWindow || contact.estimatedSpeed < BALL_CONFIG.collision.minimumStrokeSpeed ||
       contact.racketFaceAngle > BALL_CONFIG.collision.maximumFaceAngleRadians) return;
     const response = calculateOutgoingVelocity(contact, this.lastCollision.contactPointLocal);
@@ -185,6 +197,7 @@ export class BallController {
   }
 
   private resolveMissReason(fallback: string, now: number, contact: EstimatedRacketContact | null): string {
+    if (fallback === "second bounce before contact") return fallback;
     const local = this.lastCollision?.currentLocalPosition;
     if (local) {
       if (local.y > BALL_CONFIG.collision.halfHeightLocal) return "delivery target too high";

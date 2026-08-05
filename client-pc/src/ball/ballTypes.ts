@@ -28,6 +28,7 @@ export type BallSnapshot = {
   bouncePoint: THREE.Vector3;
   contactTimeAfterBounce: number;
   contactDeadline: number;
+  secondBounceDeadline: number;
 };
 
 export type RacketCollisionResult = {

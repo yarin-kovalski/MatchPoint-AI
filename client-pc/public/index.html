@@ -111,8 +111,8 @@
             <label>Assist
               <select id="assistModeSelect">
                 <option value="off">Off</option>
-                <option value="prototype" selected>Prototype</option>
-                <option value="easy">Easy</option>
+                <option value="prototype">Prototype</option>
+                <option value="easy" selected>Easy</option>
               </select>
             </label>
             <label>Speed
@@ -144,8 +144,15 @@
                 </select>
               </label>
               <label>Custom scale <input id="ballVisualScaleInput" type="range" min="1" max="3" step="0.05" value="2.5"></label>
-              <label>Target height <input id="contactHeightInput" type="range" min="-0.35" max="0.2" step="0.01" value="-0.06"></label>
-              <label>Target side <input id="contactSideInput" type="range" min="-0.25" max="0.25" step="0.01" value="0.06"></label>
+              <label>Forehand side
+                <select id="forehandSidePreset"><option value="0.66">Narrow</option><option value="0.80">Normal</option><option value="0.94" selected>Wide</option></select>
+              </label>
+              <label>Backhand side
+                <select id="backhandSidePreset"><option value="0.66">Narrow</option><option value="0.80">Normal</option><option value="0.94" selected>Wide</option></select>
+              </label>
+              <label>Contact height
+                <select id="contactHeightPreset"><option value="0">Low</option><option value="0.05" selected>Medium</option><option value="0.12">High</option></select>
+              </label>
               <label>Target plane depth <input id="contactDepthInput" type="range" min="-0.05" max="0.05" step="0.01" value="0"></label>
               <label class="check-label"><input id="showContactTargetToggle" type="checkbox"> Contact target</label>
               <label class="check-label"><input id="showTrajectoryToggle" type="checkbox"> Trajectory</label>

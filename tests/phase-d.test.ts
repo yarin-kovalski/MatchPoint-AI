@@ -19,7 +19,7 @@ function ball(): BallSnapshot {
     visualRadius: BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier, bounceCount: 0,
     hit: false, active: true, launchTimestamp: 0, launchPreset: "easyForehand",
     contactTarget: new THREE.Vector3(0.16, 2.2, -2.94), bouncePoint: new THREE.Vector3(0.08, 0.1035, -4.35),
-    contactTimeAfterBounce: 0.58, contactDeadline: 0
+    contactTimeAfterBounce: 0.75, contactDeadline: 0, secondBounceDeadline: 0
   };
 }
 
@@ -157,12 +157,25 @@ test("miss emits once and resets after delay", () => {
   controller.update(0, 1200 + BALL_CONFIG.resetDelayMs, new THREE.Matrix4(), snapshot("READY"), null, "off");
   assert.equal(controller.ball.state, "IDLE");
 });
+test("second incoming bounce is an explicit miss", () => {
+  const reasons: string[] = [];
+  const controller = new BallController(undefined, event => reasons.push(event.reason));
+  controller.launch("easyForehand", "right", "normal", 1000);
+  controller.ball.bounceCount = 1;
+  controller.ball.state = "BOUNCED";
+  controller.ball.position.set(0, BALL_CONFIG.courtHeight + controller.ball.physicsRadius + 0.001, -2);
+  controller.ball.velocity.set(0, -1, 2);
+  controller.update(0.02, 1200, new THREE.Matrix4(), snapshot("READY"), null, "easy");
+  assert.equal(controller.ball.state, "MISSED");
+  assert.deepEqual(reasons, ["second bounce before contact"]);
+});
 test("assist mode expands ellipse only within configured scale", () => {
   const x = BALL_CONFIG.collision.halfWidthLocal * 1.1;
   const off = sweepBallAgainstRacket(new THREE.Vector3(x, 0, -1), new THREE.Vector3(x, 0, 1), 0, new THREE.Matrix4(), "off");
   const easy = sweepBallAgainstRacket(new THREE.Vector3(x, 0, -1), new THREE.Vector3(x, 0, 1), 0, new THREE.Matrix4(), "easy");
   assert.equal(off.candidate, false); assert.equal(easy.candidate, true);
-  assert.ok(BALL_CONFIG.collision.assistScale.easy <= 1.18);
+  assert.equal(BALL_CONFIG.collision.assistScale.easy, BALL_CONFIG.easyAssist.contactEllipseMultiplier);
+  assert.ok(BALL_CONFIG.collision.assistScale.easy <= 1.8);
 });
 test("deterministic replay produces same collision result", () => {
   const first = crossing(); const replay = crossing();

@@ -213,8 +213,9 @@ const elements = {
   debugBallResult: getElement("debugBallResult"),
   ballVisualSizeSelect: getElement<HTMLSelectElement>("ballVisualSizeSelect"),
   ballVisualScaleInput: getElement<HTMLInputElement>("ballVisualScaleInput"),
-  contactHeightInput: getElement<HTMLInputElement>("contactHeightInput"),
-  contactSideInput: getElement<HTMLInputElement>("contactSideInput"),
+  forehandSidePreset: getElement<HTMLSelectElement>("forehandSidePreset"),
+  backhandSidePreset: getElement<HTMLSelectElement>("backhandSidePreset"),
+  contactHeightPreset: getElement<HTMLSelectElement>("contactHeightPreset"),
   contactDepthInput: getElement<HTMLInputElement>("contactDepthInput"),
   showContactTargetToggle: getElement<HTMLInputElement>("showContactTargetToggle"),
   showTrajectoryToggle: getElement<HTMLInputElement>("showTrajectoryToggle"),
@@ -247,15 +248,16 @@ let activeStroke: { type: StrokeType; startedAt: number; durationMs: number } | 
 let replayActive = false;
 let replayTimer: number | null = null;
 let contactFlashUntil = 0;
-let assistMode: AssistMode = "prototype";
+let assistMode: AssistMode = "easy";
 let ballSpeedPreset: BallSpeedPreset = "normal";
 let activeLaunchPreset: LaunchPreset = "easyForehand";
 let lastBallFrameAt = performance.now();
 let lastBallBounceCount = 0;
 let ballRelaunchAt = 0;
 let ballVisualScaleMultiplier: number = BALL_CONFIG.scale.visualScaleMultiplier;
-let contactHeightOffset = -0.06;
-let contactSideOffsetMagnitude = 0.06;
+let contactHeightOffset = 0.05;
+let forehandSideOffset = 0.94;
+let backhandSideOffset = -0.94;
 let contactDepthOffset = 0;
 let showBallAtContactPreview = false;
 const gyroQuaternion = new THREE.Quaternion();
@@ -1135,7 +1137,7 @@ function updateProceduralPosition(): void {
         target = path.forwardSwing;
         break;
       case "CONTACT_WINDOW":
-        target = path.contactWindow;
+        target = [Math.abs(BALL_CONFIG.launch.easyForehand.contactSideOffset), path.contactWindow[1], path.contactWindow[2]];
         break;
       case "FOLLOW_THROUGH":
         target = path.followThrough;
@@ -1158,7 +1160,10 @@ function updateProceduralPosition(): void {
   strokePositionOffset.set(target[0] * preparationSign, target[1], target[2]);
   // racketRoot is scaled for the GLB's centimeter-sized coordinates.
   strokePositionOffset.multiplyScalar(100);
-  proceduralPositionPivot.position.lerp(strokePositionOffset, path.smoothing);
+  const positionSmoothing = snapshot?.currentState === "CONTACT_WINDOW"
+    ? BALL_CONFIG.launch.expectedContactPositionSmoothing
+    : path.smoothing;
+  proceduralPositionPivot.position.lerp(strokePositionOffset, positionSmoothing);
 }
 
 function updateStrokeDebug(): void {
@@ -1332,8 +1337,9 @@ function wireBallControls(): void {
   elements.ballVisualScaleInput.addEventListener("input", () => {
     if (elements.ballVisualSizeSelect.value === "custom") updateBallVisualScale();
   });
-  elements.contactHeightInput.addEventListener("input", readDeliveryTuning);
-  elements.contactSideInput.addEventListener("input", readDeliveryTuning);
+  elements.forehandSidePreset.addEventListener("change", readDeliveryTuning);
+  elements.backhandSidePreset.addEventListener("change", readDeliveryTuning);
+  elements.contactHeightPreset.addEventListener("change", readDeliveryTuning);
   elements.contactDepthInput.addEventListener("input", readDeliveryTuning);
   elements.resetBallVisualSettings.addEventListener("click", resetBallVisualSettings);
   elements.showBallAtContact.addEventListener("click", () => {
@@ -1368,16 +1374,18 @@ function updateBallVisualScale(): void {
 }
 
 function readDeliveryTuning(): void {
-  contactHeightOffset = Number(elements.contactHeightInput.value);
-  contactSideOffsetMagnitude = Math.abs(Number(elements.contactSideInput.value));
+  contactHeightOffset = Number(elements.contactHeightPreset.value);
+  forehandSideOffset = Math.abs(Number(elements.forehandSidePreset.value));
+  backhandSideOffset = -Math.abs(Number(elements.backhandSidePreset.value));
   contactDepthOffset = Number(elements.contactDepthInput.value);
 }
 
 function resetBallVisualSettings(): void {
   elements.ballVisualSizeSelect.value = "readable";
   elements.ballVisualScaleInput.value = String(BALL_CONFIG.scale.visualScaleMultiplier);
-  elements.contactHeightInput.value = "-0.06";
-  elements.contactSideInput.value = "0.06";
+  elements.contactHeightPreset.value = "0.05";
+  elements.forehandSidePreset.value = "0.94";
+  elements.backhandSidePreset.value = "0.94";
   elements.contactDepthInput.value = "0";
   elements.showContactTargetToggle.checked = false;
   elements.showTrajectoryToggle.checked = false;
@@ -1392,10 +1400,10 @@ function launchBall(preset: LaunchPreset): void {
   elements.showBallAtContact.textContent = "Show Ball At Contact";
   activeLaunchPreset = preset;
   const sideOffset = preset === "easyBackhand"
-    ? -contactSideOffsetMagnitude
+    ? backhandSideOffset
     : preset === "centerPractice"
       ? 0
-      : contactSideOffsetMagnitude;
+      : forehandSideOffset;
   ballController.launch(
     preset,
     strokeStateMachine.getHandedness(),
@@ -1446,7 +1454,7 @@ function updateBallVisuals(deltaSeconds: number): void {
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle(),
     heightOffset: contactHeightOffset,
-    sideOffset: activeLaunchPreset === "easyBackhand" ? -contactSideOffsetMagnitude : contactSideOffsetMagnitude,
+    sideOffset: activeLaunchPreset === "easyBackhand" ? backhandSideOffset : forehandSideOffset,
     depthOffset: contactDepthOffset
   });
   ballMesh.visible = showBallAtContactPreview || ball.active || ball.state === "OUT";
@@ -1563,13 +1571,23 @@ function updateBallDebug(): void {
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle(),
     heightOffset: contactHeightOffset,
-    sideOffset: activeLaunchPreset === "easyBackhand" ? -contactSideOffsetMagnitude : contactSideOffsetMagnitude,
+    sideOffset: activeLaunchPreset === "easyBackhand" ? backhandSideOffset : forehandSideOffset,
     depthOffset: contactDepthOffset
   });
   const expected = getExpectedRacketContactTransform({
     strokeType: activeLaunchPreset === "easyBackhand" ? "backhand" : "forehand",
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle()
+  });
+  const forehandTarget = getBallDeliveryTarget({
+    preset: "easyForehand", handedness: strokeStateMachine.getHandedness(),
+    backhandStyle: strokeStateMachine.getBackhandStyle(), heightOffset: contactHeightOffset,
+    sideOffset: forehandSideOffset, depthOffset: contactDepthOffset, assistMode
+  });
+  const backhandTarget = getBallDeliveryTarget({
+    preset: "easyBackhand", handedness: strokeStateMachine.getHandedness(),
+    backhandStyle: strokeStateMachine.getBackhandStyle(), heightOffset: contactHeightOffset,
+    sideOffset: backhandSideOffset, depthOffset: contactDepthOffset, assistMode
   });
   const projectedDiameter = projectPixelDiameter(
     ball.visualRadius,
@@ -1584,8 +1602,12 @@ function updateBallDebug(): void {
     `angular ${formatVector(ball.angularVelocity)} ${ball.angularVelocity.length().toFixed(1)} rad/s, ` +
     `q ${formatQuaternion(ballMesh.quaternion)}`;
   elements.debugDeliveryTarget.textContent =
-    `target ${formatVector(target)}, expected racket ${formatVector(expected.stringBedCenter)}, ` +
-    `gap ${target.distanceTo(expected.stringBedCenter).toFixed(3)} m, ` +
+    `FOREHAND TARGET ${formatVector(forehandTarget)}; BACKHAND TARGET ${formatVector(backhandTarget)}; ` +
+    `ACTUAL STRING-BED CENTER ${formatVector(expected.stringBedCenter)}; CURRENT BALL ${formatVector(ball.position)}; ` +
+    `FIRST BOUNCE POINT ${formatVector(ball.bouncePoint)}; active target height ${target.y.toFixed(2)} m, ` +
+    `side ${target.x.toFixed(2)} m, center gap ${target.distanceTo(expected.stringBedCenter).toFixed(3)} m, ` +
+    `contact ETA ${ball.contactDeadline > 0 ? Math.max(0, (ball.contactDeadline - Date.now()) / 1000).toFixed(2) : "--"} s, ` +
+    `second bounce ETA ${ball.secondBounceDeadline > 0 ? Math.max(0, (ball.secondBounceDeadline - Date.now()) / 1000).toFixed(2) : "--"} s, ` +
     `closest ${ballController.lastCollision?.closestDistance.toFixed(3) ?? "--"} m`;
 }
 
