@@ -35,7 +35,7 @@ export function getExpectedRacketContactTransform(options: {
   const contactPath = [
     configuredContactReach,
     STROKE_CONFIG.proceduralPath.contactWindow[1] + BALL_CONFIG.launch.easyContactPoseLift,
-    STROKE_CONFIG.proceduralPath.contactWindow[2] + BALL_CONFIG.launch.easyContactPoseDepthShift
+    STROKE_CONFIG.proceduralPath.contactWindow[2] + BALL_CONFIG.easyAssist.naturalReachDepthOffset
   ] as const;
   const handSign = options.handedness === "right" ? 1 : -1;
   const strokeSign = options.strokeType === "forehand" ? handSign : -handSign;

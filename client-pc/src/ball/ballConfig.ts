@@ -2,7 +2,7 @@ export const BALL_CONFIG = {
   scale: {
     metersPerWorldUnit: 1,
     physicalRadiusMeters: 0.0335,
-    visualScaleMultiplier: 3.35,
+    visualScaleMultiplier: 3.5,
     maximumVisualScaleMultiplier: 3.5,
     minimumReadablePixelDiameter: 16,
     measuredRacketHeadWorldWidth: 1.2281404495239258,
@@ -36,22 +36,22 @@ export const BALL_CONFIG = {
     netClearance: 0.28,
     expectedContactSampleFraction: 0.5,
     expectedContactPositionSmoothing: 0.85,
-    easyContactPoseLift: 0.22,
-    easyContactPoseDepthShift: 0.24,
+    easyContactPoseLift: 0.296,
     referenceFramesPerSecond: 60,
     speedMultipliers: { slow: 0.86, normal: 1, fast: 1.14 }
   },
   contactZone: { maximumTargetDistance: 0.45, maximumTimeToContactMs: 150 },
   easyAssist: {
-    contactEllipseMultiplier: 2,
-    contactTimingToleranceMs: 300,
+    contactEllipseMultiplier: 2.15,
+    contactTimingToleranceMs: 360,
     targetRadius: 0.3,
     minimumTargetHeight: 2.1,
     maximumTargetHeight: 2.7,
     secondBounceSafetyMarginMs: 350,
     minimumAngularSpeed: 0.65,
     maximumFaceAngleRadians: 1.55,
-    assistedStringBedRadius: 0.42,
+    assistedStringBedRadius: 0.5,
+    naturalReachDepthOffset: 0.6,
     stationaryReach: { depthTolerance: 0.18, lateralTolerance: 0.2, verticalTolerance: 0.24 }
   },
   collision: {
@@ -62,7 +62,7 @@ export const BALL_CONFIG = {
     contactEventToleranceMs: 130,
     minimumStrokeSpeed: 4.8,
     maximumFaceAngleRadians: 1.45,
-    assistScale: { off: 1, prototype: 1.08, easy: 2 },
+    assistScale: { off: 1, prototype: 1.08, easy: 2.15 },
     movingRacketToleranceLocal: { off: 0, prototype: 2.5, easy: 5 }
   },
   response: {

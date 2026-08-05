@@ -10,6 +10,7 @@ import { sweepBallAgainstRacket } from "../client-pc/src/ball/racketCollider.js"
 import { BallSnapshot } from "../client-pc/src/ball/ballTypes.js";
 import { createProceduralTennisBallTexture, integrateBallRotation, resetTennisBallTextureCache } from "../client-pc/src/ball/ballVisuals.js";
 import { EstimatedRacketContact } from "../client-pc/src/strokeDetection/strokeTypes.js";
+import { STROKE_CONFIG } from "../client-pc/src/strokeDetection/strokeConfig.js";
 import { shouldEnterContactZone } from "../client-pc/src/ball/BallController.js";
 
 function simulatedDelivery(preset: "easyForehand" | "easyBackhand", handedness: "right" | "left") {
@@ -86,6 +87,12 @@ test("both Easy targets lie inside their stationary reach volumes", () => {
     const volume = getStationaryReachVolume({ strokeType, handedness: "right", backhandStyle: "one-handed" });
     assert.equal(isInsideStationaryReachVolume(target, volume), true);
   }
+});
+test("Easy contact pose uses the configured natural stationary reach depth", () => {
+  const baseDepth = STROKE_CONFIG.proceduralPath.contactWindow[2];
+  const naturalDepth = baseDepth + BALL_CONFIG.easyAssist.naturalReachDepthOffset;
+  assert.ok(Math.abs(naturalDepth - (-0.12)) < 1e-8);
+  assert.ok(Math.abs(naturalDepth) <= Math.abs(baseDepth + 0.42) * 0.45);
 });
 test("target height follows expected string center with comfort offset", () => {
   const target = getBallDeliveryTarget({ preset: "easyForehand", handedness: "right", backhandStyle: "one-handed" });
