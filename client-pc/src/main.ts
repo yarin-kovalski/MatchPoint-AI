@@ -3,7 +3,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BallController } from "./ball/BallController.js";
 import { BALL_CONFIG } from "./ball/ballConfig.js";
 import { getBallDeliveryTarget, getExpectedRacketContactTransform, projectPixelDiameter } from "./ball/ballDelivery.js";
-import { AssistMode, BallHitEvent, BallMissEvent, BallSpeedPreset, LaunchPreset } from "./ball/ballTypes.js";
+import { AssistMode, BallHitEvent, BallMissEvent, BallSpeedPreset, EasyHitMotion, LaunchPreset } from "./ball/ballTypes.js";
 import { createProceduralTennisBallTexture, integrateBallRotation } from "./ball/ballVisuals.js";
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
 import {
@@ -210,6 +210,7 @@ const elements = {
   debugBallMotion: getElement("debugBallMotion"),
   debugBallCollision: getElement("debugBallCollision"),
   debugBallValidity: getElement("debugBallValidity"),
+  hitDebugPanel: getElement("hitDebugPanel"),
   debugBallResult: getElement("debugBallResult"),
   ballVisualSizeSelect: getElement<HTMLSelectElement>("ballVisualSizeSelect"),
   ballVisualScaleInput: getElement<HTMLInputElement>("ballVisualScaleInput"),
@@ -922,7 +923,8 @@ function animate(): void {
     racketStringCollider.matrixWorld,
     detectorSnapshot,
     lastContactEvent,
-    assistMode
+    assistMode,
+    createEasyHitMotion()
   );
   updateBallVisuals(ballDeltaSeconds);
   rimLight.intensity = performance.now() < contactFlashUntil ? 42 : 26;
@@ -1121,8 +1123,18 @@ function updateProceduralPosition(): void {
   const snapshot = latestStrokeSnapshot;
   const path = STROKE_CONFIG.proceduralPath;
   let target: readonly number[] = path.ready;
+  const easyMotionContact = assistMode === "easy" && ballController.ball.active &&
+    ballController.ball.bounceCount === 1 && latestSensorFrame?.valid === true &&
+    latestSensorFrame.angularSpeed >= BALL_CONFIG.easyAssist.minimumAngularSpeed &&
+    ballController.ball.position.distanceTo(ballController.ball.contactTarget) <= 0.75;
 
-  if (snapshot) {
+  if (easyMotionContact) {
+    target = [
+      Math.abs(BALL_CONFIG.launch.easyForehand.contactSideOffset),
+      path.contactWindow[1] + BALL_CONFIG.launch.easyContactPoseLift,
+      path.contactWindow[2]
+    ];
+  } else if (snapshot) {
     switch (snapshot.currentState) {
       case "PREPARATION":
         target = path.preparation;
@@ -1153,7 +1165,10 @@ function updateProceduralPosition(): void {
   }
 
   const handSign = strokeStateMachine.getHandedness() === "right" ? 1 : -1;
-  const preparationSign = snapshot?.lockedStrokeType === "backhand"
+  const assistedStrokeType = ballController.ball.launchPreset === "easyBackhand" ? "backhand" : "forehand";
+  const preparationSign = easyMotionContact
+    ? assistedStrokeType === "backhand" ? -handSign : handSign
+    : snapshot?.lockedStrokeType === "backhand"
     ? -handSign
     : snapshot?.lockedStrokeType === "forehand"
       ? handSign
@@ -1164,10 +1179,27 @@ function updateProceduralPosition(): void {
   strokePositionOffset.set(target[0] * preparationSign, target[1], target[2]);
   // racketRoot is scaled for the GLB's centimeter-sized coordinates.
   strokePositionOffset.multiplyScalar(100);
-  const positionSmoothing = snapshot?.currentState === "CONTACT_WINDOW"
+  const positionSmoothing = easyMotionContact || snapshot?.currentState === "CONTACT_WINDOW"
     ? BALL_CONFIG.launch.expectedContactPositionSmoothing
     : path.smoothing;
   proceduralPositionPivot.position.lerp(strokePositionOffset, positionSmoothing);
+}
+
+function createEasyHitMotion(): EasyHitMotion | null {
+  if (!latestSensorFrame) return null;
+  return {
+    valid: latestSensorFrame.valid,
+    angularSpeed: latestSensorFrame.angularSpeed,
+    accelerationMagnitude: latestSensorFrame.accelerationMagnitude,
+    racketQuaternion: latestSensorFrame.mappedRacketQuaternion,
+    racketFaceNormal: latestSensorFrame.racketFaceNormal,
+    racketForwardVector: latestSensorFrame.racketForwardVector,
+    racketUpVector: latestSensorFrame.racketUpVector,
+    racketSideVector: latestSensorFrame.racketSideVector,
+    racketFaceAngle: latestSensorFrame.racketFaceAngleToCourtRadians,
+    handedness: strokeStateMachine.getHandedness(),
+    backhandStyle: strokeStateMachine.getBackhandStyle()
+  };
 }
 
 function updateStrokeDebug(): void {
@@ -1545,6 +1577,7 @@ function updateBallDebugGeometry(): void {
 function updateBallDebug(): void {
   const ball = ballController.ball;
   const collision = ballController.lastCollision;
+  const hitDebug = ballController.hitDebug;
   elements.ballState.textContent = ball.state;
   elements.incomingBallSpeed.textContent = `${ball.velocity.length().toFixed(1)} m/s`;
   elements.ballSpin.textContent = `${ball.spinType} ${ball.spinStrength.toFixed(1)}`;
@@ -1565,6 +1598,16 @@ function updateBallDebug(): void {
     `contact age ${contactAge === null ? "none" : `${Math.round(contactAge)} ms`}, assist ${assistMode}, ` +
     `contact ETA ${Number.isFinite(timeToZone) ? `${timeToZone.toFixed(2)} s` : "--"}, target gap ${targetDistance.toFixed(2)} m, ` +
     `racket distance ${collision?.closestDistance.toFixed(2) ?? "--"} m, magnus ${formatVector(ball.magnusAcceleration)}`;
+  const flag = (value: boolean) => value ? "PASS" : "FAIL";
+  elements.hitDebugPanel.textContent =
+    `Easy hit checks | target ${flag(hitDebug.ballNearTarget)} | strings ${flag(hitDebug.ballNearStringBed)} | ` +
+    `one bounce ${flag(hitDebug.oneBounceOnly)} | before second ${flag(hitDebug.beforeSecondBounce)} | ` +
+    `plane ${flag(hitDebug.planeCrossed)} | ellipse ${flag(hitDebug.insideEllipse)} | ` +
+    `contact-ready ${flag(hitDebug.strokeStateIsContactReady)} | recent event ${flag(hitDebug.recentContactEvent)} | ` +
+    `speed ${flag(hitDebug.swingSpeedAboveThreshold)} ${hitDebug.currentSwingSpeed.toFixed(2)}/${hitDebug.minimumSwingSpeed.toFixed(2)} rad/s | ` +
+    `pose ${flag(hitDebug.racketPoseValid)} | accepted ${flag(hitDebug.hitAccepted)} | ` +
+    `ball ${formatVector(ball.position)} | target ${formatVector(ball.contactTarget)} | strings ${formatVector(hitDebug.stringBedCenter)} | ` +
+    `gaps ${hitDebug.ballToTargetDistance.toFixed(2)}/${hitDebug.ballToStringBedDistance.toFixed(2)} m | reject ${hitDebug.rejectionReason}`;
   elements.debugBallResult.textContent = ballController.lastHit
     ? `HIT ${ballController.lastHit.strokeType}, assisted ${ballController.lastHit.assisted}`
     : ballController.lastMiss

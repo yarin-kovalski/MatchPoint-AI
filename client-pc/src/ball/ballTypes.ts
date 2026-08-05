@@ -6,6 +6,40 @@ export type LaunchPreset = "easyForehand" | "easyBackhand" | "centerPractice";
 export type AssistMode = "off" | "prototype" | "easy";
 export type BallSpeedPreset = "slow" | "normal" | "fast";
 
+export type EasyHitMotion = {
+  valid: boolean;
+  angularSpeed: number;
+  accelerationMagnitude: number;
+  racketQuaternion: THREE.Quaternion;
+  racketFaceNormal: THREE.Vector3;
+  racketForwardVector: THREE.Vector3;
+  racketUpVector: THREE.Vector3;
+  racketSideVector: THREE.Vector3;
+  racketFaceAngle: number;
+  handedness: Handedness;
+  backhandStyle: BackhandStyle;
+};
+
+export type HitDebugSnapshot = {
+  ballNearTarget: boolean;
+  ballNearStringBed: boolean;
+  oneBounceOnly: boolean;
+  beforeSecondBounce: boolean;
+  planeCrossed: boolean;
+  insideEllipse: boolean;
+  strokeStateIsContactReady: boolean;
+  recentContactEvent: boolean;
+  swingSpeedAboveThreshold: boolean;
+  racketPoseValid: boolean;
+  hitAccepted: boolean;
+  rejectionReason: string;
+  ballToTargetDistance: number;
+  ballToStringBedDistance: number;
+  currentSwingSpeed: number;
+  minimumSwingSpeed: number;
+  stringBedCenter: THREE.Vector3;
+};
+
 export type BallSnapshot = {
   id: string;
   state: BallState;

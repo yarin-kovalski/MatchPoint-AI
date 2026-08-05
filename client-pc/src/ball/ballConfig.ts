@@ -2,7 +2,7 @@ export const BALL_CONFIG = {
   scale: {
     metersPerWorldUnit: 1,
     physicalRadiusMeters: 0.0335,
-    visualScaleMultiplier: 3.1,
+    visualScaleMultiplier: 3.35,
     maximumVisualScaleMultiplier: 3.5,
     minimumReadablePixelDiameter: 16,
     measuredRacketHeadWorldWidth: 1.2281404495239258,
@@ -47,7 +47,10 @@ export const BALL_CONFIG = {
     targetRadius: 0.3,
     minimumTargetHeight: 2.1,
     maximumTargetHeight: 2.7,
-    secondBounceSafetyMarginMs: 350
+    secondBounceSafetyMarginMs: 350,
+    minimumAngularSpeed: 0.65,
+    maximumFaceAngleRadians: 1.55,
+    assistedStringBedRadius: 0.42
   },
   collision: {
     headCenterLocal: [0, 245, 0],

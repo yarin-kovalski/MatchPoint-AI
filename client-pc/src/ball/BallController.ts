@@ -6,7 +6,7 @@ import { isBallOutOfBounds, stepBallPhysics } from "./ballPhysics.js";
 import { calculateOutgoingVelocity } from "./ballResponse.js";
 import { estimateSecondBounceDelay, solveVelocity } from "./ballDelivery.js";
 import { sweepBallAgainstRacket } from "./racketCollider.js";
-import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset, LaunchPreset, RacketCollisionResult } from "./ballTypes.js";
+import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset, EasyHitMotion, HitDebugSnapshot, LaunchPreset, RacketCollisionResult } from "./ballTypes.js";
 
 export function shouldEnterContactZone(ball: BallSnapshot, now: number, assistMode: AssistMode = "prototype"): boolean {
   const timeToContact = ball.contactDeadline - now;
@@ -32,6 +32,14 @@ export class BallController {
   lastCollision: RacketCollisionResult | null = null;
   lastHit: BallHitEvent | null = null;
   lastMiss: BallMissEvent | null = null;
+  readonly hitDebug: HitDebugSnapshot = {
+    ballNearTarget: false, ballNearStringBed: false, oneBounceOnly: false, beforeSecondBounce: false,
+    planeCrossed: false, insideEllipse: false, strokeStateIsContactReady: false,
+    recentContactEvent: false, swingSpeedAboveThreshold: false, racketPoseValid: false,
+    hitAccepted: false, rejectionReason: "ball idle", ballToTargetDistance: Number.POSITIVE_INFINITY,
+    ballToStringBedDistance: Number.POSITIVE_INFINITY, currentSwingSpeed: 0,
+    minimumSwingSpeed: BALL_CONFIG.easyAssist.minimumAngularSpeed, stringBedCenter: new THREE.Vector3()
+  };
   private sequence = 0;
   private finalResultEmitted = false;
   private closestDistance = Number.POSITIVE_INFINITY;
@@ -95,7 +103,8 @@ export class BallController {
     colliderWorldMatrix: THREE.Matrix4,
     stroke: StrokeDetectorSnapshot,
     contact: EstimatedRacketContact | null,
-    assistMode: AssistMode
+    assistMode: AssistMode,
+    easyMotion?: EasyHitMotion | null
   ): void {
     if (!this.ball.active) {
       if (this.ball.state === "MISSED" && now >= this.resetAt) this.reset();
@@ -127,8 +136,11 @@ export class BallController {
       this.lastCollision = sweepBallAgainstRacket(
         this.ball.previousPosition, this.ball.position, this.ball.physicsRadius, colliderWorldMatrix, assistMode
       );
+      this.updateHitDebug(now, stroke, contact, assistMode, easyMotion ?? null, colliderWorldMatrix);
       this.closestDistance = Math.min(this.closestDistance, this.lastCollision.closestDistance);
-      if (this.lastCollision.candidate) this.tryHit(now, stroke, contact, assistMode);
+      if (this.lastCollision.candidate || (assistMode === "easy" && this.hitDebug.ballNearTarget)) {
+        this.tryHit(now, stroke, contact, assistMode, easyMotion ?? null);
+      }
     }
     if (!this.ball.hit && this.ball.position.z > BALL_CONFIG.bounds.zBehindPlayer) {
       this.emitMiss(now, this.lastCollision?.candidate ? "contact window mismatch" : "ball passed behind racket", stroke, contact, colliderWorldMatrix);
@@ -140,39 +152,97 @@ export class BallController {
     if (this.ball.state === "OUT" && now >= this.resetAt) this.reset();
   }
 
-  private tryHit(now: number, stroke: StrokeDetectorSnapshot, contact: EstimatedRacketContact | null, assistMode: AssistMode = "prototype"): void {
-    if (this.ball.hit || !contact || !this.lastCollision) return;
-    const contactAge = Math.abs(now - contact.timestamp);
+  private tryHit(now: number, stroke: StrokeDetectorSnapshot, contact: EstimatedRacketContact | null, assistMode: AssistMode = "prototype", easyMotion: EasyHitMotion | null = null): void {
+    if (this.ball.hit || !this.lastCollision) return;
+    const effectiveContact = contact ?? (assistMode === "easy" && easyMotion && this.canUseEasyAssist()
+      ? this.createEasyContact(now, easyMotion)
+      : null);
+    if (!effectiveContact) return;
+    const contactAge = Math.abs(now - effectiveContact.timestamp);
     const timingTolerance = assistMode === "easy"
       ? BALL_CONFIG.easyAssist.contactTimingToleranceMs
       : BALL_CONFIG.collision.contactEventToleranceMs;
     const validWindow = stroke.currentState === "CONTACT_WINDOW" ||
       contactAge <= timingTolerance;
-    if (!validWindow || contact.estimatedSpeed < BALL_CONFIG.collision.minimumStrokeSpeed ||
-      contact.racketFaceAngle > BALL_CONFIG.collision.maximumFaceAngleRadians) return;
-    const response = calculateOutgoingVelocity(contact, this.lastCollision.contactPointLocal);
+    const minimumSpeed = assistMode === "easy" ? BALL_CONFIG.easyAssist.minimumAngularSpeed * 3.2 : BALL_CONFIG.collision.minimumStrokeSpeed;
+    if (!validWindow || effectiveContact.estimatedSpeed < minimumSpeed ||
+      effectiveContact.racketFaceAngle > (assistMode === "easy" ? BALL_CONFIG.easyAssist.maximumFaceAngleRadians : BALL_CONFIG.collision.maximumFaceAngleRadians)) return;
+    const response = calculateOutgoingVelocity(effectiveContact, this.lastCollision.contactPointLocal);
     const incoming = this.ball.velocity.clone();
     this.ball.velocity.copy(response.velocity);
     this.ball.spinVector.copy(response.spinVector);
     this.ball.angularVelocity.copy(response.spinVector);
-    this.ball.spinType = contact.spinType;
+    this.ball.spinType = effectiveContact.spinType;
     this.ball.spinStrength = response.spinVector.length();
     this.ball.hit = true;
     this.ball.state = "RETURNED";
     const event: BallHitEvent = {
       id: `hit-${this.ball.id}`, ballId: this.ball.id, timestamp: now,
-      strokeContactEventId: contact.id, strokeType: contact.strokeType, handedness: contact.handedness,
-      backhandStyle: contact.backhandStyle, confidence: contact.confidence, assisted: this.lastCollision.assisted,
+      strokeContactEventId: effectiveContact.id, strokeType: effectiveContact.strokeType, handedness: effectiveContact.handedness,
+      backhandStyle: effectiveContact.backhandStyle, confidence: effectiveContact.confidence, assisted: this.lastCollision.assisted || !contact,
       contactPointWorld: this.lastCollision.contactPointWorld.clone(),
       contactPointRacketLocal: this.lastCollision.contactPointLocal.clone(),
-      racketQuaternion: contact.racketQuaternion.clone(), racketFaceNormal: contact.racketFaceNormal.clone(),
+      racketQuaternion: effectiveContact.racketQuaternion.clone(), racketFaceNormal: effectiveContact.racketFaceNormal.clone(),
       incomingVelocity: incoming, outgoingVelocity: response.velocity.clone(), outgoingSpeed: response.speed,
-      spinType: contact.spinType, spinVector: response.spinVector.clone(), topspinScore: contact.topspinScore,
-      sliceScore: contact.sliceScore, racketFaceAngle: contact.racketFaceAngle
+      spinType: effectiveContact.spinType, spinVector: response.spinVector.clone(), topspinScore: effectiveContact.topspinScore,
+      sliceScore: effectiveContact.sliceScore, racketFaceAngle: effectiveContact.racketFaceAngle
     };
     this.lastHit = event;
+    this.hitDebug.hitAccepted = true;
+    this.hitDebug.rejectionReason = "none";
     this.finalResultEmitted = true;
     this.onHit?.(event);
+  }
+
+  private canUseEasyAssist(): boolean {
+    const debug = this.hitDebug;
+    return debug.ballNearTarget && debug.ballNearStringBed && debug.oneBounceOnly &&
+      debug.beforeSecondBounce && debug.strokeStateIsContactReady &&
+      debug.swingSpeedAboveThreshold && debug.racketPoseValid;
+  }
+
+  private updateHitDebug(now: number, stroke: StrokeDetectorSnapshot, contact: EstimatedRacketContact | null, assistMode: AssistMode, motion: EasyHitMotion | null, matrix: THREE.Matrix4): void {
+    const center = new THREE.Vector3().setFromMatrixPosition(matrix);
+    const collision = this.lastCollision;
+    const contactAge = contact ? Math.abs(now - contact.timestamp) : Number.POSITIVE_INFINITY;
+    const minimum = assistMode === "easy" ? BALL_CONFIG.easyAssist.minimumAngularSpeed : BALL_CONFIG.collision.minimumStrokeSpeed / 3.2;
+    Object.assign(this.hitDebug, {
+      ballNearTarget: this.ball.position.distanceTo(this.ball.contactTarget) <= BALL_CONFIG.easyAssist.targetRadius,
+      ballNearStringBed: this.ball.position.distanceTo(center) <= BALL_CONFIG.easyAssist.assistedStringBedRadius,
+      oneBounceOnly: this.ball.bounceCount === 1,
+      beforeSecondBounce: this.ball.secondBounceDeadline === 0 || now < this.ball.secondBounceDeadline,
+      planeCrossed: collision?.crossed ?? false,
+      insideEllipse: (collision?.ellipseValue ?? Number.POSITIVE_INFINITY) <= 1,
+      strokeStateIsContactReady: stroke.currentState === "CONTACT_WINDOW" || (assistMode === "easy" && !!motion && motion.valid && motion.angularSpeed >= minimum),
+      recentContactEvent: contactAge <= (assistMode === "easy" ? BALL_CONFIG.easyAssist.contactTimingToleranceMs : BALL_CONFIG.collision.contactEventToleranceMs),
+      swingSpeedAboveThreshold: (contact ? contact.estimatedSpeed / 3.2 : motion?.angularSpeed ?? 0) >= minimum,
+      racketPoseValid: (contact?.racketFaceAngle ?? motion?.racketFaceAngle ?? Number.POSITIVE_INFINITY) <= (assistMode === "easy" ? BALL_CONFIG.easyAssist.maximumFaceAngleRadians : BALL_CONFIG.collision.maximumFaceAngleRadians),
+      hitAccepted: this.ball.hit,
+      ballToTargetDistance: this.ball.position.distanceTo(this.ball.contactTarget),
+      ballToStringBedDistance: this.ball.position.distanceTo(center),
+      currentSwingSpeed: contact ? contact.estimatedSpeed / 3.2 : motion?.angularSpeed ?? 0,
+      minimumSwingSpeed: minimum,
+      stringBedCenter: center
+    });
+    const failed = Object.entries(this.hitDebug).find(([key, value]) => typeof value === "boolean" && key !== "recentContactEvent" && key !== "planeCrossed" && key !== "insideEllipse" && key !== "hitAccepted" && !value);
+    this.hitDebug.rejectionReason = failed?.[0] ?? (this.ball.hit ? "none" : "waiting for plane crossing");
+  }
+
+  private createEasyContact(now: number, motion: EasyHitMotion): EstimatedRacketContact {
+    const strokeType = this.ball.launchPreset === "easyBackhand" ? "backhand" : "forehand";
+    return {
+      id: `easy-${this.ball.id}-${Math.round(now)}`, swingId: `easy-${this.ball.id}`, timestamp: now,
+      strokeType, handedness: motion.handedness, backhandStyle: motion.backhandStyle, confidence: 0.72,
+      estimatedSpeed: Math.max(2.2, motion.angularSpeed * 3.2), forwardScore: 0.65,
+      upwardScore: 0.25, sidewaysScore: strokeType === "forehand" ? 0.5 : -0.5,
+      racketFaceAngle: motion.racketFaceAngle, racketQuaternion: motion.racketQuaternion.clone(),
+      racketPosition: this.hitDebug.stringBedCenter.clone(), racketForwardVector: motion.racketForwardVector.clone(),
+      racketUpVector: motion.racketUpVector.clone(), racketSideVector: motion.racketSideVector.clone(),
+      racketFaceNormal: motion.racketFaceNormal.clone(), peakAngularVelocity: motion.angularSpeed,
+      peakAcceleration: motion.accelerationMagnitude, peakJerk: 0, preparationDuration: 0,
+      forwardSwingDuration: 0, lowToHighScore: 0.25, highToLowScore: 0,
+      topspinScore: 0.2, sliceScore: 0.1, spinType: "flat"
+    };
   }
 
   private emitMiss(now: number, reason: string, stroke: StrokeDetectorSnapshot, contact: EstimatedRacketContact | null, matrix: THREE.Matrix4): void {

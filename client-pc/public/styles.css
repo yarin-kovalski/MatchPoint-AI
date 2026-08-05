@@ -345,6 +345,16 @@ article strong {
   color: #eff9ea;
 }
 
+.hit-debug-panel {
+  margin-top: 8px;
+  padding: 7px 8px;
+  border-left: 3px solid #b8ff2c;
+  background: rgba(7, 17, 29, 0.82);
+  color: #dce8d8;
+  font: 0.66rem/1.4 Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
 .ball-tuning {
   margin-top: 8px;
   color: #aebbc9;
