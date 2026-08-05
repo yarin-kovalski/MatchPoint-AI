@@ -219,6 +219,7 @@ const elements = {
   showContactTargetToggle: getElement<HTMLInputElement>("showContactTargetToggle"),
   showTrajectoryToggle: getElement<HTMLInputElement>("showTrajectoryToggle"),
   showStringCenterToggle: getElement<HTMLInputElement>("showStringCenterToggle"),
+  showBallAtContact: getElement<HTMLButtonElement>("showBallAtContact"),
   resetBallVisualSettings: getElement<HTMLButtonElement>("resetBallVisualSettings"),
   debugBallScale: getElement("debugBallScale"),
   debugDeliveryTarget: getElement("debugDeliveryTarget"),
@@ -253,9 +254,10 @@ let lastBallFrameAt = performance.now();
 let lastBallBounceCount = 0;
 let ballRelaunchAt = 0;
 let ballVisualScaleMultiplier: number = BALL_CONFIG.scale.visualScaleMultiplier;
-let contactHeightOffset = -0.18;
-let contactSideOffsetMagnitude = 0.14;
+let contactHeightOffset = -0.06;
+let contactSideOffsetMagnitude = 0.06;
 let contactDepthOffset = 0;
+let showBallAtContactPreview = false;
 const gyroQuaternion = new THREE.Quaternion();
 const relativeOrientationQuaternion = new THREE.Quaternion();
 const calibrationBaselineInverse = new THREE.Quaternion();
@@ -391,12 +393,12 @@ const ballMesh = new THREE.Mesh(
   ),
   new THREE.MeshPhysicalMaterial({
     map: createProceduralTennisBallTexture(renderer),
-    color: 0xffffff,
+    color: 0xdfff3f,
     roughness: 0.88,
     metalness: 0,
     clearcoat: 0.04,
-    emissive: 0x182400,
-    emissiveIntensity: 0.08
+    emissive: 0x304d00,
+    emissiveIntensity: 0.22
   })
 );
 ballMesh.castShadow = true;
@@ -405,7 +407,7 @@ ballMesh.visible = false;
 scene.add(ballMesh);
 
 const ballShadow = new THREE.Mesh(
-  new THREE.CircleGeometry(0.085, 24),
+  new THREE.CircleGeometry(1, 24),
   new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.38, depthWrite: false })
 );
 ballShadow.rotation.x = -Math.PI / 2;
@@ -414,9 +416,10 @@ scene.add(ballShadow);
 
 const ballTrailPositions: THREE.Vector3[] = [];
 const ballTrailGeometry = new THREE.BufferGeometry();
+const ballTrailMaterial = new THREE.LineBasicMaterial({ color: 0xdfff72, transparent: true, opacity: 0.38 });
 const ballTrail = new THREE.Line(
   ballTrailGeometry,
-  new THREE.LineBasicMaterial({ color: 0xdfff72, transparent: true, opacity: 0.38 })
+  ballTrailMaterial
 );
 ballTrail.visible = false;
 scene.add(ballTrail);
@@ -1333,6 +1336,10 @@ function wireBallControls(): void {
   elements.contactSideInput.addEventListener("input", readDeliveryTuning);
   elements.contactDepthInput.addEventListener("input", readDeliveryTuning);
   elements.resetBallVisualSettings.addEventListener("click", resetBallVisualSettings);
+  elements.showBallAtContact.addEventListener("click", () => {
+    showBallAtContactPreview = !showBallAtContactPreview;
+    elements.showBallAtContact.textContent = showBallAtContactPreview ? "Hide Ball At Contact" : "Show Ball At Contact";
+  });
 }
 
 function updateBallHelperVisibility(): void {
@@ -1357,6 +1364,7 @@ function updateBallVisualScale(): void {
         );
   ballMesh.scale.setScalar(ballVisualScaleMultiplier / BALL_CONFIG.scale.visualScaleMultiplier);
   ballController.ball.visualRadius = ballController.ball.physicsRadius * ballVisualScaleMultiplier;
+  ballTrailMaterial.opacity = THREE.MathUtils.clamp(ballController.ball.visualRadius * 4.5, 0.18, 0.48);
 }
 
 function readDeliveryTuning(): void {
@@ -1368,8 +1376,8 @@ function readDeliveryTuning(): void {
 function resetBallVisualSettings(): void {
   elements.ballVisualSizeSelect.value = "readable";
   elements.ballVisualScaleInput.value = String(BALL_CONFIG.scale.visualScaleMultiplier);
-  elements.contactHeightInput.value = "-0.18";
-  elements.contactSideInput.value = "0.14";
+  elements.contactHeightInput.value = "-0.06";
+  elements.contactSideInput.value = "0.06";
   elements.contactDepthInput.value = "0";
   elements.showContactTargetToggle.checked = false;
   elements.showTrajectoryToggle.checked = false;
@@ -1380,6 +1388,8 @@ function resetBallVisualSettings(): void {
 }
 
 function launchBall(preset: LaunchPreset): void {
+  showBallAtContactPreview = false;
+  elements.showBallAtContact.textContent = "Show Ball At Contact";
   activeLaunchPreset = preset;
   const sideOffset = preset === "easyBackhand"
     ? -contactSideOffsetMagnitude
@@ -1431,14 +1441,22 @@ function onBallMiss(event: BallMissEvent): void {
 
 function updateBallVisuals(deltaSeconds: number): void {
   const ball = ballController.ball;
-  ballMesh.visible = ball.active || ball.state === "OUT";
-  ballMesh.position.copy(ball.position);
+  const previewTarget = getBallDeliveryTarget({
+    preset: activeLaunchPreset,
+    handedness: strokeStateMachine.getHandedness(),
+    backhandStyle: strokeStateMachine.getBackhandStyle(),
+    heightOffset: contactHeightOffset,
+    sideOffset: activeLaunchPreset === "easyBackhand" ? -contactSideOffsetMagnitude : contactSideOffsetMagnitude,
+    depthOffset: contactDepthOffset
+  });
+  ballMesh.visible = showBallAtContactPreview || ball.active || ball.state === "OUT";
+  ballMesh.position.copy(showBallAtContactPreview && !ball.active ? previewTarget : ball.position);
   integrateBallRotation(ballMesh.quaternion, ball.angularVelocity, deltaSeconds);
-  const height = Math.max(0, ball.position.y - BALL_CONFIG.courtHeight);
+  const height = Math.max(0, ballMesh.position.y - BALL_CONFIG.courtHeight);
   const shadowScale = THREE.MathUtils.clamp(1 + height * 0.45, 1, 2.8);
   ballShadow.visible = ballMesh.visible;
-  ballShadow.position.set(ball.position.x, BALL_CONFIG.courtHeight + 0.008, ball.position.z);
-  ballShadow.scale.set(shadowScale, shadowScale * 0.65, 1);
+  ballShadow.position.set(ballMesh.position.x, BALL_CONFIG.courtHeight + 0.008, ballMesh.position.z);
+  ballShadow.scale.set(ball.visualRadius * shadowScale, ball.visualRadius * shadowScale * 0.65, 1);
   (ballShadow.material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.clamp(0.42 - height * 0.07, 0.09, 0.38);
   if (ball.active) {
     ballTrailPositions.push(ball.position.clone());
@@ -1484,10 +1502,7 @@ function updateContactTargetGuide(): void {
   contactTargetVolume.visible = elements.ballDebugToggle.checked || elements.showContactTargetToggle.checked;
   contactHeightGuide.visible = contactTargetVolume.visible;
   expectedRacketMarker.position.copy(expected.stringBedCenter).sub(target);
-  contactHeightGuide.geometry.setFromPoints([
-    new THREE.Vector3(0, BALL_CONFIG.courtHeight - target.y, 0),
-    new THREE.Vector3(0, 0, 0)
-  ]);
+  contactHeightGuide.geometry.setFromPoints([new THREE.Vector3(), expected.stringBedCenter.clone().sub(target)]);
   contactHeightGuide.computeLineDistances();
 }
 
@@ -1531,13 +1546,12 @@ function updateBallDebug(): void {
       `ellipse ${collision.ellipseValue.toFixed(2)}, candidate ${collision.candidate}`
     : "waiting";
   const contactAge = lastContactEvent ? Math.abs(Date.now() - lastContactEvent.timestamp) : null;
-  const timeToZone = ball.velocity.z > 0
-    ? Math.max(0, (BALL_CONFIG.contactZone.minimumZ - ball.position.z) / ball.velocity.z)
-    : Number.POSITIVE_INFINITY;
+  const timeToZone = ball.contactDeadline > 0 ? Math.max(0, (ball.contactDeadline - Date.now()) / 1000) : Number.POSITIVE_INFINITY;
+  const targetDistance = ball.position.distanceTo(ball.contactTarget);
   elements.debugBallValidity.textContent =
     `active ${ball.active}, hit ${ball.hit}, stroke ${latestStrokeSnapshot?.currentState ?? "READY"}, ` +
     `contact age ${contactAge === null ? "none" : `${Math.round(contactAge)} ms`}, assist ${assistMode}, ` +
-    `zone ETA ${Number.isFinite(timeToZone) ? `${timeToZone.toFixed(2)} s` : "--"}, ` +
+    `contact ETA ${Number.isFinite(timeToZone) ? `${timeToZone.toFixed(2)} s` : "--"}, target gap ${targetDistance.toFixed(2)} m, ` +
     `racket distance ${collision?.closestDistance.toFixed(2) ?? "--"} m, magnus ${formatVector(ball.magnusAcceleration)}`;
   elements.debugBallResult.textContent = ballController.lastHit
     ? `HIT ${ballController.lastHit.strokeType}, assisted ${ballController.lastHit.assisted}`

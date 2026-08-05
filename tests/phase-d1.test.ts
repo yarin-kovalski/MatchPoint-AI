@@ -10,6 +10,7 @@ import { sweepBallAgainstRacket } from "../client-pc/src/ball/racketCollider.js"
 import { BallSnapshot } from "../client-pc/src/ball/ballTypes.js";
 import { createProceduralTennisBallTexture, integrateBallRotation, resetTennisBallTextureCache } from "../client-pc/src/ball/ballVisuals.js";
 import { EstimatedRacketContact } from "../client-pc/src/strokeDetection/strokeTypes.js";
+import { shouldEnterContactZone } from "../client-pc/src/ball/BallController.js";
 
 function simulatedDelivery(preset: "easyForehand" | "easyBackhand", handedness: "right" | "left") {
   const launch = getLaunchParameters(preset, handedness, "normal");
@@ -21,7 +22,7 @@ function simulatedDelivery(preset: "easyForehand" | "easyBackhand", handedness: 
     visualRadius: BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier,
     bounceCount: 0, hit: false, active: true, launchTimestamp: 0, launchPreset: preset,
     contactTarget: launch.contactTarget.clone(), bouncePoint: launch.bouncePoint.clone(),
-    contactTimeAfterBounce: launch.contactTimeAfterBounce
+    contactTimeAfterBounce: launch.contactTimeAfterBounce, contactDeadline: 0
   };
   let bouncedAt = -1;
   for (let time = 0; time < 2; time += 0.005) {
@@ -55,15 +56,16 @@ test("physical radius remains a real tennis ball radius", () => {
   assert.equal(BALL_CONFIG.scale.metersPerWorldUnit, 1);
 });
 test("visual and physical radii are distinct", () => {
-  assert.ok(BALL_CONFIG.scale.visualScaleMultiplier > 1);
+  assert.ok(BALL_CONFIG.scale.visualScaleMultiplier >= 1.8);
   assert.ok(BALL_CONFIG.scale.visualScaleMultiplier <= BALL_CONFIG.scale.maximumVisualScaleMultiplier);
 });
 test("collision acceptance uses physical radius regardless of visual radius", () => {
-  const x = BALL_CONFIG.collision.halfWidthLocal + 4;
+  const x = BALL_CONFIG.collision.halfWidthLocal + 0.05;
   const matrix = new THREE.Matrix4();
   const physical = sweepBallAgainstRacket(new THREE.Vector3(x, 0, -1), new THREE.Vector3(x, 0, 1), BALL_CONFIG.scale.physicalRadiusMeters, matrix, "off");
-  const repeated = sweepBallAgainstRacket(new THREE.Vector3(x, 0, -1), new THREE.Vector3(x, 0, 1), BALL_CONFIG.scale.physicalRadiusMeters, matrix, "off");
-  assert.equal(physical.candidate, repeated.candidate);
+  const visuallyEnlarged = sweepBallAgainstRacket(new THREE.Vector3(x, 0, -1), new THREE.Vector3(x, 0, 1), BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier, matrix, "off");
+  assert.equal(physical.candidate, false);
+  assert.equal(visuallyEnlarged.candidate, true);
 });
 test("right-handed forehand target is on player right", () => assert.ok(getBallDeliveryTarget({ preset: "easyForehand", handedness: "right", backhandStyle: "one-handed" }).x > 0));
 test("right-handed backhand target mirrors to player left", () => assert.ok(getBallDeliveryTarget({ preset: "easyBackhand", handedness: "right", backhandStyle: "one-handed" }).x < 0));
@@ -80,7 +82,7 @@ test("forehand target remains near expected string center", () => {
 test("backhand target remains near expected string center", () => {
   const target = getBallDeliveryTarget({ preset: "easyBackhand", handedness: "right", backhandStyle: "one-handed" });
   const expected = getExpectedRacketContactTransform({ strokeType: "backhand", handedness: "right", backhandStyle: "one-handed" });
-  assert.ok(target.distanceTo(expected.stringBedCenter) < 0.26);
+  assert.ok(target.distanceTo(expected.stringBedCenter) < 0.1);
 });
 test("default delivery target lies on the expected string plane", () => {
   const target = getBallDeliveryTarget({ preset: "easyForehand", handedness: "right", backhandStyle: "one-handed" });
@@ -108,6 +110,30 @@ test("projected contact diameter meets readability threshold", () => {
     target, new THREE.Vector3(...BALL_CONFIG.camera.position), THREE.MathUtils.degToRad(BALL_CONFIG.camera.fovDegrees), 1024
   );
   assert.ok(pixels >= BALL_CONFIG.scale.minimumReadablePixelDiameter);
+});
+test("visual ball remains smaller than the measured racket head", () => {
+  const visualDiameter = BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier * 2;
+  assert.ok(visualDiameter < BALL_CONFIG.scale.measuredRacketHeadWorldWidth);
+  assert.ok(BALL_CONFIG.scale.measuredRacketHeadWorldWidth / visualDiameter > 4);
+});
+test("CONTACT_ZONE requires a close post-bounce ball near its deadline", () => {
+  const result = simulatedDelivery("easyForehand", "right");
+  const value = result.value;
+  value.bounceCount = 1;
+  value.velocity.set(0, 1, 3);
+  value.contactDeadline = 1200;
+  value.position.copy(value.contactTarget).add(new THREE.Vector3(0, 0, -1.2));
+  assert.equal(shouldEnterContactZone(value, 1100), false);
+  value.position.copy(value.contactTarget).add(new THREE.Vector3(0, 0, -0.25));
+  assert.equal(shouldEnterContactZone(value, 1100), true);
+});
+test("both easy trajectories pass near the expected string-bed center", () => {
+  for (const preset of ["easyForehand", "easyBackhand"] as const) {
+    const result = simulatedDelivery(preset, "right");
+    const expected = getExpectedRacketContactTransform({ strokeType: preset === "easyForehand" ? "forehand" : "backhand", handedness: "right", backhandStyle: "one-handed" });
+    assert.ok(result.value.position.distanceTo(expected.stringBedCenter) < 0.12);
+    assert.equal(result.value.bounceCount, 1);
+  }
 });
 test("procedural tennis texture is cached and reused", () => {
   resetTennisBallTextureCache();

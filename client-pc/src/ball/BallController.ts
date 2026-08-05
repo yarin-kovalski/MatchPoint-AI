@@ -8,6 +8,13 @@ import { solveVelocity } from "./ballDelivery.js";
 import { sweepBallAgainstRacket } from "./racketCollider.js";
 import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset, LaunchPreset, RacketCollisionResult } from "./ballTypes.js";
 
+export function shouldEnterContactZone(ball: BallSnapshot, now: number): boolean {
+  const timeToContact = ball.contactDeadline - now;
+  return !ball.hit && ball.bounceCount === 1 && ball.velocity.z > 0 &&
+    timeToContact >= 0 && timeToContact <= BALL_CONFIG.contactZone.maximumTimeToContactMs &&
+    ball.position.distanceTo(ball.contactTarget) <= BALL_CONFIG.contactZone.maximumTargetDistance;
+}
+
 export class BallController {
   readonly ball: BallSnapshot = {
     id: "ball-0", state: "IDLE", position: new THREE.Vector3(), previousPosition: new THREE.Vector3(),
@@ -16,7 +23,8 @@ export class BallController {
     physicsRadius: BALL_CONFIG.scale.physicalRadiusMeters,
     visualRadius: BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier,
     bounceCount: 0, hit: false, active: false, launchTimestamp: 0, launchPreset: null,
-    contactTarget: new THREE.Vector3(), bouncePoint: new THREE.Vector3(), contactTimeAfterBounce: 0
+    contactTarget: new THREE.Vector3(), bouncePoint: new THREE.Vector3(), contactTimeAfterBounce: 0,
+    contactDeadline: 0
   };
   lastCollision: RacketCollisionResult | null = null;
   lastHit: BallHitEvent | null = null;
@@ -58,6 +66,7 @@ export class BallController {
     this.ball.contactTarget.copy(launch.contactTarget);
     this.ball.bouncePoint.copy(launch.bouncePoint);
     this.ball.contactTimeAfterBounce = launch.contactTimeAfterBounce;
+    this.ball.contactDeadline = 0;
     this.finalResultEmitted = false;
     this.closestDistance = Number.POSITIVE_INFINITY;
     this.lastCollision = null;
@@ -71,6 +80,7 @@ export class BallController {
     this.ball.velocity.set(0, 0, 0);
     this.ball.spinVector.set(0, 0, 0);
     this.ball.angularVelocity.set(0, 0, 0);
+    this.ball.contactDeadline = 0;
     this.lastCollision = null;
   }
 
@@ -98,11 +108,10 @@ export class BallController {
           this.ball.contactTarget,
           this.ball.contactTimeAfterBounce
         ));
+        this.ball.contactDeadline = now + this.ball.contactTimeAfterBounce * 1000;
       }
     }
-    if (!this.ball.hit && this.ball.position.z >= BALL_CONFIG.contactZone.minimumZ &&
-      this.ball.position.z <= BALL_CONFIG.contactZone.maximumZ &&
-      Math.abs(this.ball.position.x) <= BALL_CONFIG.contactZone.maximumX) {
+    if (shouldEnterContactZone(this.ball, now)) {
       this.ball.state = "CONTACT_ZONE";
     }
     if (!this.ball.hit && this.ball.velocity.z > 0) {

@@ -19,7 +19,7 @@ function ball(): BallSnapshot {
     visualRadius: BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier, bounceCount: 0,
     hit: false, active: true, launchTimestamp: 0, launchPreset: "easyForehand",
     contactTarget: new THREE.Vector3(0.16, 2.2, -2.94), bouncePoint: new THREE.Vector3(0.08, 0.1035, -4.35),
-    contactTimeAfterBounce: 0.58
+    contactTimeAfterBounce: 0.58, contactDeadline: 0
   };
 }
 
