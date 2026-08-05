@@ -30,6 +30,7 @@ type SocketState = "offline" | "connecting" | "connected" | "error";
 const SENSOR_INTERVAL_MS = 16;
 const STROKE_THRESHOLD_G = 1.5;
 const STROKE_COOLDOWN_MS = 1000;
+const USE_LEGACY_STROKE_DETECTOR = false;
 const DEFAULT_SERVER_URL =
   process.env.EXPO_PUBLIC_SERVER_URL ?? "http://10.0.0.25:3000";
 
@@ -220,7 +221,9 @@ export default function App() {
         accelerationRef.current = sample;
         setAccel(sample);
         setReadyPose(isTennisReadyPhonePose(sample));
-        detectStroke(sample.x);
+        if (USE_LEGACY_STROKE_DETECTOR) {
+          detectStroke(sample.x);
+        }
       });
 
       subscriptionsRef.current = [motionSubscription, accelSubscription];

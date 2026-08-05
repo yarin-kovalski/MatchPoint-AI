@@ -5,6 +5,19 @@ import {
   NormalizedSensorFrame,
   SensorNormalizer
 } from "./motion/sensorNormalization.js";
+import { STROKE_CONFIG } from "./strokeDetection/strokeConfig.js";
+import {
+  deserializeFrame,
+  MotionRecorder,
+  RecordingLabel
+} from "./strokeDetection/motionRecorder.js";
+import { StrokeStateMachine } from "./strokeDetection/strokeStateMachine.js";
+import {
+  BackhandStyle,
+  EstimatedRacketContact,
+  Handedness,
+  StrokeDetectorSnapshot
+} from "./strokeDetection/strokeTypes.js";
 
 type BrokerStatus = {
   mobileClients: number;
@@ -152,7 +165,31 @@ const elements = {
   debugMotionScores: getElement("debugMotionScores"),
   debugRacketBasis: getElement("debugRacketBasis"),
   debugFaceAngle: getElement("debugFaceAngle"),
-  debugSensorValidity: getElement("debugSensorValidity")
+  debugSensorValidity: getElement("debugSensorValidity"),
+  strokeState: getElement("strokeState"),
+  strokeType: getElement("strokeType"),
+  strokeConfidence: getElement("strokeConfidence"),
+  spinStatus: getElement("spinStatus"),
+  lastContact: getElement("lastContact"),
+  handednessSelect: getElement<HTMLSelectElement>("handednessSelect"),
+  backhandStyleSelect: getElement<HTMLSelectElement>("backhandStyleSelect"),
+  recordingLabelSelect: getElement<HTMLSelectElement>("recordingLabelSelect"),
+  startRecordingButton: getElement<HTMLButtonElement>("startRecordingButton"),
+  stopRecordingButton: getElement<HTMLButtonElement>("stopRecordingButton"),
+  downloadRecordingButton: getElement<HTMLButtonElement>("downloadRecordingButton"),
+  replayRecordingButton: getElement<HTMLButtonElement>("replayRecordingButton"),
+  stopReplayButton: getElement<HTMLButtonElement>("stopReplayButton"),
+  debugStrokeState: getElement("debugStrokeState"),
+  debugPlayerSetup: getElement("debugPlayerSetup"),
+  debugCandidates: getElement("debugCandidates"),
+  debugStrokeScores: getElement("debugStrokeScores"),
+  debugStateDuration: getElement("debugStateDuration"),
+  debugPreparationDuration: getElement("debugPreparationDuration"),
+  debugSpinScores: getElement("debugSpinScores"),
+  debugStrokeRejection: getElement("debugStrokeRejection"),
+  debugLastStroke: getElement("debugLastStroke"),
+  debugLastContactTimestamp: getElement("debugLastContactTimestamp"),
+  debugStrokeTimeline: getElement("debugStrokeTimeline")
 };
 
 let packetCount = 0;
@@ -160,6 +197,8 @@ let latestPacket: BrokeredMotionPacket | null = null;
 let previousPacket: BrokeredMotionPacket | null = null;
 let latestOrientationPacket: BrokeredContinuousOrientationPacket | null = null;
 let latestSensorFrame: NormalizedSensorFrame | null = null;
+let latestStrokeSnapshot: StrokeDetectorSnapshot | null = null;
+let lastContactEvent: EstimatedRacketContact | null = null;
 let targetRotationX = 0;
 let targetRotationY = 0;
 let targetRotationZ = 0;
@@ -171,6 +210,9 @@ let calibrationRequested = false;
 let hasCalibrationBaseline = false;
 let alignmentStableSince: number | null = null;
 let activeStroke: { type: StrokeType; startedAt: number; durationMs: number } | null = null;
+let replayActive = false;
+let replayTimer: number | null = null;
+let contactFlashUntil = 0;
 const gyroQuaternion = new THREE.Quaternion();
 const relativeOrientationQuaternion = new THREE.Quaternion();
 const calibrationBaselineInverse = new THREE.Quaternion();
@@ -204,6 +246,8 @@ const ghostFarColor = new THREE.Color(0xff3048);
 const ghostAlignedColor = new THREE.Color(0x8dff75);
 const ghostCurrentColor = new THREE.Color();
 const sensorNormalizer = new SensorNormalizer();
+const motionRecorder = new MotionRecorder();
+const USE_LEGACY_STROKE_DETECTOR = false;
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
@@ -258,7 +302,11 @@ scene.add(racketRoot);
 
 const orientationPivot = new THREE.Group();
 orientationPivot.name = "orientationPivot";
-racketRoot.add(orientationPivot);
+
+const proceduralPositionPivot = new THREE.Group();
+proceduralPositionPivot.name = "proceduralPositionPivot";
+racketRoot.add(proceduralPositionPivot);
+proceduralPositionPivot.add(orientationPivot);
 
 const modelCorrectionPivot = new THREE.Group();
 modelCorrectionPivot.name = "modelCorrectionPivot";
@@ -284,6 +332,12 @@ if (SHOW_AXIS_HELPERS) {
 elements.orientationDebug.hidden = !SHOW_ORIENTATION_DEBUG;
 elements.calibrateButton.disabled = true;
 elements.calibrateButton.addEventListener("click", calibrateFromLatestPhonePose);
+const strokeStateMachine = new StrokeStateMachine(
+  "right",
+  "one-handed",
+  onEstimatedRacketContact
+);
+wireStrokeControls();
 loadRacketModel();
 
 const farCourtHaze = createFarCourtHaze();
@@ -345,7 +399,7 @@ socket.on("continuous_orientation", (payload: unknown) => {
     .clone()
     .multiply(packetRelativeQuaternion)
     .multiply(racketModelCorrectionQuaternion);
-  latestSensorFrame = sensorNormalizer.process({
+  const processedFrame = sensorNormalizer.process({
     timestamp: orientationPacket.t,
     sensorTimestamp: orientationPacket.sensorTimestamp,
     currentPhoneQuaternion: rawPhoneQuaternion,
@@ -356,6 +410,14 @@ socket.on("continuous_orientation", (payload: unknown) => {
       orientationPacket.accelerationIncludingGravity
     )
   });
+
+  if (!replayActive) {
+    latestSensorFrame = processedFrame;
+    if (isCalibrated) {
+      processStrokeFrame(processedFrame);
+      motionRecorder.capture(processedFrame);
+    }
+  }
 
   elements.packetCount.textContent = String(packetCount);
   elements.inputMode.textContent = "expo";
@@ -376,7 +438,7 @@ socket.on("controller:calibrated", (payload: unknown) => {
 });
 
 socket.on("stroke_detected", (payload: unknown) => {
-  if (!isCalibrated) {
+  if (!USE_LEGACY_STROKE_DETECTOR || !isCalibrated) {
     return;
   }
 
@@ -683,7 +745,12 @@ function animate(): void {
     MOTION_CONFIG.smoothing.visualizationOrientation
   );
   displayedRelativeQuaternion.copy(orientationPivot.quaternion);
-  racketRoot.position.copy(neutralRacketPosition).add(getStrokePositionOffset());
+  racketRoot.position.copy(neutralRacketPosition);
+  updateProceduralPosition();
+  if (USE_LEGACY_STROKE_DETECTOR) {
+    racketRoot.position.add(getStrokePositionOffset());
+  }
+  rimLight.intensity = performance.now() < contactFlashUntil ? 42 : 26;
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
 
@@ -699,6 +766,7 @@ function animate(): void {
   animateDust(elapsed);
   updateCalibrationGuide(elapsed);
   updateOrientationDebug();
+  updateStrokeDebug();
   updateConnectionStatus();
   updatePacketAge();
 
@@ -754,6 +822,7 @@ function calibrateFromLatestPhonePose(): void {
 }
 
 function beginCalibration(currentPhoneQuaternion: THREE.Quaternion): void {
+  stopReplay();
   neutralPhoneQuaternion.copy(currentPhoneQuaternion).normalize();
   calibrationBaselineInverse.copy(neutralPhoneQuaternion).invert();
   sensorNormalizer.reset();
@@ -763,6 +832,9 @@ function beginCalibration(currentPhoneQuaternion: THREE.Quaternion): void {
   calibrationRequested = true;
   alignmentStableSince = null;
   activeStroke = null;
+  strokeStateMachine.reset(Date.now(), "calibration started");
+  latestStrokeSnapshot = strokeStateMachine.getSnapshot(Date.now());
+  proceduralPositionPivot.position.set(0, 0, 0);
   targetRacketQuaternion.identity();
   relativeOrientationQuaternion.identity();
   orientationPivot.quaternion.identity();
@@ -855,6 +927,190 @@ function nullableVectorToThree(
   return new THREE.Vector3(value?.x ?? 0, value?.y ?? 0, value?.z ?? 0);
 }
 
+function processStrokeFrame(frame: NormalizedSensorFrame): void {
+  const racketPosition = new THREE.Vector3();
+  racketRoot.getWorldPosition(racketPosition);
+  strokeStateMachine.process(frame, racketPosition);
+  latestStrokeSnapshot = strokeStateMachine.getSnapshot(frame.timestamp);
+}
+
+function onEstimatedRacketContact(event: EstimatedRacketContact): void {
+  lastContactEvent = event;
+  contactFlashUntil = performance.now() + 120;
+  targetSwingSpeedKmh = Math.max(targetSwingSpeedKmh, event.estimatedSpeed);
+  peakSwingSpeedKmh = Math.max(peakSwingSpeedKmh, event.estimatedSpeed);
+}
+
+function updateProceduralPosition(): void {
+  const snapshot = latestStrokeSnapshot;
+  const path = STROKE_CONFIG.proceduralPath;
+  let target: readonly number[] = path.ready;
+
+  if (snapshot) {
+    switch (snapshot.currentState) {
+      case "PREPARATION":
+        target = path.preparation;
+        break;
+      case "BACKSWING":
+        target = path.backswing;
+        break;
+      case "RACKET_DROP":
+        target = path.racketDrop;
+        break;
+      case "FORWARD_SWING":
+        target = path.forwardSwing;
+        break;
+      case "CONTACT_WINDOW":
+        target = path.contactWindow;
+        break;
+      case "FOLLOW_THROUGH":
+        target = path.followThrough;
+        break;
+      case "RECOVERY":
+        target = path.recovery;
+        break;
+    }
+  }
+
+  const handSign = strokeStateMachine.getHandedness() === "right" ? 1 : -1;
+  const preparationSign = snapshot?.lockedStrokeType === "backhand"
+    ? -handSign
+    : snapshot?.lockedStrokeType === "forehand"
+      ? handSign
+      : (snapshot?.scores.forehandCandidateScore ?? 0) >=
+          (snapshot?.scores.backhandCandidateScore ?? 0)
+        ? handSign
+        : -handSign;
+  strokePositionOffset.set(target[0] * preparationSign, target[1], target[2]);
+  // racketRoot is scaled for the GLB's centimeter-sized coordinates.
+  strokePositionOffset.multiplyScalar(100);
+  proceduralPositionPivot.position.lerp(strokePositionOffset, path.smoothing);
+}
+
+function updateStrokeDebug(): void {
+  const snapshot = latestStrokeSnapshot;
+  if (!snapshot) {
+    elements.strokeState.textContent = "READY";
+    elements.strokeType.textContent = "--";
+    elements.strokeConfidence.textContent = "0%";
+    elements.spinStatus.textContent = "--";
+    elements.lastContact.textContent = "none";
+    return;
+  }
+
+  const scores = snapshot.scores;
+  elements.strokeState.textContent = replayActive
+    ? `${snapshot.currentState} (replay)`
+    : snapshot.currentState;
+  elements.strokeType.textContent = snapshot.lockedStrokeType;
+  elements.strokeConfidence.textContent = `${Math.round(snapshot.confidence * 100)}%`;
+  elements.spinStatus.textContent = scores.spinType;
+  elements.lastContact.textContent = lastContactEvent
+    ? `${lastContactEvent.strokeType}, ${lastContactEvent.spinType}, ${lastContactEvent.estimatedSpeed.toFixed(1)} km/h`
+    : "none";
+  elements.debugStrokeState.textContent = snapshot.currentState;
+  elements.debugPlayerSetup.textContent =
+    `${strokeStateMachine.getHandedness()}, ${strokeStateMachine.getBackhandStyle()} backhand`;
+  elements.debugCandidates.textContent =
+    `forehand ${scores.forehandCandidateScore.toFixed(2)}, ` +
+    `backhand ${scores.backhandCandidateScore.toFixed(2)}, ` +
+    `margin ${scores.classificationMargin.toFixed(2)}`;
+  elements.debugStrokeScores.textContent =
+    `prep ${scores.preparationScore.toFixed(2)}, reversal ${scores.reversalScore.toFixed(2)}, ` +
+    `forward ${scores.forwardSwingScore.toFixed(2)}, contact ${scores.contactScore.toFixed(2)}, ` +
+    `follow ${scores.followThroughScore.toFixed(2)}`;
+  elements.debugStateDuration.textContent = `${Math.round(snapshot.stateDuration)} ms`;
+  elements.debugPreparationDuration.textContent = `${Math.round(snapshot.preparationDuration)} ms`;
+  elements.debugSpinScores.textContent =
+    `low-to-high ${scores.lowToHighScore.toFixed(2)}, ` +
+    `high-to-low ${scores.highToLowScore.toFixed(2)}, ` +
+    `topspin ${scores.topspinScore.toFixed(2)}, slice ${scores.sliceScore.toFixed(2)}`;
+  elements.debugStrokeRejection.textContent = snapshot.rejectionReason || "none";
+  elements.debugLastStroke.textContent = snapshot.lastCompletedStroke;
+  elements.debugLastContactTimestamp.textContent = snapshot.lastContactTimestamp === null
+    ? "none"
+    : String(Math.round(snapshot.lastContactTimestamp));
+  elements.debugStrokeTimeline.textContent = snapshot.transitions.join(" -> ");
+}
+
+function wireStrokeControls(): void {
+  elements.handednessSelect.addEventListener("change", () => {
+    strokeStateMachine.setHandedness(elements.handednessSelect.value as Handedness);
+  });
+  elements.backhandStyleSelect.addEventListener("change", () => {
+    strokeStateMachine.setBackhandStyle(elements.backhandStyleSelect.value as BackhandStyle);
+  });
+  elements.startRecordingButton.addEventListener("click", () => {
+    motionRecorder.start(elements.recordingLabelSelect.value as RecordingLabel);
+    elements.startRecordingButton.disabled = true;
+    elements.stopRecordingButton.disabled = false;
+  });
+  elements.stopRecordingButton.addEventListener("click", () => {
+    motionRecorder.stop();
+    elements.startRecordingButton.disabled = false;
+    elements.stopRecordingButton.disabled = true;
+    const hasRecording = motionRecorder.getLastRecording() !== null;
+    elements.downloadRecordingButton.disabled = !hasRecording;
+    elements.replayRecordingButton.disabled = !hasRecording;
+  });
+  elements.downloadRecordingButton.addEventListener("click", downloadLastRecording);
+  elements.replayRecordingButton.addEventListener("click", replayLastRecording);
+  elements.stopReplayButton.addEventListener("click", stopReplay);
+}
+
+function downloadLastRecording(): void {
+  const recording = motionRecorder.getLastRecording();
+  if (!recording) {
+    return;
+  }
+  const blob = new Blob([JSON.stringify(recording, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${recording.label}-${recording.createdAt}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function replayLastRecording(): void {
+  const recording = motionRecorder.getLastRecording();
+  if (!recording || recording.frames.length === 0) {
+    return;
+  }
+
+  stopReplay();
+  replayActive = true;
+  elements.replayRecordingButton.disabled = true;
+  elements.stopReplayButton.disabled = false;
+  const frames = recording.frames.map(deserializeFrame);
+  strokeStateMachine.reset(frames[0].timestamp, "replay started");
+
+  const playFrame = (index: number): void => {
+    if (!replayActive) {
+      return;
+    }
+    latestSensorFrame = frames[index];
+    processStrokeFrame(frames[index]);
+    if (index >= frames.length - 1) {
+      stopReplay();
+      return;
+    }
+    const delay = clamp(frames[index + 1].timestamp - frames[index].timestamp, 1, 100);
+    replayTimer = window.setTimeout(() => playFrame(index + 1), delay);
+  };
+  playFrame(0);
+}
+
+function stopReplay(): void {
+  replayActive = false;
+  if (replayTimer !== null) {
+    window.clearTimeout(replayTimer);
+    replayTimer = null;
+  }
+  elements.stopReplayButton.disabled = true;
+  elements.replayRecordingButton.disabled = motionRecorder.getLastRecording() === null;
+}
+
 function completeCalibration(): void {
   isCalibrated = true;
   calibrationRequested = false;
@@ -862,10 +1118,14 @@ function completeCalibration(): void {
   elements.calibrationTitle.textContent = "Calibration complete";
   elements.calibrationInstructions.textContent = "Start position locked. The racket is ready.";
   elements.calibrationOverlay.classList.add("is-calibrated");
+  strokeStateMachine.reset(Date.now(), "calibration complete");
+  latestStrokeSnapshot = strokeStateMachine.getSnapshot(Date.now());
+  proceduralPositionPivot.position.set(0, 0, 0);
   socket.emit("calibration:complete", { t: Date.now() });
 }
 
 function resetCalibration(): void {
+  stopReplay();
   isCalibrated = false;
   calibrationRequested = false;
   hasCalibrationBaseline = false;
@@ -877,6 +1137,9 @@ function resetCalibration(): void {
   elements.calibrationTitle.textContent = "Calibrate start position";
   elements.calibrationInstructions.textContent =
     "Align the tracked racket inside the angled ghost racket, then tap Calibrate on the phone.";
+  strokeStateMachine.reset(Date.now(), "calibration reset");
+  latestStrokeSnapshot = strokeStateMachine.getSnapshot(Date.now());
+  proceduralPositionPivot.position.set(0, 0, 0);
 }
 
 function getStrokePositionOffset(): THREE.Vector3 {

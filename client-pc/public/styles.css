@@ -203,6 +203,83 @@ article strong {
   font-size: 0.92rem;
 }
 
+.stroke-status {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.stroke-status div {
+  min-width: 0;
+  padding: 7px;
+  border-left: 2px solid rgba(184, 255, 44, 0.5);
+  background: rgba(184, 255, 44, 0.045);
+}
+
+.stroke-status span,
+.stroke-status strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stroke-status span {
+  color: #8fa0b4;
+  font-size: 0.62rem;
+}
+
+.stroke-status strong {
+  margin-top: 3px;
+  color: #efffe9;
+  font-size: 0.76rem;
+}
+
+.stroke-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.stroke-controls label {
+  color: #91a2b6;
+  font-size: 0.64rem;
+}
+
+.stroke-controls select {
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px;
+  border: 1px solid rgba(184, 255, 44, 0.25);
+  border-radius: 5px;
+  background: #07111d;
+  color: #efffe9;
+}
+
+.recording-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.recording-controls button {
+  padding: 6px 8px;
+  border: 1px solid rgba(184, 255, 44, 0.3);
+  border-radius: 5px;
+  background: rgba(184, 255, 44, 0.08);
+  color: #dfffb2;
+  font-size: 0.65rem;
+  cursor: pointer;
+}
+
+.recording-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
 .orientation-debug {
   margin-top: 12px;
   padding-top: 10px;
@@ -243,6 +320,11 @@ article strong {
   }
 
   .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stroke-status,
+  .stroke-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

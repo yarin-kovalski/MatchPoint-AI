@@ -261,3 +261,9 @@ Animation:
 - Swing classification can be rough without calibration or training data.
 
 Mitigation: Phase 1 focuses on proving transport, orientation, and one simple real-time stat. Phase 3 can start with a robust decision tree before attempting a more advanced model.
+
+## Phase C Stroke State Machine
+
+The reusable forehand/backhand detector, thresholds, recording workflow, debug
+signals, contact contract, and physical test instructions are documented in
+[`phase-c-stroke-detection.md`](phase-c-stroke-detection.md).

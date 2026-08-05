@@ -11,6 +11,8 @@
   },
   "include": [
     "phase-b.test.ts",
-    "../client-pc/src/motion/**/*.ts"
+    "phase-c.test.ts",
+    "../client-pc/src/motion/**/*.ts",
+    "../client-pc/src/strokeDetection/**/*.ts"
   ]
 }

@@ -61,11 +61,51 @@
           <span>peak <strong id="peakSwingSpeed">0 km/h</strong></span>
         </div>
 
+        <section class="stroke-status" aria-label="Stroke detection status">
+          <div><span>Stroke state</span><strong id="strokeState">READY</strong></div>
+          <div><span>Type</span><strong id="strokeType">unknown</strong></div>
+          <div><span>Confidence</span><strong id="strokeConfidence">0%</strong></div>
+          <div><span>Spin</span><strong id="spinStatus">flat 0%</strong></div>
+          <div><span>Last contact</span><strong id="lastContact">none</strong></div>
+        </section>
+
+        <div class="stroke-controls">
+          <label>Handedness
+            <select id="handednessSelect">
+              <option value="right">Right-handed</option>
+              <option value="left">Left-handed</option>
+            </select>
+          </label>
+          <label>Backhand
+            <select id="backhandStyleSelect">
+              <option value="one-handed">One-handed</option>
+              <option value="two-handed">Two-handed</option>
+            </select>
+          </label>
+          <label>Recording label
+            <select id="recordingLabelSelect">
+              <option value="forehand">Forehand</option>
+              <option value="one-handed-backhand">One-handed backhand</option>
+              <option value="two-handed-backhand">Two-handed backhand</option>
+              <option value="noise">Noise</option>
+              <option value="shake">Shake</option>
+              <option value="incomplete-stroke">Incomplete stroke</option>
+            </select>
+          </label>
+        </div>
+        <div class="recording-controls">
+          <button id="startRecordingButton" type="button">Start recording</button>
+          <button id="stopRecordingButton" type="button" disabled>Stop</button>
+          <button id="downloadRecordingButton" type="button" disabled>Download JSON</button>
+          <button id="replayRecordingButton" type="button" disabled>Replay last</button>
+          <button id="stopReplayButton" type="button" disabled>Stop replay</button>
+        </div>
+
         <button id="calibrateButton" class="hud-calibrate" type="button" disabled>
           Calibrate Ready Pose
         </button>
 
-        <details id="orientationDebug" class="orientation-debug" open>
+        <details id="orientationDebug" class="orientation-debug">
           <summary>Orientation debug</summary>
           <dl>
             <dt>Source</dt><dd id="debugSource">waiting</dd>
@@ -82,6 +122,17 @@
             <dt>Racket basis</dt><dd id="debugRacketBasis">--</dd>
             <dt>Face angle</dt><dd id="debugFaceAngle">--</dd>
             <dt>Sensor validity</dt><dd id="debugSensorValidity">waiting</dd>
+            <dt>Stroke state</dt><dd id="debugStrokeState">READY</dd>
+            <dt>Player setup</dt><dd id="debugPlayerSetup">right, one-handed backhand</dd>
+            <dt>Candidates</dt><dd id="debugCandidates">--</dd>
+            <dt>Stroke scores</dt><dd id="debugStrokeScores">--</dd>
+            <dt>State duration</dt><dd id="debugStateDuration">0 ms</dd>
+            <dt>Preparation duration</dt><dd id="debugPreparationDuration">0 ms</dd>
+            <dt>Spin path scores</dt><dd id="debugSpinScores">--</dd>
+            <dt>Rejection</dt><dd id="debugStrokeRejection">none</dd>
+            <dt>Last stroke</dt><dd id="debugLastStroke">none</dd>
+            <dt>Last contact time</dt><dd id="debugLastContactTimestamp">none</dd>
+            <dt>Timeline</dt><dd id="debugStrokeTimeline">READY</dd>
             <dt>Mapping</dt><dd>phone +X → world +X; phone +Y → world -Z; phone +Z → world +Y</dd>
           </dl>
         </details>
