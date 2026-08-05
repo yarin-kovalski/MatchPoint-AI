@@ -18,6 +18,13 @@
     <main class="app-shell">
       <canvas id="sceneCanvas"></canvas>
 
+      <section id="calibrationOverlay" class="calibration-overlay" aria-live="polite">
+        <div class="calibration-message">
+          <strong id="calibrationTitle">Calibrate start position</strong>
+          <span id="calibrationInstructions">Align the tracked racket inside the angled ghost racket, then tap Calibrate on the phone.</span>
+        </div>
+      </section>
+
       <section class="hud">
         <div class="hero">
           <p class="eyebrow">Phase 1 Visualization</p>
@@ -53,6 +60,24 @@
           <span>rotation.y <strong id="rotationY">0.000</strong></span>
           <span>peak <strong id="peakSwingSpeed">0 km/h</strong></span>
         </div>
+
+        <button id="calibrateButton" class="hud-calibrate" type="button" disabled>
+          Calibrate Ready Pose
+        </button>
+
+        <details id="orientationDebug" class="orientation-debug" open>
+          <summary>Orientation debug</summary>
+          <dl>
+            <dt>Source</dt><dd id="debugSource">waiting</dd>
+            <dt>Status</dt><dd id="debugCalibration">uncalibrated</dd>
+            <dt>Raw phone</dt><dd id="debugRawQuaternion">--</dd>
+            <dt>Converted</dt><dd id="debugConvertedQuaternion">--</dd>
+            <dt>Neutral</dt><dd id="debugNeutralQuaternion">--</dd>
+            <dt>Relative</dt><dd id="debugRelativeQuaternion">--</dd>
+            <dt>Final racket</dt><dd id="debugFinalQuaternion">--</dd>
+            <dt>Mapping</dt><dd>phone +X → world +X; phone +Y → world -Z; phone +Z → world +Y</dd>
+          </dl>
+        </details>
       </section>
     </main>
 

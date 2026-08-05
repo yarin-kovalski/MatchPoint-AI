@@ -76,6 +76,12 @@ type ContinuousOrientationPacket = {
     y: NullableNumber;
     z: NullableNumber;
   };
+  quaternion: {
+    x: number;
+    y: number;
+    z: number;
+    w: number;
+  };
   gyro: {
     x: NullableNumber;
     y: NullableNumber;
@@ -99,6 +105,22 @@ type StrokeDetectedPacket = {
 
 type BrokeredStrokeDetectedPacket = StrokeDetectedPacket & {
   serverReceivedAt: number;
+};
+
+type ControllerCalibratePacket = {
+  t: number;
+  source: "expo-mobile";
+  rotation: {
+    x: number;
+    y: number;
+    z: number;
+  };
+  quaternion: {
+    x: number;
+    y: number;
+    z: number;
+    w: number;
+  };
 };
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -192,6 +214,17 @@ for (const io of ioServers) {
       };
 
       emitToPcClients("continuous_orientation", brokeredOrientation);
+    });
+
+    socket.on("controller:calibrate", (payload: ControllerCalibratePacket) => {
+      emitToPcClients("controller:calibrated", {
+        ...payload,
+        serverReceivedAt: Date.now()
+      });
+    });
+
+    socket.on("calibration:complete", (payload: { t: number }) => {
+      emitToMobileClients("calibration:complete", payload);
     });
 
     socket.on("stroke_detected", (payload: StrokeDetectedPacket) => {
@@ -350,6 +383,12 @@ function emitBrokerStatus(): void {
 function emitToPcClients(eventName: string, payload: unknown): void {
   for (const io of ioServers) {
     io.to("pc").emit(eventName, payload);
+  }
+}
+
+function emitToMobileClients(eventName: string, payload: unknown): void {
+  for (const io of ioServers) {
+    io.to("mobile").emit(eventName, payload);
   }
 }
 

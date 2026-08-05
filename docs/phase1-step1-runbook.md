@@ -143,10 +143,22 @@ Estimated swing speed is calculated from the latest socket packets using:
 For testing:
 
 1. Open `http://localhost:3000/pc`.
-2. Open the mobile controller.
-3. Use real sensors or the touch simulator fallback.
-4. Perform a fast phone movement or a fast drag on the simulator pad.
-5. Confirm that `Estimated swing speed` jumps immediately and `peak` stores the highest value.
+2. Open the Expo mobile controller and start sensor streaming.
+3. Confirm that the PC shows a red, perspective-angled wireframe racket guide.
+4. Hold the phone in the neutral pose: screen toward the player and top toward
+   the court.
+5. Tap **Lock Tennis Ready Position** on the phone or **Calibrate Ready Pose** on
+   the PC.
+6. Align the tracked racket inside the ghost and hold steady until it turns green.
+7. Confirm that the ghost disappears and the phone reports calibration complete.
+8. Confirm the handle points toward the camera, the head points down-court, and
+   the face is nearly horizontal with a small upward tilt.
+9. Move the phone and confirm small rotations are smooth and follow the expected
+   axes without flipping.
+10. Perform a fast phone movement and confirm that `Estimated swing speed` jumps.
+
+If the neutral racket position drifts, hold the phone in the intended start pose
+and tap **Calibrated - Set Again**.
 
 ## Troubleshooting
 

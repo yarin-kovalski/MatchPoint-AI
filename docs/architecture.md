@@ -82,6 +82,56 @@ cube.rotation.y = gamma converted to radians
 
 Add scaling/clamping only if the raw mapping feels too sensitive.
 
+## Start-Position Calibration
+
+The PC begins in an uncalibrated state and renders a second copy of the racket
+model as a translucent wireframe guide. This ghost racket uses the same Three.js
+perspective as the active model, is scaled to `1.08`, and is fixed at the
+forward-tilted start quaternion. Its color moves from red toward green as the
+tracked racket approaches the target.
+
+Before enabling calibration, Expo checks that the accelerometer magnitude is
+consistent with a steady phone. When the player taps **Lock Tennis Ready
+Position** on Expo or **Calibrate Ready Pose** on the PC:
+
+1. Expo converts absolute `DeviceMotion.rotation` into a normalized quaternion
+   and includes both forms in each orientation packet.
+2. The PC explicitly converts the phone coordinate basis to Three.js:
+   phone `+X -> +X`, phone `+Y -> -Z`, and phone `+Z -> +Y`.
+3. The PC stores the converted neutral quaternion and its inverse as the session
+   calibration baseline.
+4. Each later racket pose is calculated as:
+
+   `baseReadyPose * mappedRelativePhone * racketModelCorrection`
+
+5. The PC requires the active racket to remain within the angular and positional
+   tolerances of the ghost for 450ms.
+6. The PC hides the ghost, enables stroke handling, and emits
+   `calibration:complete` back to Expo through the broker.
+
+This makes any valid captured phone attitude, including values such as
+`x=0.798, y=-2.190`, the neutral tennis-ready pose without using those values as
+literal racket rotations. The player can recalibrate after a grip change.
+
+### Racket Model Axes
+
+Measured GLB bounds are approximately `129.7 x 330.1 x 20.8`. The model uses:
+
+- Local `+Y`: butt to racket head.
+- Local `+X`: side-to-side across the racket.
+- Local `+Z`: racket-face normal.
+
+The fixed model correction is `-90 degrees` around `X`. It maps model `+Y` to
+court-forward `-Z` and model `+Z` to world-up `+Y`. The base ready pose then adds
+a `12 degree` upward tilt. The scene hierarchy is:
+
+```text
+racketRoot (world position + 12-degree ready tilt)
+  orientationPivot (smoothed mapped phone-relative quaternion)
+    modelCorrectionPivot (-90-degree X model-axis correction)
+      racketGLTF (untouched imported model)
+```
+
 Phase 1 should also compute one player-facing stat:
 
 ```text
@@ -90,11 +140,10 @@ current speed estimate, peak acceleration, or forehand/backhand guess
 
 ## Later Gameplay Mapping
 
-For the racket:
+For the Expo racket after calibration:
 
 ```text
-racket.rotation.x = beta converted to radians
-racket.rotation.y = gamma converted to radians
+racket.quaternion = baseReady * mappedRelativePhone * modelCorrection
 ```
 
 Swing strength:

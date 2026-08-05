@@ -1,4 +1,4 @@
-import { Accelerometer, Gyroscope } from "expo-sensors";
+import { Accelerometer, DeviceMotion } from "expo-sensors";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Pressable,
@@ -18,6 +18,13 @@ type Vector3 = {
   z: number;
 };
 
+type Quaternion = {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+};
+
 type SocketState = "offline" | "connecting" | "connected" | "error";
 
 const SENSOR_INTERVAL_MS = 16;
@@ -33,16 +40,18 @@ export default function App() {
   const [loadingSensors, setLoadingSensors] = useState(true);
   const [sensorReady, setSensorReady] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [calibrated, setCalibrated] = useState(false);
+  const [readyPose, setReadyPose] = useState(false);
   const [status, setStatus] = useState("Loading sensors...");
   const [packetCount, setPacketCount] = useState(0);
   const [lastStroke, setLastStroke] = useState("none");
-  const [gyro, setGyro] = useState<Vector3>({ x: 0, y: 0, z: 0 });
+  const [rotation, setRotation] = useState<Vector3>({ x: 0, y: 0, z: 0 });
   const [accel, setAccel] = useState<Vector3>({ x: 0, y: 0, z: 0 });
 
   const socketRef = useRef<Socket | null>(null);
   const subscriptionsRef = useRef<Array<{ remove: () => void }>>([]);
   const orientationRef = useRef<Vector3>({ x: 0, y: 0, z: 0 });
-  const lastGyroAtRef = useRef<number | null>(null);
+  const accelerationRef = useRef<Vector3>({ x: 0, y: 0, z: 0 });
   const lastStrokeAtRef = useRef(0);
   const peakAccelerationRef = useRef(0);
 
@@ -51,8 +60,8 @@ export default function App() {
 
     async function checkSensors() {
       try {
-        const [gyroAvailable, accelAvailable] = await Promise.all([
-          Gyroscope.isAvailableAsync(),
+        const [motionAvailable, accelAvailable] = await Promise.all([
+          DeviceMotion.isAvailableAsync(),
           Accelerometer.isAvailableAsync()
         ]);
 
@@ -60,9 +69,9 @@ export default function App() {
           return;
         }
 
-        setSensorReady(gyroAvailable && accelAvailable);
+        setSensorReady(motionAvailable && accelAvailable);
         setStatus(
-          gyroAvailable && accelAvailable
+          motionAvailable && accelAvailable
             ? "Sensors ready"
             : "Sensors unavailable in this runtime"
         );
@@ -121,6 +130,7 @@ export default function App() {
       console.log("[socket] disconnected");
       setSocketState("offline");
       setConnected(false);
+      setCalibrated(false);
       setStatus("Socket disconnected");
     });
     socket.on("connect_error", (error) => {
@@ -129,6 +139,10 @@ export default function App() {
       setSocketState("error");
       setConnected(false);
       setStatus(`Socket error: ${message}. Check protocol/port.`);
+    });
+    socket.on("calibration:complete", () => {
+      setCalibrated(true);
+      setStatus("Calibration complete. The racket is ready.");
     });
   }
 
@@ -148,46 +162,49 @@ export default function App() {
         connectSocket();
       }
 
-      Gyroscope.setUpdateInterval(SENSOR_INTERVAL_MS);
+      DeviceMotion.setUpdateInterval(SENSOR_INTERVAL_MS);
       Accelerometer.setUpdateInterval(SENSOR_INTERVAL_MS);
 
       orientationRef.current = { x: 0, y: 0, z: 0 };
-      lastGyroAtRef.current = null;
       peakAccelerationRef.current = 0;
+      setCalibrated(false);
 
-      const gyroSubscription = Gyroscope.addListener((sample) => {
+      const motionSubscription = DeviceMotion.addListener((sample) => {
         const now = Date.now();
-        const lastGyroAt = lastGyroAtRef.current ?? now;
-        const intervalMs = Math.max(1, now - lastGyroAt);
-        const dt = intervalMs / 1000;
-        lastGyroAtRef.current = now;
-
         orientationRef.current = {
-          x: orientationRef.current.x + sample.x * dt,
-          y: orientationRef.current.y + sample.y * dt,
-          z: orientationRef.current.z + sample.z * dt
+          x: sample.rotation.beta,
+          y: sample.rotation.gamma,
+          z: sample.rotation.alpha
         };
 
-        setGyro(orientationRef.current);
+        setRotation(orientationRef.current);
+        const quaternion = deviceRotationToQuaternion(sample.rotation);
 
         if (socketRef.current?.connected) {
           socketRef.current.emit("continuous_orientation", {
             t: now,
             source: "expo-mobile",
             rotation: orientationRef.current,
-            gyro: sample,
-            intervalMs
+            quaternion,
+            gyro: {
+              x: sample.rotationRate?.alpha ?? 0,
+              y: sample.rotationRate?.beta ?? 0,
+              z: sample.rotationRate?.gamma ?? 0
+            },
+            intervalMs: sample.interval
           });
           setPacketCount((count) => count + 1);
         }
       });
 
       const accelSubscription = Accelerometer.addListener((sample) => {
+        accelerationRef.current = sample;
         setAccel(sample);
+        setReadyPose(isTennisReadyPhonePose(sample));
         detectStroke(sample.x);
       });
 
-      subscriptionsRef.current = [gyroSubscription, accelSubscription];
+      subscriptionsRef.current = [motionSubscription, accelSubscription];
       setStreaming(true);
       setStatus("Streaming motion");
     } catch (error) {
@@ -203,6 +220,33 @@ export default function App() {
 
     subscriptionsRef.current = [];
     setStreaming(false);
+    setCalibrated(false);
+    setReadyPose(false);
+  }
+
+  function calibrateStartPosition() {
+    if (!socketRef.current?.connected || !streaming) {
+      setStatus("Connect and start sensors before calibrating");
+      return;
+    }
+
+    if (!isTennisReadyPhonePose(accelerationRef.current)) {
+      setStatus("Hold the phone steady in the tennis-ready position before calibrating.");
+      return;
+    }
+
+    setCalibrated(false);
+    setStatus("Calibration requested. Hold the phone steady while the racket aligns.");
+    socketRef.current.emit("controller:calibrate", {
+      t: Date.now(),
+      source: "expo-mobile",
+      rotation: orientationRef.current,
+      quaternion: deviceRotationToQuaternion({
+        alpha: orientationRef.current.z,
+        beta: orientationRef.current.x,
+        gamma: orientationRef.current.y
+      })
+    });
   }
 
   function detectStroke(accelerationX: number) {
@@ -274,16 +318,39 @@ export default function App() {
             </Text>
           </Pressable>
         </View>
+
+        <Text style={styles.calibrationHint}>
+          {readyPose
+            ? "Phone is steady. Hold the neutral tennis-ready pose."
+            : "Hold the phone steady in the neutral tennis-ready pose."}
+        </Text>
+        <Pressable
+          disabled={!connected || !streaming}
+          onPress={calibrateStartPosition}
+          style={[
+            styles.calibrationButton,
+            (!connected || !streaming) && styles.disabledButton
+          ]}
+        >
+          <Text style={styles.calibrationButtonText}>
+            {calibrated
+              ? "Calibrated - Set Again"
+              : readyPose
+                ? "Lock Tennis Ready Position"
+                : "Adjust Phone Position"}
+          </Text>
+        </Pressable>
       </View>
 
       <View style={styles.grid}>
         <Stat label="Socket" value={socketState} />
         <Stat label="Sensors" value={sensorReady ? "ready" : "blocked"} />
+        <Stat label="Ready pose" value={readyPose ? "aligned" : "adjust"} />
         <Stat label="Packets" value={String(packetCount)} />
         <Stat label="Last stroke" value={lastStroke} />
-        <Stat label="Gyro X" value={gyro.x.toFixed(3)} />
-        <Stat label="Gyro Y" value={gyro.y.toFixed(3)} />
-        <Stat label="Gyro Z" value={gyro.z.toFixed(3)} />
+        <Stat label="Rotation X" value={rotation.x.toFixed(3)} />
+        <Stat label="Rotation Y" value={rotation.y.toFixed(3)} />
+        <Stat label="Rotation Z" value={rotation.z.toFixed(3)} />
         <Stat label="Accel X" value={`${accel.x.toFixed(2)}g`} />
         <Stat label="Accel Y" value={`${accel.y.toFixed(2)}g`} />
       </View>
@@ -312,6 +379,57 @@ function normalizeServerUrl(value: string): string {
   }
 
   return `http://${trimmed}`;
+}
+
+function isTennisReadyPhonePose(acceleration: Vector3): boolean {
+  const magnitude = Math.hypot(acceleration.x, acceleration.y, acceleration.z);
+  return magnitude >= 0.72 && magnitude <= 1.28;
+}
+
+function deviceRotationToQuaternion(rotation: {
+  alpha: number;
+  beta: number;
+  gamma: number;
+}): Quaternion {
+  const zRotation = axisAngleQuaternion(0, 0, 1, rotation.alpha);
+  const xRotation = axisAngleQuaternion(1, 0, 0, rotation.beta);
+  const yRotation = axisAngleQuaternion(0, 1, 0, rotation.gamma);
+
+  return normalizeQuaternion(
+    multiplyQuaternions(multiplyQuaternions(zRotation, xRotation), yRotation)
+  );
+}
+
+function axisAngleQuaternion(x: number, y: number, z: number, angle: number): Quaternion {
+  const halfAngle = angle * 0.5;
+  const sine = Math.sin(halfAngle);
+
+  return {
+    x: x * sine,
+    y: y * sine,
+    z: z * sine,
+    w: Math.cos(halfAngle)
+  };
+}
+
+function multiplyQuaternions(a: Quaternion, b: Quaternion): Quaternion {
+  return {
+    x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+    y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+    z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+    w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z
+  };
+}
+
+function normalizeQuaternion(value: Quaternion): Quaternion {
+  const length = Math.hypot(value.x, value.y, value.z, value.w) || 1;
+
+  return {
+    x: value.x / length,
+    y: value.y / length,
+    z: value.z / length,
+    w: value.w / length
+  };
 }
 
 function getConnectButtonLabel(state: SocketState): string {
@@ -404,6 +522,28 @@ const styles = StyleSheet.create({
     color: "#dfffb2",
     fontSize: 15,
     fontWeight: "800"
+  },
+  calibrationHint: {
+    color: "#b9c7d8",
+    fontSize: 13,
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: "center"
+  },
+  calibrationButton: {
+    alignItems: "center",
+    borderColor: "#ff4d58",
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 13
+  },
+  calibrationButtonText: {
+    color: "#ff8b92",
+    fontSize: 15,
+    fontWeight: "900"
+  },
+  disabledButton: {
+    opacity: 0.38
   },
   grid: {
     flexDirection: "row",

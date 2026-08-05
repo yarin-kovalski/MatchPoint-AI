@@ -48,6 +48,12 @@ type BrokeredContinuousOrientationPacket = {
     y: number | null;
     z: number | null;
   };
+  quaternion: {
+    x: number;
+    y: number;
+    z: number;
+    w: number;
+  };
   gyro: {
     x: number | null;
     y: number | null;
@@ -64,6 +70,23 @@ type BrokeredStrokeDetectedPacket = {
   accelerationX?: number;
   peakAcceleration?: number;
   serverReceivedAt: number;
+};
+
+type BrokeredCalibrationPacket = {
+  t: number;
+  source: "expo-mobile";
+  serverReceivedAt: number;
+  rotation: {
+    x: number;
+    y: number;
+    z: number;
+  };
+  quaternion: {
+    x: number;
+    y: number;
+    z: number;
+    w: number;
+  };
 };
 
 type SocketLike = {
@@ -88,7 +111,19 @@ const elements = {
   swingSpeed: getElement("swingSpeed"),
   peakSwingSpeed: getElement("peakSwingSpeed"),
   rotationX: getElement("rotationX"),
-  rotationY: getElement("rotationY")
+  rotationY: getElement("rotationY"),
+  calibrationOverlay: getElement("calibrationOverlay"),
+  calibrationTitle: getElement("calibrationTitle"),
+  calibrationInstructions: getElement("calibrationInstructions"),
+  calibrateButton: getElement<HTMLButtonElement>("calibrateButton"),
+  orientationDebug: getElement<HTMLDetailsElement>("orientationDebug"),
+  debugSource: getElement("debugSource"),
+  debugCalibration: getElement("debugCalibration"),
+  debugRawQuaternion: getElement("debugRawQuaternion"),
+  debugConvertedQuaternion: getElement("debugConvertedQuaternion"),
+  debugNeutralQuaternion: getElement("debugNeutralQuaternion"),
+  debugRelativeQuaternion: getElement("debugRelativeQuaternion"),
+  debugFinalQuaternion: getElement("debugFinalQuaternion")
 };
 
 let packetCount = 0;
@@ -101,12 +136,44 @@ let targetRotationZ = 0;
 let displayedSwingSpeedKmh = 0;
 let targetSwingSpeedKmh = 0;
 let peakSwingSpeedKmh = 0;
+let isCalibrated = false;
+let calibrationRequested = false;
+let hasCalibrationBaseline = false;
+let alignmentStableSince: number | null = null;
 let activeStroke: { type: StrokeType; startedAt: number; durationMs: number } | null = null;
 const gyroQuaternion = new THREE.Quaternion();
+const relativeOrientationQuaternion = new THREE.Quaternion();
+const calibrationBaselineInverse = new THREE.Quaternion();
 const gyroEuler = new THREE.Euler(0, 0, 0, "YXZ");
 const targetRacketQuaternion = new THREE.Quaternion();
+const rawPhoneQuaternion = new THREE.Quaternion();
+const convertedPhoneQuaternion = new THREE.Quaternion();
+const neutralPhoneQuaternion = new THREE.Quaternion();
+const displayedRelativeQuaternion = new THREE.Quaternion();
+const finalRacketQuaternion = new THREE.Quaternion();
+const identityQuaternion = new THREE.Quaternion();
 const neutralRacketPosition = new THREE.Vector3(0, 1.45, 0);
+const ORIENTATION_SMOOTHING_FACTOR = 0.16;
+const SHOW_ORIENTATION_DEBUG = true;
+const SHOW_AXIS_HELPERS = false;
+const PHONE_TO_THREE_BASIS = new THREE.Quaternion().setFromAxisAngle(
+  new THREE.Vector3(1, 0, 0),
+  -Math.PI / 2
+);
+const PHONE_TO_THREE_BASIS_INVERSE = PHONE_TO_THREE_BASIS.clone().invert();
+const baseReadyPoseQuaternion = new THREE.Quaternion().setFromAxisAngle(
+  new THREE.Vector3(1, 0, 0),
+  THREE.MathUtils.degToRad(12)
+);
+const racketModelCorrectionQuaternion = new THREE.Quaternion().setFromAxisAngle(
+  new THREE.Vector3(1, 0, 0),
+  -Math.PI / 2
+);
 const strokePositionOffset = new THREE.Vector3();
+const ghostMaterials: THREE.MeshBasicMaterial[] = [];
+const ghostFarColor = new THREE.Color(0xff3048);
+const ghostAlignedColor = new THREE.Color(0x8dff75);
+const ghostCurrentColor = new THREE.Color();
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
@@ -152,10 +219,41 @@ scene.add(purpleVolumeLight);
 const court = createCourt();
 scene.add(court);
 
-const racketContainer = new THREE.Group();
-racketContainer.position.copy(neutralRacketPosition);
-racketContainer.quaternion.identity();
-scene.add(racketContainer);
+const racketRoot = new THREE.Group();
+racketRoot.name = "racketRoot";
+racketRoot.position.copy(neutralRacketPosition);
+racketRoot.quaternion.copy(baseReadyPoseQuaternion);
+racketRoot.scale.setScalar(0.01);
+scene.add(racketRoot);
+
+const orientationPivot = new THREE.Group();
+orientationPivot.name = "orientationPivot";
+racketRoot.add(orientationPivot);
+
+const modelCorrectionPivot = new THREE.Group();
+modelCorrectionPivot.name = "modelCorrectionPivot";
+modelCorrectionPivot.quaternion.copy(racketModelCorrectionQuaternion);
+orientationPivot.add(modelCorrectionPivot);
+
+const calibrationGuide = new THREE.Group();
+calibrationGuide.position.copy(neutralRacketPosition);
+calibrationGuide.quaternion.copy(baseReadyPoseQuaternion);
+calibrationGuide.scale.setScalar(0.0108);
+scene.add(calibrationGuide);
+
+const calibrationGuideCorrection = new THREE.Group();
+calibrationGuideCorrection.quaternion.copy(racketModelCorrectionQuaternion);
+calibrationGuide.add(calibrationGuideCorrection);
+
+if (SHOW_AXIS_HELPERS) {
+  scene.add(new THREE.AxesHelper(2.2));
+  orientationPivot.add(new THREE.AxesHelper(90));
+  modelCorrectionPivot.add(new THREE.AxesHelper(70));
+}
+
+elements.orientationDebug.hidden = !SHOW_ORIENTATION_DEBUG;
+elements.calibrateButton.disabled = true;
+elements.calibrateButton.addEventListener("click", calibrateFromLatestPhonePose);
 loadRacketModel();
 
 const farCourtHaze = createFarCourtHaze();
@@ -169,7 +267,9 @@ socket.on("connect", () => {
   updateConnectionStatus();
 });
 
-socket.on("disconnect", updateConnectionStatus);
+socket.on("disconnect", () => {
+  updateConnectionStatus();
+});
 
 socket.on("broker:status", (payload: unknown) => {
   const status = payload as BrokerStatus;
@@ -201,13 +301,37 @@ socket.on("continuous_orientation", (payload: unknown) => {
   targetRotationX = orientationPacket.rotation.x ?? 0;
   targetRotationY = orientationPacket.rotation.y ?? 0;
   targetRotationZ = orientationPacket.rotation.z ?? 0;
+  rawPhoneQuaternion.set(
+    orientationPacket.quaternion.x,
+    orientationPacket.quaternion.y,
+    orientationPacket.quaternion.z,
+    orientationPacket.quaternion.w
+  ).normalize();
+  phoneQuaternionToThreeQuaternion(rawPhoneQuaternion, convertedPhoneQuaternion);
 
   elements.packetCount.textContent = String(packetCount);
   elements.inputMode.textContent = "expo";
+  elements.calibrateButton.disabled = false;
 
 });
 
+socket.on("controller:calibrated", (payload: unknown) => {
+  const calibrationPacket = payload as BrokeredCalibrationPacket;
+  rawPhoneQuaternion.set(
+    calibrationPacket.quaternion.x,
+    calibrationPacket.quaternion.y,
+    calibrationPacket.quaternion.z,
+    calibrationPacket.quaternion.w
+  ).normalize();
+  phoneQuaternionToThreeQuaternion(rawPhoneQuaternion, convertedPhoneQuaternion);
+  beginCalibration(convertedPhoneQuaternion);
+});
+
 socket.on("stroke_detected", (payload: unknown) => {
+  if (!isCalibrated) {
+    return;
+  }
+
   const strokePacket = payload as BrokeredStrokeDetectedPacket;
   const strokeType = normalizeStrokeType(strokePacket.strokeType ?? strokePacket.type);
 
@@ -340,14 +464,36 @@ function loadRacketModel(): void {
     "/pc/racket_new.glb",
     (gltf) => {
       const model = gltf.scene;
-      model.scale.setScalar(0.01);
       model.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           child.castShadow = true;
           child.receiveShadow = true;
         }
       });
-      racketContainer.add(model);
+      modelCorrectionPivot.add(model);
+
+      const ghostModel = model.clone(true);
+      ghostModel.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const ghostMaterial = new THREE.MeshBasicMaterial({
+            color: ghostFarColor,
+            transparent: true,
+            opacity: 0.34,
+            wireframe: true,
+            depthTest: false,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending,
+            toneMapped: false
+          });
+          child.material = ghostMaterial;
+          child.castShadow = false;
+          child.receiveShadow = false;
+          child.renderOrder = 20;
+          ghostMaterials.push(ghostMaterial);
+        }
+      });
+      calibrationGuideCorrection.add(ghostModel);
     },
     undefined,
     (error) => {
@@ -473,24 +619,174 @@ function animate(): void {
   requestAnimationFrame(animate);
   const elapsed = clock.getElapsedTime();
 
-  gyroEuler.set(targetRotationX, targetRotationY, targetRotationZ);
-  gyroQuaternion.setFromEuler(gyroEuler);
-  targetRacketQuaternion.copy(gyroQuaternion);
-  racketContainer.quaternion.slerp(targetRacketQuaternion, 0.32);
-  racketContainer.position.copy(neutralRacketPosition).add(getStrokePositionOffset());
+  if (latestOrientationPacket) {
+    if (hasCalibrationBaseline) {
+      relativeOrientationQuaternion
+        .copy(calibrationBaselineInverse)
+        .multiply(convertedPhoneQuaternion);
+    } else {
+      relativeOrientationQuaternion.copy(convertedPhoneQuaternion);
+    }
+  } else {
+    gyroEuler.set(targetRotationX, targetRotationY, targetRotationZ);
+    gyroQuaternion.setFromEuler(gyroEuler);
+    phoneQuaternionToThreeQuaternion(gyroQuaternion, relativeOrientationQuaternion);
+  }
+
+  targetRacketQuaternion.copy(relativeOrientationQuaternion);
+  orientationPivot.quaternion.slerp(targetRacketQuaternion, ORIENTATION_SMOOTHING_FACTOR);
+  displayedRelativeQuaternion.copy(orientationPivot.quaternion);
+  racketRoot.position.copy(neutralRacketPosition).add(getStrokePositionOffset());
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
 
-  const displayedEuler = new THREE.Euler().setFromQuaternion(racketContainer.quaternion, "YXZ");
+  finalRacketQuaternion
+    .copy(baseReadyPoseQuaternion)
+    .multiply(displayedRelativeQuaternion)
+    .multiply(racketModelCorrectionQuaternion);
+  const displayedEuler = new THREE.Euler().setFromQuaternion(finalRacketQuaternion, "YXZ");
   elements.rotationX.textContent = displayedEuler.x.toFixed(3);
   elements.rotationY.textContent = displayedEuler.y.toFixed(3);
   elements.swingSpeed.textContent = `${Math.round(displayedSwingSpeedKmh)} km/h`;
   elements.peakSwingSpeed.textContent = `${Math.round(peakSwingSpeedKmh)} km/h`;
   animateDust(elapsed);
+  updateCalibrationGuide(elapsed);
+  updateOrientationDebug();
   updateConnectionStatus();
   updatePacketAge();
 
   renderer.render(scene, camera);
+}
+
+function updateCalibrationGuide(elapsed: number): void {
+  if (isCalibrated) {
+    return;
+  }
+
+  const angleError = orientationPivot.quaternion.angleTo(identityQuaternion);
+  const positionError = racketRoot.position.distanceTo(neutralRacketPosition);
+  const alignment = 1 - clamp(angleError / 0.65, 0, 1);
+  const pulse = (Math.sin(elapsed * 5) + 1) * 0.035;
+
+  ghostCurrentColor.copy(ghostFarColor).lerp(ghostAlignedColor, alignment);
+  for (const material of ghostMaterials) {
+    material.color.copy(ghostCurrentColor);
+    material.opacity = 0.2 + alignment * 0.28 + pulse;
+  }
+
+  const aligned = angleError <= 0.09 && positionError <= 0.12;
+
+  if (!calibrationRequested) {
+    elements.calibrationTitle.textContent = aligned
+      ? "Racket aligned - tap Calibrate"
+      : "Calibrate start position";
+    return;
+  }
+
+  if (!aligned) {
+    alignmentStableSince = null;
+    elements.calibrationTitle.textContent = "Move into the ghost racket";
+    return;
+  }
+
+  alignmentStableSince ??= performance.now();
+  elements.calibrationTitle.textContent = "Hold steady";
+
+  if (performance.now() - alignmentStableSince >= 450) {
+    completeCalibration();
+  }
+}
+
+function calibrateFromLatestPhonePose(): void {
+  if (!latestOrientationPacket) {
+    elements.calibrationTitle.textContent = "Waiting for phone orientation";
+    return;
+  }
+
+  beginCalibration(convertedPhoneQuaternion);
+}
+
+function beginCalibration(currentPhoneQuaternion: THREE.Quaternion): void {
+  neutralPhoneQuaternion.copy(currentPhoneQuaternion).normalize();
+  calibrationBaselineInverse.copy(neutralPhoneQuaternion).invert();
+  hasCalibrationBaseline = true;
+  isCalibrated = false;
+  calibrationRequested = true;
+  alignmentStableSince = null;
+  activeStroke = null;
+  targetRacketQuaternion.identity();
+  relativeOrientationQuaternion.identity();
+  orientationPivot.quaternion.identity();
+  calibrationGuide.visible = true;
+  elements.calibrationOverlay.classList.remove("is-calibrated");
+  elements.calibrationTitle.textContent = "Hold position";
+  elements.calibrationInstructions.textContent =
+    "Neutral phone pose captured. Keep the phone steady while the racket locks into ready position.";
+}
+
+function phoneQuaternionToThreeQuaternion(
+  phoneQuaternion: THREE.Quaternion,
+  target: THREE.Quaternion
+): THREE.Quaternion {
+  // Neutral phone axes: +X right, +Y toward the court, +Z toward the player.
+  // Three.js axes: +X right, -Z toward the court, +Y up.
+  return target
+    .copy(PHONE_TO_THREE_BASIS)
+    .multiply(phoneQuaternion)
+    .multiply(PHONE_TO_THREE_BASIS_INVERSE)
+    .normalize();
+}
+
+function updateOrientationDebug(): void {
+  if (!SHOW_ORIENTATION_DEBUG) {
+    return;
+  }
+
+  elements.debugSource.textContent = latestOrientationPacket
+    ? "Expo DeviceMotion absolute quaternion"
+    : latestPacket
+      ? "browser orientation fallback"
+      : "waiting";
+  elements.debugCalibration.textContent = isCalibrated
+    ? "calibrated"
+    : calibrationRequested
+      ? "locking"
+      : "uncalibrated";
+  elements.debugRawQuaternion.textContent = formatQuaternion(rawPhoneQuaternion);
+  elements.debugConvertedQuaternion.textContent = formatQuaternion(convertedPhoneQuaternion);
+  elements.debugNeutralQuaternion.textContent = hasCalibrationBaseline
+    ? formatQuaternion(neutralPhoneQuaternion)
+    : "not captured";
+  elements.debugRelativeQuaternion.textContent = formatQuaternion(displayedRelativeQuaternion);
+  elements.debugFinalQuaternion.textContent = formatQuaternion(finalRacketQuaternion);
+}
+
+function formatQuaternion(value: THREE.Quaternion): string {
+  return `[${value.x.toFixed(3)}, ${value.y.toFixed(3)}, ${value.z.toFixed(3)}, ${value.w.toFixed(3)}]`;
+}
+
+function completeCalibration(): void {
+  isCalibrated = true;
+  calibrationRequested = false;
+  calibrationGuide.visible = false;
+  elements.calibrationTitle.textContent = "Calibration complete";
+  elements.calibrationInstructions.textContent = "Start position locked. The racket is ready.";
+  elements.calibrationOverlay.classList.add("is-calibrated");
+  socket.emit("calibration:complete", { t: Date.now() });
+}
+
+function resetCalibration(): void {
+  isCalibrated = false;
+  calibrationRequested = false;
+  hasCalibrationBaseline = false;
+  calibrationBaselineInverse.identity();
+  neutralPhoneQuaternion.identity();
+  alignmentStableSince = null;
+  calibrationGuide.visible = true;
+  elements.calibrationOverlay.classList.remove("is-calibrated");
+  elements.calibrationTitle.textContent = "Calibrate start position";
+  elements.calibrationInstructions.textContent =
+    "Align the tracked racket inside the angled ghost racket, then tap Calibrate on the phone.";
 }
 
 function getStrokePositionOffset(): THREE.Vector3 {

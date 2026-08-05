@@ -29,6 +29,25 @@ This command automatically:
 Do not manually reuse an old server IP. The launcher supplies the current address
 through `EXPO_PUBLIC_SERVER_URL` every time it starts.
 
+## Expected Terminals
+
+The original terminal runs the TypeScript build and Node.js Socket.io server. It
+must show the local PC URL and the LAN server URL without an `EADDRINUSE` error.
+
+The second terminal runs the project's installed Expo CLI in
+`virtucourt-mobile`. It should show a QR code and use Expo 54. It should not ask
+to install Expo 57.
+
+If the Expo terminal shows red PowerShell errors, asks to install Expo 57, or
+shows an old IP address, press `Ctrl+C` in both terminals and start again with:
+
+```powershell
+npm run all
+```
+
+Do not run `npx expo start` from the project root. The shortcut starts it from
+the correct `virtucourt-mobile` directory and supplies the current server URL.
+
 ## Stop Everything
 
 Press `Ctrl+C` in the original terminal that ran `npm run all`. The launcher also

@@ -50,6 +50,18 @@ Mitigation:
 - Use latest-state rendering instead of processing every old packet.
 - Later, use predictive motion and physics assistance.
 
+## Orientation Drift
+
+Risk: Absolute device attitude can still shift when the operating system adjusts
+its heading estimate, or when the player changes grip.
+
+Mitigation:
+
+- Require an explicit centered start-position calibration.
+- Keep recalibration available from the phone throughout the session.
+- Use absolute `DeviceMotion.rotation` rather than integrating gyroscope rates.
+- Apply phone motion relative to a captured quaternion baseline.
+
 ## Predictive Hit Fairness
 
 Risk: Real collision detection may feel unfair if phone and ball positions are slightly out of sync.
