@@ -133,6 +133,26 @@
             <span>Spin <strong id="ballSpin">flat</strong></span>
             <span>Bounces <strong id="ballBounces">0</strong></span>
           </div>
+          <details class="ball-tuning">
+            <summary>Ball delivery tuning</summary>
+            <div class="ball-tuning-grid">
+              <label>Visual size
+                <select id="ballVisualSizeSelect">
+                  <option value="realistic">Realistic</option>
+                  <option value="readable" selected>Readable</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </label>
+              <label>Custom scale <input id="ballVisualScaleInput" type="range" min="1" max="1.5" step="0.05" value="1.35"></label>
+              <label>Target height <input id="contactHeightInput" type="range" min="-0.35" max="0.2" step="0.01" value="-0.18"></label>
+              <label>Target side <input id="contactSideInput" type="range" min="-0.25" max="0.25" step="0.01" value="0.14"></label>
+              <label>Target plane depth <input id="contactDepthInput" type="range" min="-0.05" max="0.05" step="0.01" value="0"></label>
+              <label class="check-label"><input id="showContactTargetToggle" type="checkbox"> Contact target</label>
+              <label class="check-label"><input id="showTrajectoryToggle" type="checkbox"> Trajectory</label>
+              <label class="check-label"><input id="showStringCenterToggle" type="checkbox"> String center</label>
+              <button id="resetBallVisualSettings" type="button">Reset visual settings</button>
+            </div>
+          </details>
         </section>
 
         <button id="calibrateButton" class="hud-calibrate" type="button" disabled>
@@ -170,6 +190,8 @@
             <dt>Ball collision</dt><dd id="debugBallCollision">--</dd>
             <dt>Ball validity</dt><dd id="debugBallValidity">--</dd>
             <dt>Ball result</dt><dd id="debugBallResult">none</dd>
+            <dt>Ball scale</dt><dd id="debugBallScale">--</dd>
+            <dt>Delivery target</dt><dd id="debugDeliveryTarget">--</dd>
             <dt>Timeline</dt><dd id="debugStrokeTimeline">READY</dd>
             <dt>Mapping</dt><dd>phone +X → world +X; phone +Y → world -Z; phone +Z → world +Y</dd>
           </dl>

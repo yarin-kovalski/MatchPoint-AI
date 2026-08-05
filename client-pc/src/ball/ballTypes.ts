@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { BackhandStyle, Handedness, SpinType, StrokeType } from "../strokeDetection/strokeTypes.js";
 
 export type BallState = "IDLE" | "IN_FLIGHT_TO_PLAYER" | "BOUNCED" | "CONTACT_ZONE" | "RETURNED" | "MISSED" | "OUT" | "RESETTING";
-export type LaunchPreset = "easyForehand" | "easyBackhand";
+export type LaunchPreset = "easyForehand" | "easyBackhand" | "centerPractice";
 export type AssistMode = "off" | "prototype" | "easy";
 export type BallSpeedPreset = "slow" | "normal" | "fast";
 
@@ -13,15 +13,20 @@ export type BallSnapshot = {
   previousPosition: THREE.Vector3;
   velocity: THREE.Vector3;
   spinVector: THREE.Vector3;
+  angularVelocity: THREE.Vector3;
   spinType: SpinType;
   spinStrength: number;
   magnusAcceleration: THREE.Vector3;
-  radius: number;
+  physicsRadius: number;
+  visualRadius: number;
   bounceCount: number;
   hit: boolean;
   active: boolean;
   launchTimestamp: number;
   launchPreset: LaunchPreset | null;
+  contactTarget: THREE.Vector3;
+  bouncePoint: THREE.Vector3;
+  contactTimeAfterBounce: number;
 };
 
 export type RacketCollisionResult = {

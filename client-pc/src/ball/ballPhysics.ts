@@ -22,7 +22,7 @@ export function stepBallPhysics(ball: BallSnapshot, deltaSeconds: number): boole
     ball.velocity.z += ball.magnusAcceleration.z * dt;
     ball.velocity.multiplyScalar(Math.max(0, 1 - BALL_CONFIG.airDrag * dt));
     ball.position.addScaledVector(ball.velocity, dt);
-    const floor = BALL_CONFIG.courtHeight + ball.radius;
+    const floor = BALL_CONFIG.courtHeight + ball.physicsRadius;
     if (ball.position.y < floor && ball.velocity.y < 0) {
       ball.position.y = floor;
       ball.velocity.y *= -(ball.state === "RETURNED" ? BALL_CONFIG.returnedBounceRestitution : BALL_CONFIG.bounceRestitution);

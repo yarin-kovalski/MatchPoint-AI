@@ -273,3 +273,10 @@ signals, contact contract, and physical test instructions are documented in
 The deterministic ball controller, swept string-bed collision, return response,
 spin approximation, assistance modes, tests, and tuning values are documented
 in [`phase-d-ball-prototype.md`](phase-d-ball-prototype.md).
+
+## Phase D.1 Ball Readability
+
+The racket-derived delivery targets, physical/visual radius separation,
+procedural felt/seam material, camera values, rotation integration, tuning
+controls, and scale audit are documented in
+[`phase-d1-ball-readability.md`](phase-d1-ball-readability.md).

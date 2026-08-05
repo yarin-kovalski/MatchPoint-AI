@@ -1,5 +1,18 @@
 export const BALL_CONFIG = {
-  radius: 0.034,
+  scale: {
+    metersPerWorldUnit: 1,
+    physicalRadiusMeters: 0.0335,
+    visualScaleMultiplier: 1.35,
+    maximumVisualScaleMultiplier: 1.5,
+    minimumReadablePixelDiameter: 9
+  },
+  camera: {
+    fovDegrees: 50,
+    position: [0, 4.6, 7.6],
+    target: [0, 1.25, -1.2],
+    near: 0.1,
+    far: 100
+  },
   courtHeight: 0.07,
   gravity: -9.81,
   bounceRestitution: 0.68,
@@ -11,11 +24,19 @@ export const BALL_CONFIG = {
   stationarySpeed: 0.18,
   bounds: { x: 9, y: 12, zBehindPlayer: 4.5, zFar: -13 },
   launch: {
-    easyForehand: { position: [0.5, 1.85, -7.5], velocity: [0, 3.2, 5.25] },
-    easyBackhand: { position: [-0.5, 1.85, -7.5], velocity: [0, 3.2, 5.25] },
+    launchPosition: [0, 1.85, -7.5],
+    easyForehand: { sideOffset: 0.14, heightOffset: -0.18, depthOffset: 0, bounceTime: 1.05, contactTimeAfterBounce: 0.58 },
+    easyBackhand: { sideOffset: -0.14, heightOffset: -0.18, depthOffset: 0, bounceTime: 1.05, contactTimeAfterBounce: 0.58 },
+    centerPractice: { sideOffset: 0, heightOffset: -0.18, depthOffset: 0, bounceTime: 1.05, contactTimeAfterBounce: 0.58 },
+    bounceDepth: -4.35,
+    netDepth: -5.5,
+    netHeight: 0.914,
+    netClearance: 0.28,
+    expectedContactSampleFraction: 0.5,
+    referenceFramesPerSecond: 60,
     speedMultipliers: { slow: 0.86, normal: 1, fast: 1.14 }
   },
-  contactZone: { minimumZ: -1.6, maximumZ: 1.2, maximumX: 2.3 },
+  contactZone: { minimumZ: -3.55, maximumZ: -2.35, maximumX: 2.3 },
   collision: {
     headCenterLocal: [0, 245, 0],
     halfWidthLocal: 51,

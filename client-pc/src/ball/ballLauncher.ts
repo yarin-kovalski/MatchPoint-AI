@@ -1,18 +1,33 @@
 import * as THREE from "three";
 import { BALL_CONFIG } from "./ballConfig.js";
+import { getBallDeliveryTarget, solveVelocity } from "./ballDelivery.js";
+import { BackhandStyle } from "../strokeDetection/strokeTypes.js";
 import { Handedness } from "../strokeDetection/strokeTypes.js";
 import { BallSpeedPreset, LaunchPreset } from "./ballTypes.js";
 
 export function getLaunchParameters(
   preset: LaunchPreset,
   handedness: Handedness,
-  speed: BallSpeedPreset
-): { position: THREE.Vector3; velocity: THREE.Vector3 } {
+  speed: BallSpeedPreset,
+  backhandStyle: BackhandStyle = "one-handed",
+  targetOffsets?: { heightOffset?: number; sideOffset?: number; depthOffset?: number }
+): { position: THREE.Vector3; velocity: THREE.Vector3; bouncePoint: THREE.Vector3; contactTarget: THREE.Vector3; contactTimeAfterBounce: number } {
   const values = BALL_CONFIG.launch[preset];
-  const mirror = handedness === "right" ? 1 : -1;
-  const position = new THREE.Vector3(...values.position);
-  position.x *= mirror;
-  const velocity = new THREE.Vector3(...values.velocity);
-  velocity.multiplyScalar(BALL_CONFIG.launch.speedMultipliers[speed]);
-  return { position, velocity };
+  const position = new THREE.Vector3(...BALL_CONFIG.launch.launchPosition);
+  const contactTarget = getBallDeliveryTarget({ preset, handedness, backhandStyle, ...targetOffsets });
+  const bouncePoint = new THREE.Vector3(
+    contactTarget.x * 0.55,
+    BALL_CONFIG.courtHeight + BALL_CONFIG.scale.physicalRadiusMeters,
+    BALL_CONFIG.launch.bounceDepth
+  );
+  const speedMultiplier = BALL_CONFIG.launch.speedMultipliers[speed];
+  const bounceTime = values.bounceTime / speedMultiplier;
+  const contactTimeAfterBounce = values.contactTimeAfterBounce / speedMultiplier;
+  return {
+    position,
+    velocity: solveVelocity(position, bouncePoint, bounceTime),
+    bouncePoint,
+    contactTarget,
+    contactTimeAfterBounce
+  };
 }

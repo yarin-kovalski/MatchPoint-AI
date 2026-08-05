@@ -8,12 +8,14 @@ change the Phase B quaternion pipeline or Phase C stroke detector.
 
 One world unit is treated as approximately one meter. The court surface is
 `y=0`, world up is `+Y`, opponent/court-forward is `-Z`, and player-right is
-`+X`. The primitive tennis ball radius is `0.034` units (3.4 cm).
+`+X`. Phase D.1 keeps the physical tennis-ball radius at `0.0335` units and
+separates it from the readable visual radius.
 
-Both deterministic presets start at `y=1.85`, `z=-7.5`, with velocity
-`(0, 3.2, 5.25)` m/s. Easy forehand starts at `x=0.5`; easy backhand starts at
-`x=-0.5`. Left-handed mode mirrors X. Slow, normal, and fast multiply launch
-velocity by `0.86`, `1.0`, and `1.14`.
+Both deterministic presets start at `(0, 1.85, -7.5)`. Phase D.1 analytically
+solves velocity through a configured bounce point and a racket-derived forehand
+or backhand target instead of using the original fixed velocity. See
+[`phase-d1-ball-readability.md`](phase-d1-ball-readability.md) for current launch
+and target values.
 
 Gravity is `-9.81 m/s2`, air drag is `0.018`, incoming restitution is `0.68`,
 returned restitution is `0.58`, and ground friction is `0.94`. Physics uses

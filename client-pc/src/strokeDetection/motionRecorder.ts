@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { NormalizedSensorFrame } from "../motion/sensorNormalization.js";
 import { BallHitEvent, BallMissEvent, BallSpeedPreset, LaunchPreset } from "../ball/ballTypes.js";
-import { Handedness } from "./strokeTypes.js";
+import { BackhandStyle, Handedness } from "./strokeTypes.js";
 
 export type RecordingLabel =
   | "forehand"
@@ -46,7 +46,15 @@ export type MotionRecording = {
   createdAt: number;
   frames: RecordedMotionFrame[];
   gameplay: {
-    launch: { preset: LaunchPreset; handedness: Handedness; speed: BallSpeedPreset; timestamp: number } | null;
+    launch: {
+      preset: LaunchPreset;
+      handedness: Handedness;
+      backhandStyle: BackhandStyle;
+      speed: BallSpeedPreset;
+      timestamp: number;
+      targetOffsets: { heightOffset: number; sideOffset: number; depthOffset: number };
+      visualScaleMultiplier: number;
+    } | null;
     result: { type: "hit"; event: BallHitEvent } | { type: "miss"; event: BallMissEvent } | null;
   };
 };
@@ -91,8 +99,18 @@ export class MotionRecorder {
     return this.lastRecording;
   }
 
-  recordBallLaunch(preset: LaunchPreset, handedness: Handedness, speed: BallSpeedPreset, timestamp: number): void {
-    if (this.recording) this.recording.gameplay.launch = { preset, handedness, speed, timestamp };
+  recordBallLaunch(
+    preset: LaunchPreset,
+    handedness: Handedness,
+    backhandStyle: BackhandStyle,
+    speed: BallSpeedPreset,
+    timestamp: number,
+    targetOffsets: { heightOffset: number; sideOffset: number; depthOffset: number },
+    visualScaleMultiplier: number
+  ): void {
+    if (this.recording) this.recording.gameplay.launch = {
+      preset, handedness, backhandStyle, speed, timestamp, targetOffsets, visualScaleMultiplier
+    };
   }
 
   recordBallResult(result: { type: "hit"; event: BallHitEvent } | { type: "miss"; event: BallMissEvent }): void {

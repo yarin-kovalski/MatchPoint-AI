@@ -345,6 +345,40 @@ article strong {
   color: #eff9ea;
 }
 
+.ball-tuning {
+  margin-top: 8px;
+  color: #aebbc9;
+  font-size: 0.72rem;
+}
+
+.ball-tuning summary {
+  cursor: pointer;
+  color: #b8ff2c;
+  font-weight: 700;
+}
+
+.ball-tuning-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.ball-tuning-grid label {
+  display: grid;
+  gap: 3px;
+}
+
+.ball-tuning-grid input[type="range"] {
+  width: 100%;
+}
+
+.ball-tuning-grid button {
+  border: 1px solid rgba(184, 255, 44, 0.4);
+  background: #07111d;
+  color: #e9f4e6;
+}
+
 .orientation-debug {
   margin-top: 12px;
   padding-top: 10px;

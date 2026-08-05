@@ -4,15 +4,19 @@ import { BALL_CONFIG } from "./ballConfig.js";
 import { getLaunchParameters } from "./ballLauncher.js";
 import { isBallOutOfBounds, stepBallPhysics } from "./ballPhysics.js";
 import { calculateOutgoingVelocity } from "./ballResponse.js";
+import { solveVelocity } from "./ballDelivery.js";
 import { sweepBallAgainstRacket } from "./racketCollider.js";
 import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset, LaunchPreset, RacketCollisionResult } from "./ballTypes.js";
 
 export class BallController {
   readonly ball: BallSnapshot = {
     id: "ball-0", state: "IDLE", position: new THREE.Vector3(), previousPosition: new THREE.Vector3(),
-    velocity: new THREE.Vector3(), spinVector: new THREE.Vector3(), spinType: "flat", spinStrength: 0,
-    magnusAcceleration: new THREE.Vector3(), radius: BALL_CONFIG.radius, bounceCount: 0, hit: false,
-    active: false, launchTimestamp: 0, launchPreset: null
+    velocity: new THREE.Vector3(), spinVector: new THREE.Vector3(), angularVelocity: new THREE.Vector3(),
+    spinType: "flat", spinStrength: 0, magnusAcceleration: new THREE.Vector3(),
+    physicsRadius: BALL_CONFIG.scale.physicalRadiusMeters,
+    visualRadius: BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier,
+    bounceCount: 0, hit: false, active: false, launchTimestamp: 0, launchPreset: null,
+    contactTarget: new THREE.Vector3(), bouncePoint: new THREE.Vector3(), contactTimeAfterBounce: 0
   };
   lastCollision: RacketCollisionResult | null = null;
   lastHit: BallHitEvent | null = null;
@@ -27,14 +31,22 @@ export class BallController {
     private readonly onMiss?: (event: BallMissEvent) => void
   ) {}
 
-  launch(preset: LaunchPreset, handedness: "right" | "left", speed: BallSpeedPreset, now: number): void {
-    const launch = getLaunchParameters(preset, handedness, speed);
+  launch(
+    preset: LaunchPreset,
+    handedness: "right" | "left",
+    speed: BallSpeedPreset,
+    now: number,
+    backhandStyle: "one-handed" | "two-handed" = "one-handed",
+    targetOffsets?: { heightOffset?: number; sideOffset?: number; depthOffset?: number }
+  ): void {
+    const launch = getLaunchParameters(preset, handedness, speed, backhandStyle, targetOffsets);
     this.sequence += 1;
     this.ball.id = `ball-${this.sequence}`;
     this.ball.state = "IN_FLIGHT_TO_PLAYER";
     this.ball.position.copy(launch.position);
     this.ball.previousPosition.copy(launch.position);
     this.ball.velocity.copy(launch.velocity);
+    this.ball.angularVelocity.set(launch.velocity.z, 0, -launch.velocity.x).normalize().multiplyScalar(18);
     this.ball.spinVector.set(0, 0, 0);
     this.ball.spinType = "flat";
     this.ball.spinStrength = 0;
@@ -43,6 +55,9 @@ export class BallController {
     this.ball.active = true;
     this.ball.launchTimestamp = now;
     this.ball.launchPreset = preset;
+    this.ball.contactTarget.copy(launch.contactTarget);
+    this.ball.bouncePoint.copy(launch.bouncePoint);
+    this.ball.contactTimeAfterBounce = launch.contactTimeAfterBounce;
     this.finalResultEmitted = false;
     this.closestDistance = Number.POSITIVE_INFINITY;
     this.lastCollision = null;
@@ -55,6 +70,7 @@ export class BallController {
     this.ball.active = false;
     this.ball.velocity.set(0, 0, 0);
     this.ball.spinVector.set(0, 0, 0);
+    this.ball.angularVelocity.set(0, 0, 0);
     this.lastCollision = null;
   }
 
@@ -77,6 +93,11 @@ export class BallController {
         this.resetAt = now + BALL_CONFIG.resetDelayMs;
       } else {
         this.ball.state = "BOUNCED";
+        this.ball.velocity.copy(solveVelocity(
+          this.ball.position,
+          this.ball.contactTarget,
+          this.ball.contactTimeAfterBounce
+        ));
       }
     }
     if (!this.ball.hit && this.ball.position.z >= BALL_CONFIG.contactZone.minimumZ &&
@@ -86,7 +107,7 @@ export class BallController {
     }
     if (!this.ball.hit && this.ball.velocity.z > 0) {
       this.lastCollision = sweepBallAgainstRacket(
-        this.ball.previousPosition, this.ball.position, this.ball.radius, colliderWorldMatrix, assistMode
+        this.ball.previousPosition, this.ball.position, this.ball.physicsRadius, colliderWorldMatrix, assistMode
       );
       this.closestDistance = Math.min(this.closestDistance, this.lastCollision.closestDistance);
       if (this.lastCollision.candidate) this.tryHit(now, stroke, contact);
@@ -112,6 +133,7 @@ export class BallController {
     const incoming = this.ball.velocity.clone();
     this.ball.velocity.copy(response.velocity);
     this.ball.spinVector.copy(response.spinVector);
+    this.ball.angularVelocity.copy(response.spinVector);
     this.ball.spinType = contact.spinType;
     this.ball.spinStrength = response.spinVector.length();
     this.ball.hit = true;
@@ -136,6 +158,7 @@ export class BallController {
     if (this.finalResultEmitted) return;
     const inverse = matrix.clone().invert();
     const racketPosition = new THREE.Vector3().setFromMatrixPosition(matrix);
+    const resolvedReason = this.resolveMissReason(reason, now, contact);
     const event: BallMissEvent = {
       id: `miss-${this.ball.id}`, ballId: this.ball.id, timestamp: now, reason,
       closestDistance: Number.isFinite(this.closestDistance) ? this.closestDistance : this.ball.position.distanceTo(racketPosition),
@@ -143,11 +166,29 @@ export class BallController {
       localBallPosition: this.ball.position.clone().applyMatrix4(inverse), strokeState: stroke.currentState,
       nearestContactEventAge: contact ? Math.abs(now - contact.timestamp) : null
     };
+    event.reason = resolvedReason;
     this.lastMiss = event;
     this.finalResultEmitted = true;
     this.ball.state = "MISSED";
     this.ball.active = false;
     this.resetAt = now + BALL_CONFIG.resetDelayMs;
     this.onMiss?.(event);
+  }
+
+  private resolveMissReason(fallback: string, now: number, contact: EstimatedRacketContact | null): string {
+    const local = this.lastCollision?.currentLocalPosition;
+    if (local) {
+      if (local.y > BALL_CONFIG.collision.halfHeightLocal) return "delivery target too high";
+      if (local.y < -BALL_CONFIG.collision.halfHeightLocal) return "delivery target too low";
+      if (local.x > BALL_CONFIG.collision.halfWidthLocal) return "passed right of racket";
+      if (local.x < -BALL_CONFIG.collision.halfWidthLocal) return "passed left of racket";
+    }
+    if (!contact) return "no stroke";
+    const age = now - contact.timestamp;
+    if (age > BALL_CONFIG.collision.contactEventToleranceMs) return "racket too early";
+    if (age < -BALL_CONFIG.collision.contactEventToleranceMs) return "racket too late";
+    if (contact.estimatedSpeed < BALL_CONFIG.collision.minimumStrokeSpeed) return "stroke too slow";
+    if (this.lastCollision && !this.lastCollision.candidate) return "valid stroke but spatial miss";
+    return fallback;
   }
 }

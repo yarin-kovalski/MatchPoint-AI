@@ -14,9 +14,12 @@ function ball(): BallSnapshot {
   return {
     id: "test", state: "IN_FLIGHT_TO_PLAYER", position: new THREE.Vector3(0, 1.85, -7.5),
     previousPosition: new THREE.Vector3(0, 1.85, -7.5), velocity: new THREE.Vector3(0, 3.2, 5.25),
-    spinVector: new THREE.Vector3(), spinType: "flat", spinStrength: 0,
-    magnusAcceleration: new THREE.Vector3(), radius: BALL_CONFIG.radius, bounceCount: 0,
-    hit: false, active: true, launchTimestamp: 0, launchPreset: "easyForehand"
+    spinVector: new THREE.Vector3(), angularVelocity: new THREE.Vector3(), spinType: "flat", spinStrength: 0,
+    magnusAcceleration: new THREE.Vector3(), physicsRadius: BALL_CONFIG.scale.physicalRadiusMeters,
+    visualRadius: BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier, bounceCount: 0,
+    hit: false, active: true, launchTimestamp: 0, launchPreset: "easyForehand",
+    contactTarget: new THREE.Vector3(0.16, 2.2, -2.94), bouncePoint: new THREE.Vector3(0.08, 0.1035, -4.35),
+    contactTimeAfterBounce: 0.58
   };
 }
 
@@ -49,7 +52,7 @@ function contact(overrides: Partial<EstimatedRacketContact> = {}): EstimatedRack
 
 function crossing(matrix = new THREE.Matrix4(), x = 0) {
   return sweepBallAgainstRacket(
-    new THREE.Vector3(x, 0, -1), new THREE.Vector3(x, 0, 1), BALL_CONFIG.radius, matrix, "off"
+    new THREE.Vector3(x, 0, -1), new THREE.Vector3(x, 0, 1), BALL_CONFIG.scale.physicalRadiusMeters, matrix, "off"
   );
 }
 
@@ -59,17 +62,17 @@ test("launch presets travel from far court toward player", () => {
   assert.ok(launch.velocity.z > 0);
 });
 
-test("left handed launch mirrors forehand side", () => {
+test("left handed delivery mirrors forehand target side", () => {
   const right = getLaunchParameters("easyForehand", "right", "normal");
   const left = getLaunchParameters("easyForehand", "left", "normal");
-  assert.equal(right.position.x, -left.position.x);
+  assert.equal(right.contactTarget.x, -left.contactTarget.x);
 });
 
 test("initial trajectory bounces once at court height", () => {
   const value = ball();
   for (let index = 0; index < 85; index += 1) stepBallPhysics(value, 0.016);
   assert.equal(value.bounceCount, 1);
-  assert.ok(value.position.y >= BALL_CONFIG.courtHeight + value.radius);
+  assert.ok(value.position.y >= BALL_CONFIG.courtHeight + value.physicsRadius);
 });
 
 test("world bounds detect a ball behind the player", () => {

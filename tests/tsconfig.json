@@ -13,6 +13,7 @@
     "phase-b.test.ts",
     "phase-c.test.ts",
     "phase-d.test.ts",
+    "phase-d1.test.ts",
     "../client-pc/src/motion/**/*.ts",
     "../client-pc/src/strokeDetection/**/*.ts",
     "../client-pc/src/ball/**/*.ts"
