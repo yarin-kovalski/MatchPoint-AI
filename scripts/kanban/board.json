@@ -5,7 +5,7 @@
     "prefs_background": "blue"
   },
   "git": {
-    "lastProcessedCommit": "03eb4dde11c390ac3ea66156592a14df5791d62c"
+    "lastProcessedCommit": "5a574260f4fb8eed81b735cd0ba5dbf4360d96d4"
   },
   "lists": ["Backlog", "To Do", "In Progress", "Done", "Cancelled / Parked"],
   "labels": [
@@ -54,15 +54,6 @@
       "labels": ["Infra & Deploy", "Docs & Course"],
       "due": "2026-09-30T18:00:00+03:00",
       "desc": "Repository access is a submission action outside the code history. It must be completed and verified against the correct instructor account before the October 1 deadline.",
-      "checklist": []
-    },
-    {
-      "key": "KANBAN-PUBLISH-RECORD",
-      "list": "To Do",
-      "name": "Publish the approved kanban record",
-      "labels": ["Docs & Course"],
-      "due": "2026-09-30T18:00:00+03:00",
-      "desc": "The board must first be reviewed locally. Publication and screenshot capture are intentionally blocked until explicit approval, and the published board must be described honestly as a reconstructed project record rather than a board used from day one.",
       "checklist": []
     },
     {
@@ -191,6 +182,26 @@
       "due": "2026-08-05T18:00:00+03:00",
       "desc": "The trainer needed a playable proof without introducing a heavy physics engine or rally rules. Phase D added deterministic launches, fixed-step custom physics, one-bounce delivery, swept elliptical string-bed collision, contact-window validation, bounded return response, spin effects, assistance modes, one-shot hit/miss events, replay data, and tests.",
       "checklist": ["03eb4dd 2026-08-05 feat: add 3D ball flight and racket collision prototype"]
+    },
+    {
+      "key": "KANBAN-PUBLISH-RECORD",
+      "list": "Done",
+      "name": "Publish the approved kanban record",
+      "labels": ["Docs & Course"],
+      "start": "2026-08-05T20:49:02+03:00",
+      "due": "2026-08-05T20:49:02+03:00",
+      "desc": "The reconstructed project record was reviewed locally, published to the existing Trello board, and verified before synchronization automation was enabled.",
+      "checklist": ["5a57426 2026-08-05 feat(kanban): automate idempotent Trello synchronization [KANBAN-AUTOMATION] [DONE]"]
+    },
+    {
+      "key": "KANBAN-AUTOMATION",
+      "list": "Done",
+      "name": "Automate Trello Kanban synchronization",
+      "labels": ["Infra & Deploy", "Docs & Course"],
+      "start": "2026-08-05T20:49:02+03:00",
+      "due": "2026-08-05T20:49:02+03:00",
+      "desc": "The existing Trello board was upgraded with stable card identities, idempotent synchronization, conservative Git-history matching, conflict and orphan protection, GitHub Actions automation, and repository-secret authentication.",
+      "checklist": ["5a57426 2026-08-05 feat(kanban): automate idempotent Trello synchronization [KANBAN-AUTOMATION] [DONE]"]
     },
     {
       "key": "PARK-MEDIAPIPE-POSE",
