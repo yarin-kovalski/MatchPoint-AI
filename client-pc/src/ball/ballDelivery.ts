@@ -16,6 +16,8 @@ export type ExpectedContactTransform = {
   faceNormal: THREE.Vector3;
   stringBedCenter: THREE.Vector3;
   recommendedBallDirection: THREE.Vector3;
+  racketUpWorld: THREE.Vector3;
+  racketSideWorld: THREE.Vector3;
 };
 
 export type StationaryReachVolume = {
@@ -63,7 +65,9 @@ export function getExpectedRacketContactTransform(options: {
     quaternion,
     faceNormal: new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion).normalize(),
     stringBedCenter: position.clone(),
-    recommendedBallDirection: new THREE.Vector3(0, 0, 1)
+    recommendedBallDirection: new THREE.Vector3(0, 0, 1),
+    racketUpWorld: new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion).normalize(),
+    racketSideWorld: new THREE.Vector3(1, 0, 0).applyQuaternion(quaternion).normalize()
   };
 }
 
@@ -103,18 +107,14 @@ export function getBallDeliveryTarget(options: {
   const type = options.preset === "easyBackhand" ? "backhand" : "forehand";
   const expected = getExpectedRacketContactTransform({ strokeType: type, handedness: options.handedness, backhandStyle: options.backhandStyle });
   const preset = BALL_CONFIG.launch[options.preset];
-  const handMirror = options.handedness === "right" ? 1 : -1;
   const target = expected.stringBedCenter.clone();
-  target.x = (options.sideOffset ?? preset.contactSideOffset) * handMirror;
-  target.y += options.heightOffset ?? preset.contactHeight;
+  const comfort = new THREE.Vector3(...BALL_CONFIG.easyAssist.contactComfortOffsetLocal);
+  comfort.y += options.heightOffset ?? preset.contactHeight;
+  comfort.z += options.depthOffset ?? preset.depthOffset;
+  target.add(comfort.applyQuaternion(expected.quaternion));
   if ((options.assistMode ?? "easy") === "easy") {
     target.y = THREE.MathUtils.clamp(target.y, BALL_CONFIG.easyAssist.minimumTargetHeight, BALL_CONFIG.easyAssist.maximumTargetHeight);
   }
-  const heightDelta = target.y - expected.stringBedCenter.y;
-  const depthOffset = options.depthOffset ?? preset.depthOffset;
-  target.z += Math.abs(expected.faceNormal.z) > 1e-6
-    ? depthOffset - heightDelta * expected.faceNormal.y / expected.faceNormal.z
-    : depthOffset;
   return target;
 }
 

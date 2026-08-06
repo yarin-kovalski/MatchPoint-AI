@@ -222,6 +222,7 @@ const elements = {
   showTrajectoryToggle: getElement<HTMLInputElement>("showTrajectoryToggle"),
   showStringCenterToggle: getElement<HTMLInputElement>("showStringCenterToggle"),
   showBallAtContact: getElement<HTMLButtonElement>("showBallAtContact"),
+  launchGuaranteedEasyHit: getElement<HTMLButtonElement>("launchGuaranteedEasyHit"),
   resetBallVisualSettings: getElement<HTMLButtonElement>("resetBallVisualSettings"),
   debugBallScale: getElement("debugBallScale"),
   debugDeliveryTarget: getElement("debugDeliveryTarget"),
@@ -256,10 +257,10 @@ let lastBallFrameAt = performance.now();
 let lastBallBounceCount = 0;
 let ballRelaunchAt = 0;
 let ballVisualScaleMultiplier: number = BALL_CONFIG.scale.visualScaleMultiplier;
-let contactHeightOffset = 0.02;
+let contactHeightOffset = 0;
 let forehandSideOffset = 1.15;
 let backhandSideOffset = -1.15;
-let contactDepthOffset = 0.12;
+let contactDepthOffset = 0;
 let showBallAtContactPreview = false;
 const gyroQuaternion = new THREE.Quaternion();
 const relativeOrientationQuaternion = new THREE.Quaternion();
@@ -1197,6 +1198,7 @@ function createEasyHitMotion(): EasyHitMotion | null {
     racketUpVector: latestSensorFrame.racketUpVector,
     racketSideVector: latestSensorFrame.racketSideVector,
     racketFaceAngle: latestSensorFrame.racketFaceAngleToCourtRadians,
+    motionForwardScore: latestSensorFrame.motionForwardScore,
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle()
   };
@@ -1352,6 +1354,13 @@ function stopReplay(): void {
 function wireBallControls(): void {
   elements.launchForehandBall.addEventListener("click", () => launchBall("easyForehand"));
   elements.launchBackhandBall.addEventListener("click", () => launchBall("easyBackhand"));
+  elements.launchGuaranteedEasyHit.addEventListener("click", () => {
+    assistMode = "easy";
+    ballSpeedPreset = "normal";
+    elements.assistModeSelect.value = "easy";
+    elements.ballSpeedSelect.value = "normal";
+    launchBall(activeLaunchPreset === "easyBackhand" ? "easyBackhand" : "easyForehand");
+  });
   elements.resetBall.addEventListener("click", () => {
     ballController.reset();
     ballMesh.visible = false;
@@ -1605,7 +1614,7 @@ function updateBallDebug(): void {
     `plane ${flag(hitDebug.planeCrossed)} | ellipse ${flag(hitDebug.insideEllipse)} | ` +
     `contact-ready ${flag(hitDebug.strokeStateIsContactReady)} | recent event ${flag(hitDebug.recentContactEvent)} | ` +
     `speed ${flag(hitDebug.swingSpeedAboveThreshold)} ${hitDebug.currentSwingSpeed.toFixed(2)}/${hitDebug.minimumSwingSpeed.toFixed(2)} rad/s | ` +
-    `pose ${flag(hitDebug.racketPoseValid)} | accepted ${flag(hitDebug.hitAccepted)} | ` +
+    `direction ${flag(hitDebug.swingDirectionValid)} | pose ${flag(hitDebug.racketPoseValid)} | accepted ${flag(hitDebug.hitAccepted)} | ` +
     `ball ${formatVector(ball.position)} | target ${formatVector(ball.contactTarget)} | strings ${formatVector(hitDebug.stringBedCenter)} | ` +
     `gaps ${hitDebug.ballToTargetDistance.toFixed(2)}/${hitDebug.ballToStringBedDistance.toFixed(2)} m | reject ${hitDebug.rejectionReason}`;
   elements.debugBallResult.textContent = ballController.lastHit

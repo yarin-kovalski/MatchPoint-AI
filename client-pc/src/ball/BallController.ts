@@ -6,6 +6,7 @@ import { isBallOutOfBounds, stepBallPhysics } from "./ballPhysics.js";
 import { calculateOutgoingVelocity } from "./ballResponse.js";
 import { estimateSecondBounceDelay, solveVelocity } from "./ballDelivery.js";
 import { sweepBallAgainstRacket } from "./racketCollider.js";
+import { applyEasyTrajectoryAssist, EasyTrajectoryAssistResult } from "./easyTrajectoryAssist.js";
 import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset, EasyHitMotion, HitDebugSnapshot, LaunchPreset, RacketCollisionResult } from "./ballTypes.js";
 
 export function shouldEnterContactZone(ball: BallSnapshot, now: number, assistMode: AssistMode = "prototype"): boolean {
@@ -26,16 +27,19 @@ export class BallController {
     physicsRadius: BALL_CONFIG.scale.physicalRadiusMeters,
     visualRadius: BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier,
     bounceCount: 0, hit: false, active: false, launchTimestamp: 0, launchPreset: null,
-    contactTarget: new THREE.Vector3(), bouncePoint: new THREE.Vector3(), contactTimeAfterBounce: 0,
+    contactTarget: new THREE.Vector3(), lockedContactTarget: new THREE.Vector3(),
+    lockedContactQuaternion: new THREE.Quaternion(), lockedStrokeType: "forehand",
+    bouncePoint: new THREE.Vector3(), contactTimeAfterBounce: 0,
     contactDeadline: 0, secondBounceDeadline: 0
   };
   lastCollision: RacketCollisionResult | null = null;
   lastHit: BallHitEvent | null = null;
   lastMiss: BallMissEvent | null = null;
+  lastTrajectoryAssist: EasyTrajectoryAssistResult | null = null;
   readonly hitDebug: HitDebugSnapshot = {
     ballNearTarget: false, ballNearStringBed: false, oneBounceOnly: false, beforeSecondBounce: false,
     planeCrossed: false, insideEllipse: false, strokeStateIsContactReady: false,
-    recentContactEvent: false, swingSpeedAboveThreshold: false, racketPoseValid: false,
+    recentContactEvent: false, swingSpeedAboveThreshold: false, racketPoseValid: false, swingDirectionValid: false,
     hitAccepted: false, rejectionReason: "ball idle", ballToTargetDistance: Number.POSITIVE_INFINITY,
     ballToStringBedDistance: Number.POSITIVE_INFINITY, currentSwingSpeed: 0,
     minimumSwingSpeed: BALL_CONFIG.easyAssist.minimumAngularSpeed, stringBedCenter: new THREE.Vector3()
@@ -75,6 +79,9 @@ export class BallController {
     this.ball.launchTimestamp = now;
     this.ball.launchPreset = preset;
     this.ball.contactTarget.copy(launch.contactTarget);
+    this.ball.lockedContactTarget.copy(launch.contactTarget);
+    this.ball.lockedContactQuaternion.copy(launch.contactQuaternion);
+    this.ball.lockedStrokeType = launch.strokeType;
     this.ball.bouncePoint.copy(launch.bouncePoint);
     this.ball.contactTimeAfterBounce = launch.contactTimeAfterBounce;
     this.ball.contactDeadline = 0;
@@ -129,6 +136,9 @@ export class BallController {
         this.ball.secondBounceDeadline = now + estimateSecondBounceDelay(this.ball.velocity.y) * 1000;
       }
     }
+    this.lastTrajectoryAssist = assistMode === "easy"
+      ? applyEasyTrajectoryAssist(this.ball, deltaSeconds, now)
+      : null;
     if (shouldEnterContactZone(this.ball, now, assistMode)) {
       this.ball.state = "CONTACT_ZONE";
     }
@@ -198,7 +208,7 @@ export class BallController {
     const debug = this.hitDebug;
     return debug.ballNearTarget && debug.ballNearStringBed && debug.oneBounceOnly &&
       debug.beforeSecondBounce && debug.strokeStateIsContactReady &&
-      debug.swingSpeedAboveThreshold && debug.racketPoseValid;
+      debug.swingSpeedAboveThreshold && debug.swingDirectionValid && debug.racketPoseValid;
   }
 
   private updateHitDebug(now: number, stroke: StrokeDetectorSnapshot, contact: EstimatedRacketContact | null, assistMode: AssistMode, motion: EasyHitMotion | null, matrix: THREE.Matrix4): void {
@@ -217,6 +227,7 @@ export class BallController {
       recentContactEvent: contactAge <= (assistMode === "easy" ? BALL_CONFIG.easyAssist.contactTimingToleranceMs : BALL_CONFIG.collision.contactEventToleranceMs),
       swingSpeedAboveThreshold: (contact ? contact.estimatedSpeed / 3.2 : motion?.angularSpeed ?? 0) >= minimum,
       racketPoseValid: (contact?.racketFaceAngle ?? motion?.racketFaceAngle ?? Number.POSITIVE_INFINITY) <= (assistMode === "easy" ? BALL_CONFIG.easyAssist.maximumFaceAngleRadians : BALL_CONFIG.collision.maximumFaceAngleRadians),
+      swingDirectionValid: contact ? contact.forwardScore >= 0.2 : (motion?.motionForwardScore ?? 0) >= 0.2,
       hitAccepted: this.ball.hit,
       ballToTargetDistance: this.ball.position.distanceTo(this.ball.contactTarget),
       ballToStringBedDistance: this.ball.position.distanceTo(center),

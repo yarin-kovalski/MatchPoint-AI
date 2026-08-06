@@ -16,6 +16,7 @@ export type EasyHitMotion = {
   racketUpVector: THREE.Vector3;
   racketSideVector: THREE.Vector3;
   racketFaceAngle: number;
+  motionForwardScore: number;
   handedness: Handedness;
   backhandStyle: BackhandStyle;
 };
@@ -31,6 +32,7 @@ export type HitDebugSnapshot = {
   recentContactEvent: boolean;
   swingSpeedAboveThreshold: boolean;
   racketPoseValid: boolean;
+  swingDirectionValid: boolean;
   hitAccepted: boolean;
   rejectionReason: string;
   ballToTargetDistance: number;
@@ -59,6 +61,9 @@ export type BallSnapshot = {
   launchTimestamp: number;
   launchPreset: LaunchPreset | null;
   contactTarget: THREE.Vector3;
+  lockedContactTarget: THREE.Vector3;
+  lockedContactQuaternion: THREE.Quaternion;
+  lockedStrokeType: "forehand" | "backhand";
   bouncePoint: THREE.Vector3;
   contactTimeAfterBounce: number;
   contactDeadline: number;

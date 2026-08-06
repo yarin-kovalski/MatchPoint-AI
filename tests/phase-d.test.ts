@@ -19,6 +19,8 @@ function ball(): BallSnapshot {
     visualRadius: BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier, bounceCount: 0,
     hit: false, active: true, launchTimestamp: 0, launchPreset: "easyForehand",
     contactTarget: new THREE.Vector3(0.16, 2.2, -2.94), bouncePoint: new THREE.Vector3(0.08, 0.1035, -4.35),
+    lockedContactTarget: new THREE.Vector3(0.16, 2.2, -2.94), lockedContactQuaternion: new THREE.Quaternion(),
+    lockedStrokeType: "forehand",
     contactTimeAfterBounce: 0.75, contactDeadline: 0, secondBounceDeadline: 0
   };
 }
@@ -61,7 +63,7 @@ function easyMotion(angularSpeed: number): EasyHitMotion {
     valid: true, angularSpeed, accelerationMagnitude: 5, racketQuaternion: new THREE.Quaternion(),
     racketFaceNormal: new THREE.Vector3(0, 0, 1), racketForwardVector: new THREE.Vector3(0, 1, 0),
     racketUpVector: new THREE.Vector3(0, 0, 1), racketSideVector: new THREE.Vector3(1, 0, 0),
-    racketFaceAngle: 0.4, handedness: "right", backhandStyle: "one-handed"
+    racketFaceAngle: 0.4, motionForwardScore: 0.7, handedness: "right", backhandStyle: "one-handed"
   };
 }
 

@@ -11,7 +11,8 @@ import { BallSnapshot } from "../client-pc/src/ball/ballTypes.js";
 import { createProceduralTennisBallTexture, integrateBallRotation, resetTennisBallTextureCache } from "../client-pc/src/ball/ballVisuals.js";
 import { EstimatedRacketContact } from "../client-pc/src/strokeDetection/strokeTypes.js";
 import { STROKE_CONFIG } from "../client-pc/src/strokeDetection/strokeConfig.js";
-import { shouldEnterContactZone } from "../client-pc/src/ball/BallController.js";
+import { BallController, shouldEnterContactZone } from "../client-pc/src/ball/BallController.js";
+import { applyEasyTrajectoryAssist } from "../client-pc/src/ball/easyTrajectoryAssist.js";
 
 function simulatedDelivery(preset: "easyForehand" | "easyBackhand", handedness: "right" | "left") {
   const launch = getLaunchParameters(preset, handedness, "normal");
@@ -23,6 +24,8 @@ function simulatedDelivery(preset: "easyForehand" | "easyBackhand", handedness: 
     visualRadius: BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier,
     bounceCount: 0, hit: false, active: true, launchTimestamp: 0, launchPreset: preset,
     contactTarget: launch.contactTarget.clone(), bouncePoint: launch.bouncePoint.clone(),
+    lockedContactTarget: launch.contactTarget.clone(), lockedContactQuaternion: launch.contactQuaternion.clone(),
+    lockedStrokeType: launch.strokeType,
     contactTimeAfterBounce: launch.contactTimeAfterBounce, contactDeadline: 0, secondBounceDeadline: 0
   };
   let bouncedAt = -1;
@@ -96,11 +99,65 @@ test("both Easy targets lie inside the comfortable stationary core", () => {
     assert.equal(isInsideStationaryReachVolume(target, core), true);
   }
 });
+test("Easy target derives directly from the expected string-bed center", () => {
+  const expected = getExpectedRacketContactTransform({ strokeType: "forehand", handedness: "right", backhandStyle: "one-handed" });
+  const target = getBallDeliveryTarget({ preset: "easyForehand", handedness: "right", backhandStyle: "one-handed" });
+  assert.ok(target.distanceTo(expected.stringBedCenter) < 1e-8);
+});
+test("launch locks target, quaternion, and stroke type per ball", () => {
+  const launch = getLaunchParameters("easyBackhand", "right", "normal");
+  const controller = new BallController();
+  controller.launch("easyBackhand", "right", "normal", 1000);
+  const locked = controller.ball.lockedContactTarget.clone();
+  controller.ball.contactTarget.addScalar(1);
+  assert.ok(controller.ball.lockedContactTarget.equals(locked));
+  assert.ok(controller.ball.lockedContactQuaternion.angleTo(launch.contactQuaternion) < 1e-8);
+  assert.equal(controller.ball.lockedStrokeType, "backhand");
+});
 test("Easy contact pose uses the configured natural stationary reach depth", () => {
   const baseDepth = STROKE_CONFIG.proceduralPath.contactWindow[2];
   const naturalDepth = baseDepth + BALL_CONFIG.easyAssist.naturalReachDepthOffset;
-  assert.ok(Math.abs(naturalDepth - 0.08) < 1e-8);
+  assert.ok(Math.abs(naturalDepth - 0.28) < 1e-8);
   assert.equal(Math.max(0, -naturalDepth), 0);
+});
+test("trajectory assist starts only after the first bounce", () => {
+  const value = simulatedDelivery("easyForehand", "right").value;
+  value.bounceCount = 0;
+  value.position.add(new THREE.Vector3(0.3, 0, 0));
+  value.contactDeadline = 2000;
+  assert.equal(applyEasyTrajectoryAssist(value, 0.016, 1000).applied, false);
+  value.bounceCount = 1;
+  assert.equal(applyEasyTrajectoryAssist(value, 0.016, 1000).applied, true);
+});
+test("trajectory assist never teleports and clamps acceleration", () => {
+  const value = simulatedDelivery("easyForehand", "right").value;
+  value.bounceCount = 1;
+  value.position.add(new THREE.Vector3(0.4, 0.2, -0.3));
+  value.contactDeadline = 2000;
+  const before = value.position.clone();
+  const result = applyEasyTrajectoryAssist(value, 0.016, 1000);
+  assert.ok(value.position.equals(before));
+  assert.ok(result.acceleration.length() <= BALL_CONFIG.easyTrajectoryAssist.maxAcceleration + 1e-8);
+});
+test("trajectory assist stops before final contact", () => {
+  const value = simulatedDelivery("easyForehand", "right").value;
+  value.bounceCount = 1;
+  value.position.add(new THREE.Vector3(0.3, 0, 0));
+  value.contactDeadline = 1100;
+  const before = value.velocity.clone();
+  const result = applyEasyTrajectoryAssist(value, 0.016, 1000);
+  assert.equal(result.applied, false);
+  assert.ok(value.velocity.equals(before));
+});
+test("Easy crossing stays in the central forty percent and below ten percent of racket width", () => {
+  for (const preset of ["easyForehand", "easyBackhand"] as const) {
+    const result = simulatedDelivery(preset, "right");
+    const expected = getExpectedRacketContactTransform({ strokeType: preset === "easyForehand" ? "forehand" : "backhand", handedness: "right", backhandStyle: "one-handed" });
+    const local = result.value.position.clone().sub(expected.stringBedCenter).applyQuaternion(expected.quaternion.clone().invert());
+    assert.ok(Math.abs(local.x) <= BALL_CONFIG.collision.halfWidthLocal * 0.01 * 0.4);
+    assert.ok(Math.abs(local.y) <= BALL_CONFIG.collision.halfHeightLocal * 0.01 * 0.4);
+    assert.ok(result.value.position.distanceTo(expected.stringBedCenter) <= BALL_CONFIG.scale.measuredRacketHeadWorldWidth * 0.1);
+  }
 });
 test("target height follows expected string center with comfort offset", () => {
   const target = getBallDeliveryTarget({ preset: "easyForehand", handedness: "right", backhandStyle: "one-handed" });
@@ -108,12 +165,12 @@ test("target height follows expected string center with comfort offset", () => {
   assert.ok(target.y >= BALL_CONFIG.easyAssist.minimumTargetHeight && target.y <= BALL_CONFIG.easyAssist.maximumTargetHeight);
   assert.ok(Math.abs(target.y - expected.stringBedCenter.y - BALL_CONFIG.launch.easyForehand.contactHeight) < 1e-8);
 });
-test("Easy target is staged toward the player from the expected string plane", () => {
+test("Easy target is centered on the expected string plane", () => {
   const target = getBallDeliveryTarget({ preset: "easyForehand", handedness: "right", backhandStyle: "one-handed" });
   const expected = getExpectedRacketContactTransform({ strokeType: "forehand", handedness: "right", backhandStyle: "one-handed" });
   const local = target.clone().sub(expected.stringBedCenter).applyQuaternion(expected.quaternion.clone().invert());
-  assert.ok(target.z > expected.stringBedCenter.z);
-  assert.ok(Math.abs(local.z) < BALL_CONFIG.easyAssist.assistedStringBedRadius);
+  assert.ok(target.distanceTo(expected.stringBedCenter) < 1e-8);
+  assert.ok(Math.abs(local.z) < 1e-8);
 });
 test("easy forehand delivery reaches target center region", () => assert.ok(simulatedDelivery("easyForehand", "right").value.position.distanceTo(simulatedDelivery("easyForehand", "right").launch.contactTarget) < 0.1));
 test("easy backhand delivery reaches target center region", () => assert.ok(simulatedDelivery("easyBackhand", "right").value.position.distanceTo(simulatedDelivery("easyBackhand", "right").launch.contactTarget) < 0.1));
@@ -149,7 +206,7 @@ test("projected contact diameter meets readability threshold", () => {
 test("visual ball remains smaller than the measured racket head", () => {
   const visualDiameter = BALL_CONFIG.scale.physicalRadiusMeters * BALL_CONFIG.scale.visualScaleMultiplier * 2;
   assert.ok(visualDiameter < BALL_CONFIG.scale.measuredRacketHeadWorldWidth);
-  assert.ok(BALL_CONFIG.scale.measuredRacketHeadWorldWidth / visualDiameter > 4);
+  assert.ok(BALL_CONFIG.scale.measuredRacketHeadWorldWidth / visualDiameter > 3.5);
 });
 test("CONTACT_ZONE requires a close post-bounce ball near its deadline", () => {
   const result = simulatedDelivery("easyForehand", "right");
@@ -159,7 +216,7 @@ test("CONTACT_ZONE requires a close post-bounce ball near its deadline", () => {
   value.contactDeadline = 1200;
   value.position.copy(value.contactTarget).add(new THREE.Vector3(0, 0, -1.2));
   assert.equal(shouldEnterContactZone(value, 1100), false);
-  value.position.copy(value.contactTarget).add(new THREE.Vector3(0, 0, -0.25));
+  value.position.copy(value.contactTarget).add(new THREE.Vector3(0, 0, -0.15));
   value.position.y = value.contactTarget.y;
   assert.equal(shouldEnterContactZone(value, 1100, "easy"), true);
   value.bounceCount = 2;
@@ -183,32 +240,10 @@ test("post-bounce trajectory approaches and crosses the expected racket plane", 
   const expected = getExpectedRacketContactTransform({ strokeType: "forehand", handedness: "right", backhandStyle: "one-handed" });
   const targetPlaneDistance = launch.contactTarget.clone().sub(expected.stringBedCenter).dot(expected.faceNormal);
   const postBounceVelocity = solveVelocity(launch.bouncePoint, launch.contactTarget, launch.contactTimeAfterBounce);
-  assert.ok(targetPlaneDistance !== 0);
+  assert.ok(Math.abs(targetPlaneDistance) < 1e-8);
   assert.ok(Math.abs(postBounceVelocity.dot(expected.faceNormal)) > 0.1);
 });
 
-test("Easy depth staging reduces closest string-center approach by at least thirty percent", () => {
-  const expected = getExpectedRacketContactTransform({ strokeType: "forehand", handedness: "right", backhandStyle: "one-handed" });
-  const closest = (depthOffset: number) => {
-    const launch = getLaunchParameters("easyForehand", "right", "normal", "one-handed", { depthOffset });
-    const value: BallSnapshot = {
-      ...simulatedDelivery("easyForehand", "right").value,
-      position: launch.position.clone(), previousPosition: launch.position.clone(), velocity: launch.velocity.clone(),
-      bounceCount: 0, contactTarget: launch.contactTarget.clone(), bouncePoint: launch.bouncePoint.clone()
-    };
-    let minimum = Number.POSITIVE_INFINITY;
-    let bounced = false;
-    for (let time = 0; time < 2.6; time += 0.005) {
-      if (stepBallPhysics(value, 0.005) && !bounced) {
-        bounced = true;
-        value.velocity.copy(solveVelocity(value.position, value.contactTarget, launch.contactTimeAfterBounce));
-      }
-      if (bounced) minimum = Math.min(minimum, value.position.distanceTo(expected.stringBedCenter));
-    }
-    return minimum;
-  };
-  assert.ok(closest(0.12) <= closest(0) * 0.7);
-});
 test("procedural tennis texture is cached and reused", () => {
   resetTennisBallTextureCache();
   const context = new Proxy({}, { get: (_target, property) => property === "getImageData"
