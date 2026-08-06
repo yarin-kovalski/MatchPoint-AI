@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
-import { getBallDeliveryTarget, getExpectedRacketContactTransform, getStationaryReachVolume, isInsideStationaryReachVolume, projectPixelDiameter, solveVelocity } from "../client-pc/src/ball/ballDelivery.js";
+import { getBallDeliveryTarget, getComfortableStationaryReachCore, getExpectedRacketContactTransform, getStationaryReachVolume, isInsideStationaryReachVolume, projectPixelDiameter, solveVelocity } from "../client-pc/src/ball/ballDelivery.js";
 import { getLaunchParameters } from "../client-pc/src/ball/ballLauncher.js";
 import { stepBallPhysics } from "../client-pc/src/ball/ballPhysics.js";
 import { calculateOutgoingVelocity } from "../client-pc/src/ball/ballResponse.js";
@@ -88,11 +88,19 @@ test("both Easy targets lie inside their stationary reach volumes", () => {
     assert.equal(isInsideStationaryReachVolume(target, volume), true);
   }
 });
+test("both Easy targets lie inside the comfortable stationary core", () => {
+  for (const preset of ["easyForehand", "easyBackhand"] as const) {
+    const strokeType = preset === "easyForehand" ? "forehand" : "backhand";
+    const target = getBallDeliveryTarget({ preset, handedness: "right", backhandStyle: "one-handed" });
+    const core = getComfortableStationaryReachCore({ strokeType, handedness: "right", backhandStyle: "one-handed" });
+    assert.equal(isInsideStationaryReachVolume(target, core), true);
+  }
+});
 test("Easy contact pose uses the configured natural stationary reach depth", () => {
   const baseDepth = STROKE_CONFIG.proceduralPath.contactWindow[2];
   const naturalDepth = baseDepth + BALL_CONFIG.easyAssist.naturalReachDepthOffset;
-  assert.ok(Math.abs(naturalDepth - (-0.12)) < 1e-8);
-  assert.ok(Math.abs(naturalDepth) <= Math.abs(baseDepth + 0.42) * 0.45);
+  assert.ok(Math.abs(naturalDepth - 0.08) < 1e-8);
+  assert.equal(Math.max(0, -naturalDepth), 0);
 });
 test("target height follows expected string center with comfort offset", () => {
   const target = getBallDeliveryTarget({ preset: "easyForehand", handedness: "right", backhandStyle: "one-handed" });

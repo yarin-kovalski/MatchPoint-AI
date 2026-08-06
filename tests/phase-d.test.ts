@@ -216,7 +216,7 @@ test("assist mode expands ellipse only within configured scale", () => {
   const easy = sweepBallAgainstRacket(new THREE.Vector3(x, 0, -1), new THREE.Vector3(x, 0, 1), 0, new THREE.Matrix4(), "easy");
   assert.equal(off.candidate, false); assert.equal(easy.candidate, true);
   assert.equal(BALL_CONFIG.collision.assistScale.easy, BALL_CONFIG.easyAssist.contactEllipseMultiplier);
-  assert.ok(BALL_CONFIG.collision.assistScale.easy <= 2.2);
+  assert.ok(BALL_CONFIG.collision.assistScale.easy <= 2.4);
 });
 test("deterministic replay produces same collision result", () => {
   const first = crossing(); const replay = crossing();

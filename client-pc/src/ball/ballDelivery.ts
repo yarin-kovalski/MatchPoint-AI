@@ -76,6 +76,15 @@ export function getStationaryReachVolume(options: {
   return { center: expected.stringBedCenter.clone(), ...BALL_CONFIG.easyAssist.stationaryReach };
 }
 
+export function getComfortableStationaryReachCore(options: {
+  strokeType: "forehand" | "backhand";
+  handedness: Handedness;
+  backhandStyle: BackhandStyle;
+}): StationaryReachVolume {
+  const expected = getExpectedRacketContactTransform(options);
+  return { center: expected.stringBedCenter.clone(), ...BALL_CONFIG.easyAssist.comfortableCore };
+}
+
 export function isInsideStationaryReachVolume(point: THREE.Vector3, volume: StationaryReachVolume): boolean {
   return Math.abs(point.x - volume.center.x) <= volume.lateralTolerance &&
     Math.abs(point.y - volume.center.y) <= volume.verticalTolerance &&
