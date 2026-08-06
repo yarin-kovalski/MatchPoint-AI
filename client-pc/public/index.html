@@ -34,6 +34,48 @@
         </div>
         </div>
 
+        <section class="player-mode" aria-labelledby="playerModeTitle">
+          <h2 id="playerModeTitle">Player Mode</h2>
+          <div class="player-actions">
+            <button id="playCalibratedForehand" type="button">Play Forehand</button>
+            <button id="playCalibratedBackhand" type="button">Play Backhand</button>
+            <button id="stopPractice" type="button">Stop</button>
+          </div>
+          <div class="player-options">
+            <label class="check-label"><input id="calibratedPracticeLoopToggle" type="checkbox"> Practice Loop</label>
+            <label>Loop mode
+              <select id="practiceLoopMode">
+                <option value="repeat" selected>Repeat selected stroke</option>
+                <option value="alternate">Alternate Forehand / Backhand</option>
+              </select>
+            </label>
+            <label>Feed Variation
+              <select id="feedVariationLevel">
+                <option value="off">Off</option>
+                <option value="low" selected>Low</option>
+                <option value="medium">Medium</option>
+              </select>
+            </label>
+          </div>
+          <div class="player-scoreboard">
+            <div><span>Attempts</span><strong id="practiceAttempts">0</strong></div>
+            <div><span>Hits</span><strong id="practiceHits">0</strong></div>
+            <div><span>Misses</span><strong id="practiceMisses">0</strong></div>
+            <div><span>Hit percentage</span><strong id="practicePercentage">0%</strong></div>
+            <div><span>Current stroke</span><strong id="playableExpectedStroke">--</strong></div>
+            <div><span>Status</span><strong id="playableCountdown">READY</strong></div>
+            <div><span>Result</span><strong id="ballResult">--</strong></div>
+          </div>
+          <p id="practiceStatus" class="player-status">Ready for a validated feed.</p>
+        </section>
+
+        <details class="developer-panel">
+          <summary>Developer / Advanced</summary>
+          <div class="developer-panel-content">
+            <div class="developer-options">
+              <label>Feed seed <input id="feedSeed" type="number" inputmode="numeric" placeholder="generated"></label>
+              <span id="feedVariationDebug">No varied feed launched.</span>
+            </div>
         <section class="control-section" aria-labelledby="connectionSectionTitle">
           <h2 id="connectionSectionTitle">Connection and sensor status</h2>
 
@@ -121,8 +163,6 @@
         <section class="ball-panel" aria-label="Ball launch and hit controls">
           <h2>Ball launch and hit controls</h2>
           <div class="ball-actions">
-            <button id="playCalibratedForehand" type="button">Play Calibrated Forehand</button>
-            <button id="playCalibratedBackhand" type="button">Play Calibrated Backhand</button>
             <button id="launchForehandBall" type="button">Launch Forehand Ball</button>
             <button id="launchBackhandBall" type="button">Launch Backhand Ball</button>
             <button id="guaranteedForehandFeed" type="button">Guaranteed Forehand Training Feed</button>
@@ -131,7 +171,6 @@
           </div>
           <div class="ball-options">
             <label class="check-label"><input id="playableCalibratedHitToggle" type="checkbox" checked> Playable Calibrated Hit</label>
-            <label class="check-label"><input id="calibratedPracticeLoopToggle" type="checkbox"> Calibrated Practice Loop</label>
             <label>Assist
               <select id="assistModeSelect">
                 <option value="off">Off</option>
@@ -150,15 +189,11 @@
             <label class="check-label"><input id="ballDebugToggle" type="checkbox"> Ball debug</label>
           </div>
           <div class="ball-status">
-            <span>Play <strong id="playableCountdown">READY</strong></span>
             <span>Window <strong id="playableWindowStatus">TOO EARLY</strong></span>
-            <span>Expected <strong id="playableExpectedStroke">--</strong></span>
             <span>Detected <strong id="playableDetectedStroke">--</strong></span>
             <span>Playable resolved <strong id="playableResolvedStroke">--</strong></span>
             <span>Correction <strong id="playableCorrection">0.00 m</strong></span>
-            <span>Practice <strong id="practiceStats">0 attempts / 0 hits / 0 misses / 0%</strong></span>
             <span>Ball <strong id="ballState">IDLE</strong></span>
-            <span>Result <strong id="ballResult">--</strong></span>
             <span>In <strong id="incomingBallSpeed">0.0 m/s</strong></span>
             <span>Out <strong id="outgoingBallSpeed">0.0 m/s</strong></span>
             <span>Spin <strong id="ballSpin">flat</strong></span>
@@ -203,6 +238,8 @@
             <div class="trajectory-status">
               <span>Forehand: <strong id="forehandCalibrationStatus">not calibrated</strong></span>
               <span>Backhand: <strong id="backhandCalibrationStatus">not calibrated</strong></span>
+              <span>Forehand source: <strong id="forehandProfileSource">--</strong></span>
+              <span>Backhand source: <strong id="backhandProfileSource">--</strong></span>
               <label class="check-label"><input id="useCalibratedFeeds" type="checkbox" checked> Use Calibrated Feeds</label>
             </div>
             <div class="trajectory-actions">
@@ -215,6 +252,8 @@
               <button id="saveBackhandTrajectory" type="button">Save Backhand Trajectory</button>
               <button id="resetForehandTrajectory" type="button">Reset Forehand Trajectory</button>
               <button id="resetBackhandTrajectory" type="button">Reset Backhand Trajectory</button>
+              <button id="exportValidatedCalibration" type="button">Export Validated Calibration</button>
+              <button id="restoreValidatedPreset" type="button">Restore Validated Preset</button>
             </div>
             <div class="trajectory-fields">
               <label>Bounce left/right <input id="trajectoryBounceX" type="range" min="-3" max="3" step="0.05"><output id="trajectoryBounceXValue"></output></label>
@@ -278,6 +317,8 @@
             <dt>Timeline</dt><dd id="debugStrokeTimeline">READY</dd>
             <dt>Mapping</dt><dd>phone +X → world +X; phone +Y → world -Z; phone +Z → world +Y</dd>
           </dl>
+        </details>
+          </div>
         </details>
       </section>
 

@@ -1,0 +1,36 @@
+{
+  "forehand": {
+    "strokeType": "forehand",
+    "handedness": "right",
+    "playerBasisAtCalibration": { "forward": [0, 0, -1], "right": [1, 0, 0], "up": [0, 1, 0], "origin": [0, 0, 0] },
+    "launchPointWorld": [2.2593113238568265, 1.85, -6.088704851563163],
+    "bouncePointWorld": [2.5601662395473346, 0.10350000000000001, -4.729598044736115],
+    "apexPointWorld": [2.467806435303367, 1.8437895698833398, -2.4394627746623305],
+    "contactPointWorld": [2.407425854377178, 1.1, -0.9422779425967853],
+    "contactPointPlayerLocal": [2.407425854377178, 1.0999999999999996, 0.9422779425967853],
+    "contactRacketQuaternion": [0, 0, 0, 1],
+    "contactFaceNormal": [0, 0, -1],
+    "bounceToApexMs": 595.6501463243128,
+    "bounceToContactMs": 985.05874412546,
+    "overallSpeed": 4.2,
+    "createdAt": 1786038163647,
+    "version": 1
+  },
+  "backhand": {
+    "strokeType": "backhand",
+    "handedness": "right",
+    "playerBasisAtCalibration": { "forward": [0, 0, -1], "right": [1, 0, 0], "up": [0, 1, 0], "origin": [0, 0, 0] },
+    "launchPointWorld": [-1.7856064605204014, 1.85, -2.8951458860209627],
+    "bouncePointWorld": [-2.6326243680087384, 0.10350000000000001, -5.018435635134617],
+    "apexPointWorld": [-2.5246476891144205, 1.9137895698833398, -2.993036001420065],
+    "contactPointWorld": [-2.452252117665146, 1.1, -1.6350579139533217],
+    "contactPointPlayerLocal": [-2.452252117665146, 1.1, 1.6350579139533217],
+    "contactRacketQuaternion": [0, 0, 0, 1],
+    "contactFaceNormal": [0, 0, -1],
+    "bounceToApexMs": 607.5115214561828,
+    "bounceToContactMs": 1014.8322893127781,
+    "overallSpeed": 4.2,
+    "createdAt": 1786036108035,
+    "version": 1
+  }
+}

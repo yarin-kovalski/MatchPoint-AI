@@ -43,6 +43,16 @@ test("primary calibration and diagnostic bindings remain present", () => {
   }
 });
 
+test("player mode exposes simple play controls and keeps advanced tools collapsed", () => {
+  for (const label of ["Play Forehand", "Play Backhand", "Stop"]) assert.match(html, new RegExp(`>${label}<`));
+  assert.match(html, /id="calibratedPracticeLoopToggle"[^>]*> Practice Loop/);
+  assert.match(html, /id="feedVariationLevel"/);
+  assert.match(html, /<option value="low" selected>Low<\/option>/);
+  assert.match(html, /<details class="developer-panel">/);
+  assert.doesNotMatch(html, /<details class="developer-panel" open>/);
+  assert.match(html, /Developer \/ Advanced/);
+});
+
 test("narrow fallback stacks panels without horizontal overflow", () => {
   assert.match(css, /@media \(max-width:\s*1000px\)/);
   assert.match(css, /@media \(max-width:\s*1000px\)[\s\S]*?\.app-shell\s*\{[^}]*flex-direction:\s*column/s);

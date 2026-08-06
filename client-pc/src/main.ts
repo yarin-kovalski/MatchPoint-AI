@@ -11,6 +11,11 @@ import {
 } from "./ball/trajectoryCalibration.js";
 import { createProceduralTennisBallTexture, integrateBallRotation } from "./ball/ballVisuals.js";
 import { boundedContactCorrection, createPlayableStrokePlan } from "./ball/playableCalibratedHit.js";
+import {
+  loadTrajectoryProfileWithPriority, markTrajectoryProfileAsUser,
+  restoreValidatedTrajectoryPreset, TrajectoryProfileSource, VALIDATED_TRAJECTORY_PRESET
+} from "./ball/validatedTrajectoryPreset.js";
+import { canLaunchPracticeFeed, FeedVariationLevel, FeedVariationResult, generateSafeFeedVariation } from "./ball/feedVariation.js";
 import { analyzeGameplayDiagnostic, AttemptType, diagnosticMarkdown, GameplayDiagnosticFrame, GameplayDiagnosticRecorder } from "./diagnostics/gameplayDiagnostic.js";
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
 import {
@@ -228,7 +233,16 @@ const elements = {
   playableDetectedStroke: getElement("playableDetectedStroke"),
   playableResolvedStroke: getElement("playableResolvedStroke"),
   playableCorrection: getElement("playableCorrection"),
-  practiceStats: getElement("practiceStats"),
+  practiceAttempts: getElement("practiceAttempts"),
+  practiceHits: getElement("practiceHits"),
+  practiceMisses: getElement("practiceMisses"),
+  practicePercentage: getElement("practicePercentage"),
+  practiceStatus: getElement("practiceStatus"),
+  stopPractice: getElement<HTMLButtonElement>("stopPractice"),
+  practiceLoopMode: getElement<HTMLSelectElement>("practiceLoopMode"),
+  feedVariationLevel: getElement<HTMLSelectElement>("feedVariationLevel"),
+  feedSeed: getElement<HTMLInputElement>("feedSeed"),
+  feedVariationDebug: getElement("feedVariationDebug"),
   playableProfileDetails: getElement("playableProfileDetails"),
   launchBackhandBall: getElement<HTMLButtonElement>("launchBackhandBall"),
   guaranteedForehandFeed: getElement<HTMLButtonElement>("guaranteedForehandFeed"),
@@ -281,6 +295,10 @@ const elements = {
   useCalibratedFeeds: getElement<HTMLInputElement>("useCalibratedFeeds"),
   forehandCalibrationStatus: getElement("forehandCalibrationStatus"),
   backhandCalibrationStatus: getElement("backhandCalibrationStatus"),
+  forehandProfileSource: getElement("forehandProfileSource"),
+  backhandProfileSource: getElement("backhandProfileSource"),
+  exportValidatedCalibration: getElement<HTMLButtonElement>("exportValidatedCalibration"),
+  restoreValidatedPreset: getElement<HTMLButtonElement>("restoreValidatedPreset"),
   trajectoryCalibrationMessage: getElement("trajectoryCalibrationMessage"),
   trajectoryTimingStatus: getElement("trajectoryTimingStatus"),
   trajectoryViewValidation: getElement("trajectoryViewValidation"),
@@ -319,9 +337,13 @@ let targetRotationX = 0;
 let targetRotationY = 0;
 let targetRotationZ = 0;
 let displayedSwingSpeedKmh = 0;
+const initialForehandProfile = loadTrajectoryProfileWithPriority(localStorage, "forehand");
+const initialBackhandProfile = loadTrajectoryProfileWithPriority(localStorage, "backhand");
 let trajectoryProfiles: Record<CalibrationStrokeType, TrajectoryCalibrationProfile | null> = {
-  forehand: loadTrajectoryProfile(localStorage, "forehand"),
-  backhand: loadTrajectoryProfile(localStorage, "backhand")
+  forehand: initialForehandProfile.profile, backhand: initialBackhandProfile.profile
+};
+let trajectoryProfileSources: Record<CalibrationStrokeType, TrajectoryProfileSource> = {
+  forehand: initialForehandProfile.source, backhand: initialBackhandProfile.source
 };
 let editingTrajectory: TrajectoryCalibrationProfile | null = null;
 let editingTrajectoryType: CalibrationStrokeType = "forehand";
@@ -359,6 +381,10 @@ let appliedContactCorrection = 0;
 const contactMagnetOffset = new THREE.Vector3();
 let contactDistanceBeforeCorrection = 0;
 let contactDistanceAfterCorrection = 0;
+let currentFeedVariation: FeedVariationResult | null = null;
+let activeCalibrationProfile: TrajectoryCalibrationProfile | null = null;
+let geometryMissStreak = 0;
+let forceValidatedBaseNext = false;
 const gyroQuaternion = new THREE.Quaternion();
 const relativeOrientationQuaternion = new THREE.Quaternion();
 const calibrationBaselineInverse = new THREE.Quaternion();
@@ -1699,6 +1725,8 @@ function wireTrajectoryCalibration(): void {
   elements.saveBackhandTrajectory.addEventListener("click", () => saveEditingTrajectory("backhand"));
   elements.resetForehandTrajectory.addEventListener("click", () => resetSavedTrajectory("forehand"));
   elements.resetBackhandTrajectory.addEventListener("click", () => resetSavedTrajectory("backhand"));
+  elements.exportValidatedCalibration.addEventListener("click", exportValidatedCalibration);
+  elements.restoreValidatedPreset.addEventListener("click", restoreValidatedPreset);
   elements.previewCalibratedFeed.addEventListener("click", previewEditingTrajectory);
   elements.trajectorySideView.addEventListener("click", () => setTrajectoryCamera("side"));
   elements.trajectoryTopView.addEventListener("click", () => setTrajectoryCamera("top"));
@@ -1746,7 +1774,9 @@ function saveEditingTrajectory(strokeType: CalibrationStrokeType): void {
   }
   try {
     saveTrajectoryProfile(localStorage, editingTrajectory);
+    markTrajectoryProfileAsUser(localStorage, strokeType);
     trajectoryProfiles[strokeType] = structuredClone(editingTrajectory);
+    trajectoryProfileSources[strokeType] = "User calibration";
     elements.trajectoryCalibrationMessage.textContent = `${strokeType} trajectory saved.`;
     updateTrajectoryStatuses();
   } catch (error) {
@@ -1756,11 +1786,45 @@ function saveEditingTrajectory(strokeType: CalibrationStrokeType): void {
 
 function resetSavedTrajectory(strokeType: CalibrationStrokeType): void {
   resetTrajectoryProfile(localStorage, strokeType);
-  trajectoryProfiles[strokeType] = null;
-  if (editingTrajectoryType === strokeType) editingTrajectory = createDefaultTrajectoryProfile(strokeType, strokeStateMachine.getHandedness());
+  markTrajectoryProfileAsUser(localStorage, strokeType);
+  const loaded = loadTrajectoryProfileWithPriority(localStorage, strokeType, strokeStateMachine.getHandedness());
+  trajectoryProfiles[strokeType] = loaded.profile;
+  trajectoryProfileSources[strokeType] = loaded.source;
+  if (editingTrajectoryType === strokeType) editingTrajectory = structuredClone(loaded.profile);
   updateTrajectoryStatuses();
   syncTrajectoryControls();
   renderTrajectoryCalibration();
+}
+
+function exportValidatedCalibration(): void {
+  const forehand = loadTrajectoryProfile(localStorage, "forehand");
+  const backhand = loadTrajectoryProfile(localStorage, "backhand");
+  if (!forehand || !backhand) {
+    elements.trajectoryCalibrationMessage.textContent = "Export requires valid user forehand and backhand calibrations.";
+    return;
+  }
+  const blob = new Blob([JSON.stringify({ forehand, backhand }, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "validated-trajectory-calibration.json";
+  link.click();
+  URL.revokeObjectURL(url);
+  elements.trajectoryCalibrationMessage.textContent = "Validated calibration exported.";
+}
+
+function restoreValidatedPreset(): void {
+  restoreValidatedTrajectoryPreset(localStorage);
+  for (const strokeType of ["forehand", "backhand"] as const) {
+    const loaded = loadTrajectoryProfileWithPriority(localStorage, strokeType);
+    trajectoryProfiles[strokeType] = loaded.profile;
+    trajectoryProfileSources[strokeType] = loaded.source;
+  }
+  editingTrajectory = structuredClone(trajectoryProfiles[editingTrajectoryType]!);
+  updateTrajectoryStatuses();
+  syncTrajectoryControls();
+  renderTrajectoryCalibration();
+  elements.trajectoryCalibrationMessage.textContent = "Validated project preset restored to localStorage.";
 }
 
 function previewEditingTrajectory(): void {
@@ -1875,6 +1939,8 @@ function renderTrajectoryCalibration(): void {
 function updateTrajectoryStatuses(): void {
   elements.forehandCalibrationStatus.textContent = trajectoryProfiles.forehand ? "calibrated" : "not calibrated";
   elements.backhandCalibrationStatus.textContent = trajectoryProfiles.backhand ? "calibrated" : "not calibrated";
+  elements.forehandProfileSource.textContent = trajectoryProfileSources.forehand;
+  elements.backhandProfileSource.textContent = trajectoryProfileSources.backhand;
 }
 
 function beginTrajectoryDrag(event: PointerEvent): void {
@@ -1953,7 +2019,19 @@ function isPlayableCalibratedHitEnabled(): boolean {
 }
 
 function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
-  const plan = createPlayableStrokePlan(strokeType, trajectoryProfiles);
+  const selectedLevel = elements.feedVariationLevel.value as FeedVariationLevel;
+  const level = forceValidatedBaseNext ? "off" : selectedLevel;
+  forceValidatedBaseNext = false;
+  const enteredSeed = Number(elements.feedSeed.value);
+  const seed = elements.feedSeed.value.trim() && Number.isFinite(enteredSeed)
+    ? Math.trunc(enteredSeed)
+    : crypto.getRandomValues(new Uint32Array(1))[0];
+  currentFeedVariation = generateSafeFeedVariation(strokeType, level, seed);
+  const launchProfiles = {
+    forehand: strokeType === "forehand" ? currentFeedVariation.profile : VALIDATED_TRAJECTORY_PRESET.forehand,
+    backhand: strokeType === "backhand" ? currentFeedVariation.profile : VALIDATED_TRAJECTORY_PRESET.backhand
+  };
+  const plan = createPlayableStrokePlan(strokeType, launchProfiles);
   selectedPracticeStroke = strokeType;
   assistMode = "easy";
   ballSpeedPreset = "normal";
@@ -1973,6 +2051,21 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
     elements.playableProfileDetails.textContent = `Loaded profile ${strokeType}: invalid or wrong player-local side`;
     return;
   }
+  const variationSummary = {
+    baseProfile: strokeType,
+    level,
+    seed,
+    offsets: currentFeedVariation.offsets,
+    retries: currentFeedVariation.retryCount,
+    valid: currentFeedVariation.valid,
+    fallback: currentFeedVariation.fallback,
+    trajectory: currentFeedVariation.profile
+  };
+  elements.feedVariationDebug.textContent = JSON.stringify(variationSummary, null, 2);
+  elements.practiceStatus.textContent = currentFeedVariation.fallback
+    ? "Stability fallback: validated base feed"
+    : `${strokeType} ${level} variation, seed ${seed}`;
+  console.info("Feed variation", variationSummary);
   const limits = BALL_CONFIG.playableCalibratedHit.maximumCorrection;
   elements.playableProfileDetails.textContent =
     `Loaded profile ${plan.strokeType} | Expected side ${plan.expectedSide} | ` +
@@ -1998,7 +2091,7 @@ function applyPlayableContactMagnet(now: number): void {
     contactMagnetOffset.set(0, 0, 0);
     return;
   }
-  const profile = trajectoryProfiles[ballController.ball.expectedStrokeType];
+  const profile = activeCalibrationProfile ?? trajectoryProfiles[ballController.ball.expectedStrokeType];
   if (!profile) return;
   const currentStringCenter = new THREE.Vector3();
   racketStringCollider.getWorldPosition(currentStringCenter);
@@ -2020,25 +2113,42 @@ function updatePlayableStatus(now: number): void {
   elements.playableDetectedStroke.textContent = latestStrokeSnapshot?.lockedStrokeType ?? "unknown";
   elements.playableResolvedStroke.textContent = ballController.lastHit?.resolvedHitStrokeType ?? ball.expectedStrokeType;
   elements.playableCorrection.textContent = `${appliedContactCorrection.toFixed(2)} m`;
-  if (ball.bounceCount === 0) elements.playableCountdown.textContent = "READY";
+  if (ballController.lastHit) elements.playableCountdown.textContent = "HIT";
+  else if (ballController.lastMiss) elements.playableCountdown.textContent = "MISS";
+  else if (ball.bounceCount === 0) elements.playableCountdown.textContent = "READY";
   else if (!decision || now < decision.opportunityStart) elements.playableCountdown.textContent = "BOUNCE";
   else elements.playableCountdown.textContent = decision.timing === "HIT WINDOW" ? "SWING" : decision.timing;
   elements.playableWindowStatus.textContent = decision?.timing ?? "TOO EARLY";
   if (decision?.reason && decision.timing === "TOO LATE" && !ball.hit) elements.ballResult.textContent = decision.reason;
   const total = practiceHits + practiceMisses;
   const percentage = total > 0 ? Math.round(practiceHits / total * 100) : 0;
-  elements.practiceStats.textContent = `${practiceAttempts} attempts / ${practiceHits} hits / ${practiceMisses} misses / ${percentage}%`;
+  elements.practiceAttempts.textContent = String(practiceAttempts);
+  elements.practiceHits.textContent = String(practiceHits);
+  elements.practiceMisses.textContent = String(practiceMisses);
+  elements.practicePercentage.textContent = `${percentage}%`;
 }
 
 function updatePracticeLoop(now: number): void {
   if (!elements.calibratedPracticeLoopToggle.checked || !selectedPracticeStroke ||
-      practiceRelaunchAt <= 0 || now < practiceRelaunchAt || ballController.ball.active) return;
-  playCalibratedStroke(selectedPracticeStroke);
+      !canLaunchPracticeFeed(now, practiceRelaunchAt, ballController.ball.active)) return;
+  const nextStroke = elements.practiceLoopMode.value === "alternate"
+    ? selectedPracticeStroke === "forehand" ? "backhand" : "forehand"
+    : selectedPracticeStroke;
+  playCalibratedStroke(nextStroke);
 }
 
 function wireBallControls(): void {
   elements.playCalibratedForehand.addEventListener("click", () => playCalibratedStroke("forehand"));
   elements.playCalibratedBackhand.addEventListener("click", () => playCalibratedStroke("backhand"));
+  elements.stopPractice.addEventListener("click", () => {
+    elements.calibratedPracticeLoopToggle.checked = false;
+    selectedPracticeStroke = null;
+    practiceRelaunchAt = 0;
+    ballController.reset();
+    ballMesh.visible = false;
+    elements.playableCountdown.textContent = "READY";
+    elements.practiceStatus.textContent = "Practice stopped.";
+  });
   elements.launchForehandBall.addEventListener("click", () => launchBall("easyForehand"));
   elements.launchBackhandBall.addEventListener("click", () => launchBall("easyBackhand"));
   const launchGuaranteedFeed = (preset: LaunchPreset): void => {
@@ -2147,6 +2257,7 @@ function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibra
   showBallAtContactPreview = false;
   elements.showBallAtContact.textContent = "Show Ball At Contact";
   activeLaunchPreset = preset;
+  activeCalibrationProfile = calibrationProfile ?? null;
   previewTrajectoryActive = preview;
   easySwingIntentDetector.reset();
   latestEasySwingIntent = null;
@@ -2215,7 +2326,13 @@ function onBallHit(event: BallHitEvent): void {
   contactFlashUntil = performance.now() + 150;
   if (selectedPracticeStroke) {
     practiceHits += 1;
+    geometryMissStreak = 0;
     practiceRelaunchAt = performance.now() + BALL_CONFIG.playableCalibratedHit.practiceResetMs;
+  }
+  if (currentFeedVariation) {
+    elements.feedVariationDebug.textContent +=
+      `\nOutcome: HIT | contact gap ${contactDistanceBeforeCorrection.toFixed(3)} -> ` +
+      `${contactDistanceAfterCorrection.toFixed(3)} m | magnet ${appliedContactCorrection.toFixed(3)} m`;
   }
   motionRecorder.recordBallResult({ type: "hit", event });
   window.setTimeout(() => finishRealHitAttempt("HIT", "accepted"), 0);
@@ -2228,6 +2345,18 @@ function onBallMiss(event: BallMissEvent): void {
   if (selectedPracticeStroke) {
     practiceMisses += 1;
     practiceRelaunchAt = performance.now() + BALL_CONFIG.playableCalibratedHit.practiceResetMs;
+    const geometryMiss = /bounce|passed|outside|world bounds|delivery target|spatial/i.test(event.reason);
+    geometryMissStreak = geometryMiss ? geometryMissStreak + 1 : 0;
+    if (geometryMissStreak >= 2) {
+      forceValidatedBaseNext = true;
+      geometryMissStreak = 0;
+      elements.practiceStatus.textContent = "Stability fallback: validated base feed";
+    }
+  }
+  if (currentFeedVariation) {
+    elements.feedVariationDebug.textContent +=
+      `\nOutcome: MISS | ${event.reason} | contact gap ${contactDistanceBeforeCorrection.toFixed(3)} -> ` +
+      `${contactDistanceAfterCorrection.toFixed(3)} m | magnet ${appliedContactCorrection.toFixed(3)} m`;
   }
   motionRecorder.recordBallResult({ type: "miss", event });
   window.setTimeout(() => finishRealHitAttempt("MISS", event.reason), 0);
