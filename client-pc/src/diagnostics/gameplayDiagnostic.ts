@@ -5,7 +5,9 @@ export type RootCause =
   | "BALL_RIGHT_OF_STRINGS" | "NO_PLANE_CROSSING" | "STROKE_STAYED_READY"
   | "NO_FORWARD_SWING" | "NO_CONTACT_WINDOW" | "SWING_TOO_SLOW"
   | "CONTACT_TOO_EARLY" | "CONTACT_TOO_LATE" | "INVALID_RACKET_FACE"
-  | "WRONG_APPROACH_SIDE" | "PACKET_GAP" | "MULTIPLE_FAILURES" | "NONE";
+  | "WRONG_APPROACH_SIDE" | "PACKET_GAP" | "MULTIPLE_FAILURES"
+  | "EXPECTED_FOREHAND_DETECTED_BACKHAND" | "EXPECTED_BACKHAND_DETECTED_FOREHAND"
+  | "STROKE_TYPE_UNRESOLVED" | "NONE";
 
 export type GameplayDiagnosticFrame = {
   timestamp: number; deltaTime: number;
@@ -23,6 +25,16 @@ export type GameplayDiagnosticFrame = {
   contactWindowActive: boolean; recentContactEvent: boolean; contactEventAgeMs: number | null;
   minimumStrokeSpeed: number; swingSpeedPassed: boolean; racketFaceAngle: number;
   racketFaceAnglePassed: boolean; ballNearTarget: boolean; ballNearStringBed: boolean;
+  easySwingIntentActive?: boolean; easySwingIntentConfidence?: number;
+  minimumSweptDistance?: number; sweptPlaneCrossed?: boolean; sweptInsideEllipse?: boolean;
+  expectedStrokeType?: string; detectedStrokeType?: string; resolvedHitStrokeType?: string;
+  strokeTypeMismatch?: string;
+  calibrationProfile?: unknown;
+  expectedContactPoint?: number[]; actualClosestPoint?: number[]; contactPointMissVector?: number[];
+  expectedApexPoint?: number[]; actualApexPoint?: number[];
+  expectedBouncePoint?: number[]; actualBouncePoint?: number[];
+  expectedSide?: string; actualSide?: string; trajectoryDeviation?: number;
+  calibrationProfileVersion?: number;
   finalHitAccepted: boolean; rejectionReason: string; sensorValid: boolean;
 };
 
@@ -70,6 +82,10 @@ export function analyzeGameplayDiagnostic(recording: GameplayDiagnosticRecording
   const peak = frames.reduce<GameplayDiagnosticFrame | null>((best, frame) => !best || frame.estimatedSwingSpeed > best.estimatedSwingSpeed ? frame : best, null);
   const contactFrames = frames.filter(frame => frame.contactWindowActive);
   const failed: RootCause[] = [];
+  const accepted = frames.find(frame => frame.finalHitAccepted);
+  if (accepted?.strokeTypeMismatch && accepted.strokeTypeMismatch !== "NONE") {
+    failed.push(accepted.strokeTypeMismatch as RootCause);
+  }
   if (frames.some(frame => !frame.sensorValid)) failed.push("PACKET_GAP");
   if (closest) {
     const local = closest.ballPositionRacketLocal;
@@ -87,7 +103,16 @@ export function analyzeGameplayDiagnostic(recording: GameplayDiagnosticRecording
   if (contactFrames.length === 0) failed.push("NO_CONTACT_WINDOW");
   if (peak && peak.estimatedSwingSpeed < peak.minimumStrokeSpeed) failed.push("SWING_TOO_SLOW");
   const unique = [...new Set(failed)];
-  const primary: RootCause = recording.result === "HIT" ? "NONE" : unique.length === 1 ? unique[0] : unique.length > 1 ? "MULTIPLE_FAILURES" : classifyFinalReason(recording.finalReason);
+  const priority: RootCause[] = [
+    "PACKET_GAP", "EXPECTED_FOREHAND_DETECTED_BACKHAND", "EXPECTED_BACKHAND_DETECTED_FOREHAND",
+    "STROKE_TYPE_UNRESOLVED", "STROKE_STAYED_READY", "SWING_TOO_SLOW", "NO_FORWARD_SWING",
+    "INVALID_RACKET_FACE", "WRONG_APPROACH_SIDE", "BALL_TOO_FAR", "BALL_TOO_HIGH",
+    "BALL_TOO_LOW", "BALL_LEFT_OF_STRINGS", "BALL_RIGHT_OF_STRINGS",
+    "NO_PLANE_CROSSING", "NO_CONTACT_WINDOW", "CONTACT_TOO_EARLY", "CONTACT_TOO_LATE"
+  ];
+  const primary: RootCause = recording.result === "HIT"
+    ? "NONE"
+    : priority.find(cause => unique.includes(cause)) ?? classifyFinalReason(recording.finalReason);
   return {
     result: recording.result,
     firstBounceTime: frames.find(frame => frame.bounceCount >= 1)?.timestamp ?? null,

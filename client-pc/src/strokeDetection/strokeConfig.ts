@@ -12,9 +12,10 @@ export const STROKE_CONFIG = {
     strokeCooldownMs: 350
   },
   noise: {
-    readyAngularSpeed: 0.45,
+    readyAngularSpeed: 0.8,
     readyAcceleration: 1.6,
     preparationAngularSpeed: 0.8,
+    preparationCandidateScore: 0.33,
     maximumStartAcceleration: 24,
     minimumOrientationAngle: 0.12
   },
@@ -44,4 +45,3 @@ export const STROKE_CONFIG = {
     recovery: [0, 0.12, -0.08]
   }
 } as const;
-

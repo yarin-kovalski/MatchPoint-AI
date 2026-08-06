@@ -3,8 +3,14 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BallController } from "./ball/BallController.js";
 import { BALL_CONFIG } from "./ball/ballConfig.js";
 import { getBallDeliveryTarget, getExpectedRacketContactTransform, projectPixelDiameter } from "./ball/ballDelivery.js";
-import { AssistMode, BallHitEvent, BallMissEvent, BallSpeedPreset, EasyHitMotion, LaunchPreset } from "./ball/ballTypes.js";
+import { AssistMode, BallHitEvent, BallMissEvent, BallSpeedPreset, EasyHitMotion, isBackhandPreset, LaunchPreset } from "./ball/ballTypes.js";
+import {
+  CalibrationStrokeType, createDefaultTrajectoryProfile, loadTrajectoryProfile,
+  resetTrajectoryProfile, saveTrajectoryProfile, setProfileArcHeight, solveTrajectoryProfile,
+  synchronizeProfileApexFromTiming, TrajectoryCalibrationProfile, worldToPlayerLocal
+} from "./ball/trajectoryCalibration.js";
 import { createProceduralTennisBallTexture, integrateBallRotation } from "./ball/ballVisuals.js";
+import { boundedContactCorrection, createPlayableStrokePlan } from "./ball/playableCalibratedHit.js";
 import { analyzeGameplayDiagnostic, AttemptType, diagnosticMarkdown, GameplayDiagnosticFrame, GameplayDiagnosticRecorder } from "./diagnostics/gameplayDiagnostic.js";
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
 import {
@@ -18,6 +24,7 @@ import {
   RecordingLabel
 } from "./strokeDetection/motionRecorder.js";
 import { StrokeStateMachine } from "./strokeDetection/strokeStateMachine.js";
+import { EasySwingIntentDetector, EasySwingIntentSnapshot } from "./strokeDetection/easySwingIntent.js";
 import {
   BackhandStyle,
   EstimatedRacketContact,
@@ -142,6 +149,7 @@ declare const io: SocketFactory;
 
 const socket = io();
 const canvas = getElement<HTMLCanvasElement>("sceneCanvas");
+const visualizationPanel = getElement<HTMLElement>("visualizationPanel");
 
 const DIAGNOSTIC_ELEMENT_IDS = [
   "recordForehandAttempt",
@@ -169,6 +177,7 @@ const elements = {
   calibrationOverlay: getElement("calibrationOverlay"),
   calibrationTitle: getElement("calibrationTitle"),
   calibrationInstructions: getElement("calibrationInstructions"),
+  calibrationSummary: getElement("calibrationSummary"),
   calibrateButton: getElement<HTMLButtonElement>("calibrateButton"),
   orientationDebug: getElement<HTMLDetailsElement>("orientationDebug"),
   debugSource: getElement("debugSource"),
@@ -209,7 +218,21 @@ const elements = {
   debugLastStroke: getElement("debugLastStroke"),
   debugLastContactTimestamp: getElement("debugLastContactTimestamp"),
   launchForehandBall: getElement<HTMLButtonElement>("launchForehandBall"),
+  playCalibratedForehand: getElement<HTMLButtonElement>("playCalibratedForehand"),
+  playCalibratedBackhand: getElement<HTMLButtonElement>("playCalibratedBackhand"),
+  playableCalibratedHitToggle: getElement<HTMLInputElement>("playableCalibratedHitToggle"),
+  calibratedPracticeLoopToggle: getElement<HTMLInputElement>("calibratedPracticeLoopToggle"),
+  playableCountdown: getElement("playableCountdown"),
+  playableWindowStatus: getElement("playableWindowStatus"),
+  playableExpectedStroke: getElement("playableExpectedStroke"),
+  playableDetectedStroke: getElement("playableDetectedStroke"),
+  playableResolvedStroke: getElement("playableResolvedStroke"),
+  playableCorrection: getElement("playableCorrection"),
+  practiceStats: getElement("practiceStats"),
+  playableProfileDetails: getElement("playableProfileDetails"),
   launchBackhandBall: getElement<HTMLButtonElement>("launchBackhandBall"),
+  guaranteedForehandFeed: getElement<HTMLButtonElement>("guaranteedForehandFeed"),
+  guaranteedBackhandFeed: getElement<HTMLButtonElement>("guaranteedBackhandFeed"),
   resetBall: getElement<HTMLButtonElement>("resetBall"),
   assistModeSelect: getElement<HTMLSelectElement>("assistModeSelect"),
   ballSpeedSelect: getElement<HTMLSelectElement>("ballSpeedSelect"),
@@ -246,6 +269,40 @@ const elements = {
   showBallAtContact: getElement<HTMLButtonElement>("showBallAtContact"),
   launchGuaranteedEasyHit: getElement<HTMLButtonElement>("launchGuaranteedEasyHit"),
   resetBallVisualSettings: getElement<HTMLButtonElement>("resetBallVisualSettings"),
+  calibrateForehandTrajectory: getElement<HTMLButtonElement>("calibrateForehandTrajectory"),
+  calibrateBackhandTrajectory: getElement<HTMLButtonElement>("calibrateBackhandTrajectory"),
+  captureForehandContact: getElement<HTMLButtonElement>("captureForehandContact"),
+  captureBackhandContact: getElement<HTMLButtonElement>("captureBackhandContact"),
+  saveForehandTrajectory: getElement<HTMLButtonElement>("saveForehandTrajectory"),
+  saveBackhandTrajectory: getElement<HTMLButtonElement>("saveBackhandTrajectory"),
+  resetForehandTrajectory: getElement<HTMLButtonElement>("resetForehandTrajectory"),
+  resetBackhandTrajectory: getElement<HTMLButtonElement>("resetBackhandTrajectory"),
+  previewCalibratedFeed: getElement<HTMLButtonElement>("previewCalibratedFeed"),
+  useCalibratedFeeds: getElement<HTMLInputElement>("useCalibratedFeeds"),
+  forehandCalibrationStatus: getElement("forehandCalibrationStatus"),
+  backhandCalibrationStatus: getElement("backhandCalibrationStatus"),
+  trajectoryCalibrationMessage: getElement("trajectoryCalibrationMessage"),
+  trajectoryTimingStatus: getElement("trajectoryTimingStatus"),
+  trajectoryViewValidation: getElement("trajectoryViewValidation"),
+  trajectorySideView: getElement<HTMLButtonElement>("trajectorySideView"),
+  trajectoryTopView: getElement<HTMLButtonElement>("trajectoryTopView"),
+  trajectoryPlayerView: getElement<HTMLButtonElement>("trajectoryPlayerView"),
+  trajectoryBounceX: getElement<HTMLInputElement>("trajectoryBounceX"),
+  trajectoryBounceZ: getElement<HTMLInputElement>("trajectoryBounceZ"),
+  trajectoryBounceHeight: getElement<HTMLInputElement>("trajectoryBounceHeight"),
+  trajectoryApexHeight: getElement<HTMLInputElement>("trajectoryApexHeight"),
+  trajectoryContactHeight: getElement<HTMLInputElement>("trajectoryContactHeight"),
+  trajectoryBounceToApex: getElement<HTMLInputElement>("trajectoryBounceToApex"),
+  trajectoryBounceToContact: getElement<HTMLInputElement>("trajectoryBounceToContact"),
+  trajectoryOverallSpeed: getElement<HTMLInputElement>("trajectoryOverallSpeed"),
+  trajectoryBounceXValue: getElement<HTMLOutputElement>("trajectoryBounceXValue"),
+  trajectoryBounceZValue: getElement<HTMLOutputElement>("trajectoryBounceZValue"),
+  trajectoryBounceHeightValue: getElement<HTMLOutputElement>("trajectoryBounceHeightValue"),
+  trajectoryApexHeightValue: getElement<HTMLOutputElement>("trajectoryApexHeightValue"),
+  trajectoryContactHeightValue: getElement<HTMLOutputElement>("trajectoryContactHeightValue"),
+  trajectoryBounceToApexValue: getElement<HTMLOutputElement>("trajectoryBounceToApexValue"),
+  trajectoryBounceToContactValue: getElement<HTMLOutputElement>("trajectoryBounceToContactValue"),
+  trajectoryOverallSpeedValue: getElement<HTMLOutputElement>("trajectoryOverallSpeedValue"),
   debugBallScale: getElement("debugBallScale"),
   debugDeliveryTarget: getElement("debugDeliveryTarget"),
   debugStrokeTimeline: getElement("debugStrokeTimeline")
@@ -262,6 +319,15 @@ let targetRotationX = 0;
 let targetRotationY = 0;
 let targetRotationZ = 0;
 let displayedSwingSpeedKmh = 0;
+let trajectoryProfiles: Record<CalibrationStrokeType, TrajectoryCalibrationProfile | null> = {
+  forehand: loadTrajectoryProfile(localStorage, "forehand"),
+  backhand: loadTrajectoryProfile(localStorage, "backhand")
+};
+let editingTrajectory: TrajectoryCalibrationProfile | null = null;
+let editingTrajectoryType: CalibrationStrokeType = "forehand";
+let previewTrajectoryActive = false;
+const observedIncomingApex = new THREE.Vector3();
+const observedBouncePoint = new THREE.Vector3();
 let targetSwingSpeedKmh = 0;
 let peakSwingSpeedKmh = 0;
 let isCalibrated = false;
@@ -284,6 +350,15 @@ let forehandSideOffset = 1.15;
 let backhandSideOffset = -1.15;
 let contactDepthOffset = 0;
 let showBallAtContactPreview = false;
+let selectedPracticeStroke: CalibrationStrokeType | null = null;
+let practiceRelaunchAt = 0;
+let practiceAttempts = 0;
+let practiceHits = 0;
+let practiceMisses = 0;
+let appliedContactCorrection = 0;
+const contactMagnetOffset = new THREE.Vector3();
+let contactDistanceBeforeCorrection = 0;
+let contactDistanceAfterCorrection = 0;
 const gyroQuaternion = new THREE.Quaternion();
 const relativeOrientationQuaternion = new THREE.Quaternion();
 const calibrationBaselineInverse = new THREE.Quaternion();
@@ -319,6 +394,8 @@ const ghostCurrentColor = new THREE.Color();
 const sensorNormalizer = new SensorNormalizer();
 const motionRecorder = new MotionRecorder();
 const gameplayDiagnosticRecorder = new GameplayDiagnosticRecorder();
+const easySwingIntentDetector = new EasySwingIntentDetector();
+let latestEasySwingIntent: EasySwingIntentSnapshot | null = null;
 let diagnosticTimeout: number | null = null;
 let diagnosticReplayTimer: number | null = null;
 let mobileClientCount = 0;
@@ -333,7 +410,7 @@ scene.fog = new THREE.FogExp2(0x010511, 0.045);
 
 const camera = new THREE.PerspectiveCamera(
   BALL_CONFIG.camera.fovDegrees,
-  window.innerWidth / window.innerHeight,
+  1,
   BALL_CONFIG.camera.near,
   BALL_CONFIG.camera.far
 );
@@ -345,7 +422,7 @@ const renderer = new THREE.WebGLRenderer({
   antialias: true
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
+resizeRendererToVisualizationPanel();
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -462,7 +539,9 @@ ballDebugGroup.visible = false;
 scene.add(ballDebugGroup);
 const ballVelocityArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(), 1, 0x39d9ff);
 const racketNormalArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(), 0.8, 0xff5b89);
-ballDebugGroup.add(ballVelocityArrow, racketNormalArrow);
+const outgoingRawArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(), 1.1, 0xffa31a);
+const outgoingConstrainedArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), new THREE.Vector3(), 1.4, 0x42ff88);
+ballDebugGroup.add(ballVelocityArrow, racketNormalArrow, outgoingRawArrow, outgoingConstrainedArrow);
 const predictedPathGeometry = new THREE.BufferGeometry();
 const predictedPathLine = new THREE.Line(
   predictedPathGeometry,
@@ -482,6 +561,50 @@ const bounceMarker = new THREE.Mesh(
 bounceMarker.rotation.x = -Math.PI / 2;
 bounceMarker.visible = false;
 scene.add(bounceMarker);
+const outgoingNetMarker = new THREE.Mesh(
+  new THREE.SphereGeometry(0.055, 12, 8),
+  new THREE.MeshBasicMaterial({ color: 0x42ff88 })
+);
+const outgoingBounceMarker = new THREE.Mesh(
+  new THREE.RingGeometry(0.09, 0.14, 24),
+  new THREE.MeshBasicMaterial({ color: 0xffa31a, side: THREE.DoubleSide })
+);
+outgoingBounceMarker.rotation.x = -Math.PI / 2;
+outgoingNetMarker.visible = false;
+outgoingBounceMarker.visible = false;
+ballDebugGroup.add(outgoingNetMarker, outgoingBounceMarker);
+
+const trajectoryCalibrationGroup = new THREE.Group();
+trajectoryCalibrationGroup.visible = false;
+scene.add(trajectoryCalibrationGroup);
+const trajectoryHandleMaterial = [0x54e9ff, 0xc8ff32, 0xffa31a, 0xff5b89].map(color =>
+  new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthTest: false })
+);
+const trajectoryHandles = ["launch", "bounce", "apex", "contact"].map((name, index) => {
+  const handle = new THREE.Mesh(new THREE.SphereGeometry(0.11, 18, 12), trajectoryHandleMaterial[index]);
+  handle.name = `trajectory-${name}`;
+  handle.renderOrder = 20;
+  trajectoryCalibrationGroup.add(handle);
+  return handle;
+});
+const trajectoryHandleLabels = ["Launch Point", "Bounce Point", "Arc Height / Physical Apex", "Contact Point"].map((label, index) => {
+  const sprite = createTrajectoryLabel(label, trajectoryHandleMaterial[index].color.getHex());
+  trajectoryCalibrationGroup.add(sprite);
+  return sprite;
+});
+const playerLeftLabel = createTrajectoryLabel("Player Left / Backhand Side", 0x75dcff);
+const playerRightLabel = createTrajectoryLabel("Player Right / Forehand Side", 0x75dcff);
+playerLeftLabel.position.set(-2.2, 0.35, -1.2);
+playerRightLabel.position.set(2.2, 0.35, -1.2);
+trajectoryCalibrationGroup.add(playerLeftLabel, playerRightLabel);
+const requestedTrajectoryGeometry = new THREE.BufferGeometry();
+const physicalTrajectoryGeometry = new THREE.BufferGeometry();
+const requestedTrajectoryLine = new THREE.Line(requestedTrajectoryGeometry, new THREE.LineDashedMaterial({ color: 0xffa31a, dashSize: 0.12, gapSize: 0.08 }));
+const physicalTrajectoryLine = new THREE.Line(physicalTrajectoryGeometry, new THREE.LineBasicMaterial({ color: 0x42ff88 }));
+trajectoryCalibrationGroup.add(requestedTrajectoryLine, physicalTrajectoryLine);
+const trajectoryRaycaster = new THREE.Raycaster();
+const trajectoryPointer = new THREE.Vector2();
+let draggedTrajectoryHandle: (typeof trajectoryHandles)[number] | null = null;
 
 const contactTargetGroup = new THREE.Group();
 contactTargetGroup.visible = false;
@@ -530,6 +653,7 @@ const strokeStateMachine = new StrokeStateMachine(
 wireStrokeControls();
 wireBallControls();
 wireDiagnosticControls();
+wireTrajectoryCalibration();
 loadRacketModel();
 
 const farCourtHaze = createFarCourtHaze();
@@ -609,8 +733,21 @@ socket.on("continuous_orientation", (payload: unknown) => {
 
   if (!replayActive) {
     latestSensorFrame = processedFrame;
+    const estimatedRacketSpeedKmh = processedFrame.angularSpeed * 3.2;
+    targetSwingSpeedKmh = Math.max(targetSwingSpeedKmh, estimatedRacketSpeedKmh);
+    peakSwingSpeedKmh = Math.max(peakSwingSpeedKmh, estimatedRacketSpeedKmh);
     if (isCalibrated) {
       processStrokeFrame(processedFrame);
+      const expectedStroke = ballController.ball.lockedStrokeType;
+      latestEasySwingIntent = easySwingIntentDetector.update({
+        timestamp: processedFrame.timestamp,
+        valid: processedFrame.valid,
+        angularSpeed: processedFrame.angularSpeed,
+        accelerationMagnitude: processedFrame.accelerationMagnitude,
+        forwardScore: processedFrame.motionForwardScore,
+        preparationScore: latestStrokeSnapshot?.scores.preparationScore ?? 0,
+        racketFaceAngle: processedFrame.racketFaceAngleToCourtRadians
+      }, expectedStroke);
       motionRecorder.capture(processedFrame);
     }
   }
@@ -654,7 +791,9 @@ socket.on("stroke_detected", (payload: unknown) => {
   peakSwingSpeedKmh = Math.max(peakSwingSpeedKmh, targetSwingSpeedKmh);
 });
 
-window.addEventListener("resize", handleResize);
+const visualizationResizeObserver = new ResizeObserver(resizeRendererToVisualizationPanel);
+visualizationResizeObserver.observe(visualizationPanel);
+window.addEventListener("resize", resizeRendererToVisualizationPanel);
 
 animate();
 
@@ -950,16 +1089,24 @@ function animate(): void {
     racketRoot.position.add(getStrokePositionOffset());
   }
   scene.updateMatrixWorld(true);
+  applyPlayableContactMagnet(Date.now());
   const detectorSnapshot = latestStrokeSnapshot ?? strokeStateMachine.getSnapshot(Date.now());
-  ballController.update(
-    ballDeltaSeconds,
-    Date.now(),
-    racketStringCollider.matrixWorld,
-    detectorSnapshot,
-    lastContactEvent,
-    assistMode,
-    createEasyHitMotion()
-  );
+  const previewAtContact = previewTrajectoryActive && ballController.ball.bounceCount === 1 &&
+    ballController.ball.contactDeadline > 0 && Date.now() >= ballController.ball.contactDeadline - 25;
+  if (previewAtContact) {
+    ballController.ball.position.copy(ballController.ball.contactTarget);
+    ballController.ball.previousPosition.copy(ballController.ball.contactTarget);
+    ballController.ball.velocity.set(0, 0, 0);
+    ballController.ball.state = "CONTACT_ZONE";
+    contactMarker.position.copy(ballController.ball.contactTarget);
+    contactMarker.visible = true;
+  } else {
+    ballController.update(
+      ballDeltaSeconds, Date.now(), racketStringCollider.matrixWorld, detectorSnapshot,
+      lastContactEvent, assistMode, createEasyHitMotion(), !previewTrajectoryActive,
+      trajectoryProfiles[ballController.ball.expectedStrokeType], isPlayableCalibratedHitEnabled()
+    );
+  }
   updateBallVisuals(ballDeltaSeconds);
   rimLight.intensity = performance.now() < contactFlashUntil ? 42 : 26;
   targetSwingSpeedKmh *= 0.94;
@@ -979,6 +1126,8 @@ function animate(): void {
   updateOrientationDebug();
   updateStrokeDebug();
   updateBallDebug();
+  updatePlayableStatus(Date.now());
+  updatePracticeLoop(now);
   captureGameplayDiagnostic(now, ballDeltaSeconds);
   updateConnectionStatus();
   updatePacketAge();
@@ -987,6 +1136,7 @@ function animate(): void {
 }
 
 function updateCalibrationGuide(elapsed: number): void {
+  elements.calibrationSummary.textContent = isCalibrated ? "calibrated" : "not calibrated";
   if (isCalibrated) {
     return;
   }
@@ -1200,7 +1350,7 @@ function updateProceduralPosition(): void {
   }
 
   const handSign = strokeStateMachine.getHandedness() === "right" ? 1 : -1;
-  const assistedStrokeType = ballController.ball.launchPreset === "easyBackhand" ? "backhand" : "forehand";
+  const assistedStrokeType = isBackhandPreset(ballController.ball.launchPreset) ? "backhand" : "forehand";
   const preparationSign = easyMotionContact
     ? assistedStrokeType === "backhand" ? -handSign : handSign
     : snapshot?.lockedStrokeType === "backhand"
@@ -1222,6 +1372,11 @@ function updateProceduralPosition(): void {
 
 function createEasyHitMotion(): EasyHitMotion | null {
   if (!latestSensorFrame) return null;
+  const expectedStroke = ballController.ball.lockedStrokeType;
+  const swingIntent = latestEasySwingIntent ?? easySwingIntentDetector.getSnapshot(
+    latestSensorFrame.timestamp,
+    expectedStroke
+  );
   return {
     valid: latestSensorFrame.valid,
     angularSpeed: latestSensorFrame.angularSpeed,
@@ -1234,7 +1389,8 @@ function createEasyHitMotion(): EasyHitMotion | null {
     racketFaceAngle: latestSensorFrame.racketFaceAngleToCourtRadians,
     motionForwardScore: latestSensorFrame.motionForwardScore,
     handedness: strokeStateMachine.getHandedness(),
-    backhandStyle: strokeStateMachine.getBackhandStyle()
+    backhandStyle: strokeStateMachine.getBackhandStyle(),
+    swingIntent
   };
 }
 
@@ -1419,6 +1575,12 @@ function captureGameplayDiagnostic(timestamp: number, deltaTime: number): void {
   racketStringCollider.matrixWorld.decompose(stringCenter, stringQuaternion, new THREE.Vector3());
   const localBall = ball.position.clone().applyMatrix4(racketStringCollider.matrixWorld.clone().invert());
   const snapshot = latestStrokeSnapshot ?? strokeStateMachine.getSnapshot(Date.now());
+  const intentType = ball.lockedStrokeType === "backhand" ? "backhand" : "forehand";
+  const intent = easySwingIntentDetector.getSnapshot(timestamp, intentType);
+  const swept = ballController.sweptDebug;
+  const calibrationProfile = trajectoryProfiles[ball.expectedStrokeType];
+  const expectedContact = calibrationProfile ? new THREE.Vector3().fromArray(calibrationProfile.contactPointWorld) : ball.contactTarget;
+  const actualSide = worldToPlayerLocal(ball.position, calibrationProfile?.playerBasisAtCalibration ?? createDefaultTrajectoryProfile(ball.expectedStrokeType, strokeStateMachine.getHandedness()).playerBasisAtCalibration).x;
   const contactAge = lastContactEvent ? Date.now() - lastContactEvent.timestamp : null;
   const frame: GameplayDiagnosticFrame = {
     timestamp, deltaTime, phoneQuaternion: latestSensorFrame.currentPhoneQuaternion.toArray(),
@@ -1437,12 +1599,31 @@ function captureGameplayDiagnostic(timestamp: number, deltaTime: number): void {
     ballPositionRacketLocal: localBall.toArray(), planeDistance: collision?.planeDistance ?? localBall.z,
     segmentPlaneCrossed: collision?.crossed ?? false, insideEllipse: (collision?.ellipseValue ?? Infinity) <= 1,
     insideWidth: collision?.insideWidth ?? false, insideHeight: collision?.insideHeight ?? false,
-    approachingCorrectFace: ball.velocity.dot(latestSensorFrame.racketFaceNormal) < 0,
+    // The model's +Z face normal is the valid incoming side for the calibrated
+    // forehand recording: local Z moved from negative to positive at crossing.
+    approachingCorrectFace: ball.velocity.dot(latestSensorFrame.racketFaceNormal) > 0,
     contactWindowActive: snapshot.currentState === "CONTACT_WINDOW", recentContactEvent: debug.recentContactEvent,
     contactEventAgeMs: contactAge, minimumStrokeSpeed: debug.minimumSwingSpeed * 3.2,
     swingSpeedPassed: debug.swingSpeedAboveThreshold, racketFaceAngle: latestSensorFrame.racketFaceAngleToCourtRadians,
     racketFaceAnglePassed: debug.racketPoseValid, ballNearTarget: debug.ballNearTarget,
-    ballNearStringBed: debug.ballNearStringBed, finalHitAccepted: ball.hit,
+    ballNearStringBed: debug.ballNearStringBed,
+    easySwingIntentActive: intent.active, easySwingIntentConfidence: intent.confidence,
+    minimumSweptDistance: swept.minimumSweptDistance,
+    sweptPlaneCrossed: swept.sweptPlaneCrossed, sweptInsideEllipse: swept.sweptInsideEllipse,
+    expectedStrokeType: ball.expectedStrokeType,
+    detectedStrokeType: ballController.lastHit?.detectedStrokeType ?? snapshot.lockedStrokeType,
+    resolvedHitStrokeType: ballController.lastHit?.resolvedHitStrokeType,
+    strokeTypeMismatch: ballController.lastHit?.strokeTypeMismatch ?? "NONE",
+    calibrationProfile,
+    expectedContactPoint: expectedContact.toArray(), actualClosestPoint: ball.position.toArray(),
+    contactPointMissVector: ball.position.clone().sub(expectedContact).toArray(),
+    expectedApexPoint: calibrationProfile?.apexPointWorld, actualApexPoint: observedIncomingApex.toArray(),
+    expectedBouncePoint: calibrationProfile?.bouncePointWorld, actualBouncePoint: observedBouncePoint.toArray(),
+    expectedSide: ball.expectedStrokeType === "forehand" ? "player-right" : "player-left",
+    actualSide: actualSide >= 0 ? "player-right" : "player-left",
+    trajectoryDeviation: calibrationProfile ? ball.position.distanceTo(expectedContact) : undefined,
+    calibrationProfileVersion: calibrationProfile?.version,
+    finalHitAccepted: ball.hit,
     rejectionReason: debug.rejectionReason, sensorValid: latestSensorFrame.valid
   };
   gameplayDiagnosticRecorder.capture(frame);
@@ -1466,7 +1647,7 @@ function showLastDiagnosticAnalysis(): void {
   const recording = gameplayDiagnosticRecorder.getLast();
   if (!recording) return;
   const analysis = analyzeGameplayDiagnostic(recording);
-  elements.diagnosticResult.textContent = `${analysis.result}: ${analysis.primaryRootCause}; closest ${analysis.closestApproachDistance.toFixed(3)} m; peak ${analysis.peakSwingSpeed.toFixed(1)}; failed ${analysis.failedConditions.join(", ") || "none"}`;
+  elements.diagnosticResult.textContent = `${analysis.result}: ${analysis.primaryRootCause}; closest ${analysis.closestApproachDistance.toFixed(3)} m; estimated peak ${analysis.peakSwingSpeed.toFixed(1)} km/h; failed ${analysis.failedConditions.join(", ") || "none"}`;
   setDiagnosticStatus("ready", "ready - last attempt analyzed");
   elements.diagnosticTimeline.textContent = recording.frames.filter((_frame, index) => index % 6 === 0).map(frame =>
     `${(frame.timestamp - recording.createdAt).toFixed(0)}ms  d=${Math.hypot(frame.ballPosition[0]-frame.stringBedCenterWorld[0], frame.ballPosition[1]-frame.stringBedCenterWorld[1], frame.ballPosition[2]-frame.stringBedCenterWorld[2]).toFixed(2)}  speed=${frame.estimatedSwingSpeed.toFixed(1)}  score=${frame.contactScore.toFixed(2)}  ${frame.strokeState}  age=${frame.contactEventAgeMs ?? "--"}  plane=${frame.planeDistance.toFixed(2)}`
@@ -1500,15 +1681,383 @@ function replayLastDiagnostic(): void {
   play(0);
 }
 
+function wireTrajectoryCalibration(): void {
+  const begin = (strokeType: CalibrationStrokeType): void => {
+    editingTrajectoryType = strokeType;
+    editingTrajectory = structuredClone(trajectoryProfiles[strokeType] ?? createDefaultTrajectoryProfile(
+      strokeType, strokeStateMachine.getHandedness()
+    ));
+    trajectoryCalibrationGroup.visible = true;
+    syncTrajectoryControls();
+    renderTrajectoryCalibration();
+  };
+  elements.calibrateForehandTrajectory.addEventListener("click", () => begin("forehand"));
+  elements.calibrateBackhandTrajectory.addEventListener("click", () => begin("backhand"));
+  elements.captureForehandContact.addEventListener("click", () => captureTrajectoryContact("forehand", begin));
+  elements.captureBackhandContact.addEventListener("click", () => captureTrajectoryContact("backhand", begin));
+  elements.saveForehandTrajectory.addEventListener("click", () => saveEditingTrajectory("forehand"));
+  elements.saveBackhandTrajectory.addEventListener("click", () => saveEditingTrajectory("backhand"));
+  elements.resetForehandTrajectory.addEventListener("click", () => resetSavedTrajectory("forehand"));
+  elements.resetBackhandTrajectory.addEventListener("click", () => resetSavedTrajectory("backhand"));
+  elements.previewCalibratedFeed.addEventListener("click", previewEditingTrajectory);
+  elements.trajectorySideView.addEventListener("click", () => setTrajectoryCamera("side"));
+  elements.trajectoryTopView.addEventListener("click", () => setTrajectoryCamera("top"));
+  elements.trajectoryPlayerView.addEventListener("click", () => setTrajectoryCamera("player"));
+  elements.useCalibratedFeeds.checked = localStorage.getItem("matchpoint.useCalibratedFeeds") !== "false";
+  elements.useCalibratedFeeds.addEventListener("change", () => localStorage.setItem("matchpoint.useCalibratedFeeds", String(elements.useCalibratedFeeds.checked)));
+  const inputs = [
+    elements.trajectoryBounceX, elements.trajectoryBounceZ, elements.trajectoryBounceHeight,
+    elements.trajectoryContactHeight, elements.trajectoryOverallSpeed
+  ];
+  inputs.forEach(input => input.addEventListener("input", readTrajectoryControls));
+  elements.trajectoryApexHeight.addEventListener("input", changeTrajectoryArcHeight);
+  elements.trajectoryBounceToContact.addEventListener("input", changeTrajectoryContactTime);
+  renderer.domElement.addEventListener("pointerdown", beginTrajectoryDrag);
+  renderer.domElement.addEventListener("pointermove", updateTrajectoryDrag);
+  renderer.domElement.addEventListener("pointerup", endTrajectoryDrag);
+  renderer.domElement.addEventListener("pointercancel", endTrajectoryDrag);
+  updateTrajectoryStatuses();
+}
+
+function captureTrajectoryContact(strokeType: CalibrationStrokeType, begin: (type: CalibrationStrokeType) => void): void {
+  if (!isDiagnosticInputReady()) {
+    elements.trajectoryCalibrationMessage.textContent = `${diagnosticReadinessMessage()} before capturing a contact point.`;
+    return;
+  }
+  if (!editingTrajectory || editingTrajectoryType !== strokeType) begin(strokeType);
+  if (!editingTrajectory) return;
+  scene.updateMatrixWorld(true);
+  const center = new THREE.Vector3().setFromMatrixPosition(racketStringCollider.matrixWorld);
+  const quaternion = new THREE.Quaternion();
+  racketStringCollider.matrixWorld.decompose(new THREE.Vector3(), quaternion, new THREE.Vector3());
+  editingTrajectory.contactPointWorld = center.toArray();
+  editingTrajectory.contactPointPlayerLocal = worldToPlayerLocal(center, editingTrajectory.playerBasisAtCalibration).toArray();
+  editingTrajectory.contactRacketQuaternion = quaternion.toArray();
+  editingTrajectory.contactFaceNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion).normalize().toArray();
+  editingTrajectory.createdAt = Date.now();
+  syncTrajectoryControls();
+  renderTrajectoryCalibration();
+}
+
+function saveEditingTrajectory(strokeType: CalibrationStrokeType): void {
+  if (!editingTrajectory || editingTrajectoryType !== strokeType) {
+    elements.trajectoryCalibrationMessage.textContent = `Select and calibrate ${strokeType} first.`;
+    return;
+  }
+  try {
+    saveTrajectoryProfile(localStorage, editingTrajectory);
+    trajectoryProfiles[strokeType] = structuredClone(editingTrajectory);
+    elements.trajectoryCalibrationMessage.textContent = `${strokeType} trajectory saved.`;
+    updateTrajectoryStatuses();
+  } catch (error) {
+    elements.trajectoryCalibrationMessage.textContent = error instanceof Error ? error.message : "Calibration save failed";
+  }
+}
+
+function resetSavedTrajectory(strokeType: CalibrationStrokeType): void {
+  resetTrajectoryProfile(localStorage, strokeType);
+  trajectoryProfiles[strokeType] = null;
+  if (editingTrajectoryType === strokeType) editingTrajectory = createDefaultTrajectoryProfile(strokeType, strokeStateMachine.getHandedness());
+  updateTrajectoryStatuses();
+  syncTrajectoryControls();
+  renderTrajectoryCalibration();
+}
+
+function previewEditingTrajectory(): void {
+  if (!editingTrajectory) {
+    elements.trajectoryCalibrationMessage.textContent = "Select a trajectory before previewing.";
+    return;
+  }
+  const solved = solveTrajectoryProfile(editingTrajectory);
+  if (!solved.valid) {
+    elements.trajectoryCalibrationMessage.textContent = solved.errors.join("; ");
+    return;
+  }
+  previewTrajectoryActive = true;
+  const preset = editingTrajectory.strokeType === "forehand" ? "guaranteedForehand" : "guaranteedBackhand";
+  launchBall(preset, editingTrajectory, true);
+  elements.trajectoryCalibrationMessage.textContent = "Preview active: collision and HIT registration disabled.";
+}
+
+function syncTrajectoryControls(): void {
+  if (!editingTrajectory) return;
+  elements.trajectoryBounceX.value = String(editingTrajectory.bouncePointWorld[0]);
+  elements.trajectoryBounceZ.value = String(editingTrajectory.bouncePointWorld[2]);
+  elements.trajectoryBounceHeight.value = String(editingTrajectory.bouncePointWorld[1]);
+  elements.trajectoryApexHeight.value = String(editingTrajectory.apexPointWorld[1]);
+  elements.trajectoryContactHeight.value = String(editingTrajectory.contactPointWorld[1]);
+  elements.trajectoryBounceToApex.value = String(editingTrajectory.bounceToApexMs);
+  elements.trajectoryBounceToContact.value = String(editingTrajectory.bounceToContactMs);
+  elements.trajectoryOverallSpeed.value = String(editingTrajectory.overallSpeed);
+  updateTrajectoryOutputs();
+}
+
+function readTrajectoryControls(): void {
+  if (!editingTrajectory) return;
+  editingTrajectory.bouncePointWorld[0] = Number(elements.trajectoryBounceX.value);
+  editingTrajectory.bouncePointWorld[2] = Number(elements.trajectoryBounceZ.value);
+  editingTrajectory.bouncePointWorld[1] = Number(elements.trajectoryBounceHeight.value);
+  editingTrajectory.contactPointWorld[1] = Number(elements.trajectoryContactHeight.value);
+  editingTrajectory.contactPointPlayerLocal = worldToPlayerLocal(
+    new THREE.Vector3().fromArray(editingTrajectory.contactPointWorld), editingTrajectory.playerBasisAtCalibration
+  ).toArray();
+  editingTrajectory.overallSpeed = Number(elements.trajectoryOverallSpeed.value);
+  try { setProfileArcHeight(editingTrajectory, Number(elements.trajectoryApexHeight.value)); } catch { /* rendered below */ }
+  updateTrajectoryOutputs();
+  renderTrajectoryCalibration();
+}
+
+function changeTrajectoryArcHeight(): void {
+  if (!editingTrajectory) return;
+  try {
+    setProfileArcHeight(editingTrajectory, Number(elements.trajectoryApexHeight.value));
+    syncTrajectoryControls();
+  } catch (error) {
+    elements.trajectoryCalibrationMessage.textContent = error instanceof Error ? error.message : "Invalid arc height";
+  }
+  renderTrajectoryCalibration();
+}
+
+function changeTrajectoryContactTime(): void {
+  if (!editingTrajectory) return;
+  editingTrajectory.bounceToContactMs = Number(elements.trajectoryBounceToContact.value);
+  synchronizeProfileApexFromTiming(editingTrajectory);
+  syncTrajectoryControls();
+  renderTrajectoryCalibration();
+}
+
+function updateTrajectoryOutputs(): void {
+  if (!editingTrajectory) return;
+  elements.trajectoryBounceXValue.value = `${editingTrajectory.bouncePointWorld[0].toFixed(2)} m`;
+  elements.trajectoryBounceZValue.value = `${editingTrajectory.bouncePointWorld[2].toFixed(2)} m`;
+  elements.trajectoryBounceHeightValue.value = `${editingTrajectory.bouncePointWorld[1].toFixed(2)} m`;
+  elements.trajectoryApexHeightValue.value = `${editingTrajectory.apexPointWorld[1].toFixed(2)} m`;
+  elements.trajectoryContactHeightValue.value = `${editingTrajectory.contactPointWorld[1].toFixed(2)} m`;
+  elements.trajectoryBounceToApexValue.value = `${Math.round(editingTrajectory.bounceToApexMs)} ms`;
+  elements.trajectoryBounceToContactValue.value = `${Math.round(editingTrajectory.bounceToContactMs)} ms`;
+  elements.trajectoryOverallSpeedValue.value = `${editingTrajectory.overallSpeed.toFixed(1)} m/s`;
+}
+
+function renderTrajectoryCalibration(): void {
+  if (!editingTrajectory) { trajectoryCalibrationGroup.visible = false; return; }
+  trajectoryCalibrationGroup.visible = true;
+  const solved = solveTrajectoryProfile(editingTrajectory);
+  const points = [editingTrajectory.launchPointWorld, editingTrajectory.bouncePointWorld, solved.solvedApexPoint.toArray(), editingTrajectory.contactPointWorld];
+  trajectoryHandles.forEach((handle, index) => handle.position.fromArray(points[index]));
+  trajectoryHandleLabels.forEach((label, index) => label.position.copy(trajectoryHandles[index].position).add(new THREE.Vector3(0, 0.2, 0)));
+  requestedTrajectoryGeometry.setFromPoints(solved.requestedCurve);
+  requestedTrajectoryLine.computeLineDistances();
+  physicalTrajectoryGeometry.setFromPoints(solved.physicalCurve);
+  elements.trajectoryTimingStatus.textContent =
+    `Bounce ${Math.round(solved.launchToBounceSeconds * 1000)} ms | Apex ${Math.round(editingTrajectory.bounceToApexMs)} ms | ` +
+    `Contact ${Math.round(editingTrajectory.bounceToContactMs)} ms | Second bounce ${Math.round(solved.secondBounceMs)} ms | ` +
+    `Safety ${Math.round(solved.safetyMarginMs)} ms | Deviation ${solved.maximumCurveDeviation.toFixed(2)} m`;
+  const bounceLocal = worldToPlayerLocal(new THREE.Vector3().fromArray(editingTrajectory.bouncePointWorld), editingTrajectory.playerBasisAtCalibration);
+  const contactLocal = worldToPlayerLocal(new THREE.Vector3().fromArray(editingTrajectory.contactPointWorld), editingTrajectory.playerBasisAtCalibration);
+  const horizontalBounce = new THREE.Vector3().fromArray(editingTrajectory.bouncePointWorld);
+  const horizontalContact = new THREE.Vector3().fromArray(editingTrajectory.contactPointWorld);
+  const directHorizontal = solved.physicalCurve.every((point, index) => {
+    const amount = index / Math.max(1, solved.physicalCurve.length - 1);
+    const expected = horizontalBounce.clone().lerp(horizontalContact, amount);
+    return Math.hypot(point.x - expected.x, point.z - expected.z) < 1e-6;
+  });
+  const sideEnvelope = editingTrajectory.strokeType === "forehand"
+    ? Math.min(bounceLocal.x, contactLocal.x) > 0
+    : Math.max(bounceLocal.x, contactLocal.x) < 0;
+  elements.trajectoryViewValidation.textContent =
+    `Top-down direct ${directHorizontal && sideEnvelope ? "PASS" : "FAIL"} | ` +
+    `Side arc ${solved.solvedApexPoint.y > Math.max(editingTrajectory.bouncePointWorld[1], editingTrajectory.contactPointWorld[1]) ? "PASS" : "FAIL"}`;
+  elements.trajectoryCalibrationMessage.textContent = solved.valid
+    ? `${editingTrajectoryType} physical trajectory valid.`
+    : `${solved.errors.join("; ")} Suggested physical apex: ${solved.solvedApexPoint.y.toFixed(2)} m.`;
+}
+
+function updateTrajectoryStatuses(): void {
+  elements.forehandCalibrationStatus.textContent = trajectoryProfiles.forehand ? "calibrated" : "not calibrated";
+  elements.backhandCalibrationStatus.textContent = trajectoryProfiles.backhand ? "calibrated" : "not calibrated";
+}
+
+function beginTrajectoryDrag(event: PointerEvent): void {
+  if (!trajectoryCalibrationGroup.visible) return;
+  setTrajectoryPointer(event);
+  trajectoryRaycaster.setFromCamera(trajectoryPointer, camera);
+  draggedTrajectoryHandle = trajectoryRaycaster.intersectObjects(trajectoryHandles, false)[0]?.object as (typeof trajectoryHandles)[number] | null;
+  if (draggedTrajectoryHandle) renderer.domElement.setPointerCapture(event.pointerId);
+}
+
+function updateTrajectoryDrag(event: PointerEvent): void {
+  if (!draggedTrajectoryHandle || !editingTrajectory) return;
+  if (draggedTrajectoryHandle.name === "trajectory-apex") {
+    const height = THREE.MathUtils.clamp(editingTrajectory.apexPointWorld[1] - event.movementY * 0.01, 0.8, 2.5);
+    try { setProfileArcHeight(editingTrajectory, height); } catch { /* rendered below */ }
+  } else {
+    setTrajectoryPointer(event);
+    trajectoryRaycaster.setFromCamera(trajectoryPointer, camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -draggedTrajectoryHandle.position.y);
+    const point = trajectoryRaycaster.ray.intersectPlane(plane, new THREE.Vector3());
+    if (point) {
+      const index = trajectoryHandles.indexOf(draggedTrajectoryHandle);
+      const target = index === 0 ? editingTrajectory.launchPointWorld : index === 1 ? editingTrajectory.bouncePointWorld : editingTrajectory.contactPointWorld;
+      target[0] = THREE.MathUtils.clamp(point.x, -4, 4);
+      target[2] = THREE.MathUtils.clamp(point.z, -8, 3);
+      if (index === 3) editingTrajectory.contactPointPlayerLocal = worldToPlayerLocal(point, editingTrajectory.playerBasisAtCalibration).toArray();
+      try { setProfileArcHeight(editingTrajectory, editingTrajectory.apexPointWorld[1]); } catch { /* rendered below */ }
+    }
+  }
+  syncTrajectoryControls();
+  renderTrajectoryCalibration();
+}
+
+function endTrajectoryDrag(event: PointerEvent): void {
+  if (draggedTrajectoryHandle && renderer.domElement.hasPointerCapture(event.pointerId)) renderer.domElement.releasePointerCapture(event.pointerId);
+  draggedTrajectoryHandle = null;
+}
+
+function setTrajectoryPointer(event: PointerEvent): void {
+  const bounds = renderer.domElement.getBoundingClientRect();
+  trajectoryPointer.set((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1);
+}
+
+function createTrajectoryLabel(text: string, color: number): THREE.Sprite {
+  const canvas = document.createElement("canvas");
+  canvas.width = 384;
+  canvas.height = 64;
+  const context = canvas.getContext("2d")!;
+  context.fillStyle = "rgba(2, 8, 18, .82)";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.font = "bold 25px system-ui";
+  context.fillStyle = `#${color.toString(16).padStart(6, "0")}`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(text, canvas.width / 2, canvas.height / 2);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false }));
+  sprite.scale.set(1.8, 0.3, 1);
+  sprite.renderOrder = 21;
+  return sprite;
+}
+
+function setTrajectoryCamera(view: "side" | "top" | "player"): void {
+  const focus = editingTrajectory
+    ? new THREE.Vector3().fromArray(editingTrajectory.bouncePointWorld).lerp(new THREE.Vector3().fromArray(editingTrajectory.contactPointWorld), 0.5)
+    : new THREE.Vector3(0, 1, -3);
+  if (view === "side") camera.position.set(7.5, 2.5, focus.z);
+  else if (view === "top") camera.position.set(focus.x, 10, focus.z + 0.01);
+  else camera.position.set(...BALL_CONFIG.camera.position);
+  camera.lookAt(view === "player" ? new THREE.Vector3(...BALL_CONFIG.camera.target) : focus);
+}
+
+function isPlayableCalibratedHitEnabled(): boolean {
+  const strokeType = ballController.ball.expectedStrokeType;
+  return assistMode === "easy" && elements.playableCalibratedHitToggle.checked &&
+    trajectoryProfiles[strokeType] !== null;
+}
+
+function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
+  const plan = createPlayableStrokePlan(strokeType, trajectoryProfiles);
+  selectedPracticeStroke = strokeType;
+  assistMode = "easy";
+  ballSpeedPreset = "normal";
+  elements.assistModeSelect.value = "easy";
+  elements.ballSpeedSelect.value = "normal";
+  elements.useCalibratedFeeds.checked = true;
+  elements.playableCalibratedHitToggle.checked = true;
+  elements.playableExpectedStroke.textContent = strokeType;
+  elements.playableResolvedStroke.textContent = strokeType;
+  lastContactEvent = null;
+  activeStroke = null;
+  strokeStateMachine.reset(Date.now(), `armed calibrated ${strokeType}`);
+  latestStrokeSnapshot = strokeStateMachine.getSnapshot(Date.now());
+  if (!plan) {
+    elements.ballResult.textContent = "NO_SAVED_PROFILE";
+    elements.playableCountdown.textContent = "READY";
+    elements.playableProfileDetails.textContent = `Loaded profile ${strokeType}: invalid or wrong player-local side`;
+    return;
+  }
+  const limits = BALL_CONFIG.playableCalibratedHit.maximumCorrection;
+  elements.playableProfileDetails.textContent =
+    `Loaded profile ${plan.strokeType} | Expected side ${plan.expectedSide} | ` +
+    `Contact local X ${plan.contactLocalX.toFixed(2)} m | Contact world ${formatVector(plan.contactWorld)} | ` +
+    `Window -${BALL_CONFIG.playableCalibratedHit.windowBeforeMs}/+${BALL_CONFIG.playableCalibratedHit.windowAfterMs} ms | ` +
+    `Magnet ${limits.lateral.toFixed(2)}/${limits.vertical.toFixed(2)}/${limits.depth.toFixed(2)} m`;
+  practiceAttempts += 1;
+  practiceRelaunchAt = 0;
+  launchBall(strokeType === "forehand" ? "guaranteedForehand" : "guaranteedBackhand", plan.profile);
+}
+
+function applyPlayableContactMagnet(now: number): void {
+  appliedContactCorrection = 0;
+  if (!isPlayableCalibratedHitEnabled() || ballController.ball.bounceCount !== 1 ||
+      ballController.ball.contactDeadline <= 0 || ballController.ball.hit) {
+    contactMagnetOffset.set(0, 0, 0);
+    return;
+  }
+  const start = ballController.ball.contactDeadline - BALL_CONFIG.playableCalibratedHit.windowBeforeMs;
+  const end = ballController.ball.contactDeadline + BALL_CONFIG.playableCalibratedHit.windowAfterMs;
+  const motion = createEasyHitMotion();
+  if (now < start || now > end || !motion?.swingIntent?.active) {
+    contactMagnetOffset.set(0, 0, 0);
+    return;
+  }
+  const profile = trajectoryProfiles[ballController.ball.expectedStrokeType];
+  if (!profile) return;
+  const currentStringCenter = new THREE.Vector3();
+  racketStringCollider.getWorldPosition(currentStringCenter);
+  const correction = boundedContactCorrection(currentStringCenter, new THREE.Vector3().fromArray(profile.contactPointWorld));
+  contactDistanceBeforeCorrection = currentStringCenter.distanceTo(new THREE.Vector3().fromArray(profile.contactPointWorld));
+  const frameFactor = Math.min(1, 16.7 / BALL_CONFIG.playableCalibratedHit.snapDurationMs);
+  contactMagnetOffset.lerp(correction, frameFactor);
+  racketRoot.position.add(contactMagnetOffset);
+  appliedContactCorrection = contactMagnetOffset.length();
+  contactDistanceAfterCorrection = currentStringCenter.clone().add(contactMagnetOffset)
+    .distanceTo(new THREE.Vector3().fromArray(profile.contactPointWorld));
+  scene.updateMatrixWorld(true);
+}
+
+function updatePlayableStatus(now: number): void {
+  const ball = ballController.ball;
+  const decision = ballController.lastPlayableDecision;
+  elements.playableExpectedStroke.textContent = ball.expectedStrokeType;
+  elements.playableDetectedStroke.textContent = latestStrokeSnapshot?.lockedStrokeType ?? "unknown";
+  elements.playableResolvedStroke.textContent = ballController.lastHit?.resolvedHitStrokeType ?? ball.expectedStrokeType;
+  elements.playableCorrection.textContent = `${appliedContactCorrection.toFixed(2)} m`;
+  if (ball.bounceCount === 0) elements.playableCountdown.textContent = "READY";
+  else if (!decision || now < decision.opportunityStart) elements.playableCountdown.textContent = "BOUNCE";
+  else elements.playableCountdown.textContent = decision.timing === "HIT WINDOW" ? "SWING" : decision.timing;
+  elements.playableWindowStatus.textContent = decision?.timing ?? "TOO EARLY";
+  if (decision?.reason && decision.timing === "TOO LATE" && !ball.hit) elements.ballResult.textContent = decision.reason;
+  const total = practiceHits + practiceMisses;
+  const percentage = total > 0 ? Math.round(practiceHits / total * 100) : 0;
+  elements.practiceStats.textContent = `${practiceAttempts} attempts / ${practiceHits} hits / ${practiceMisses} misses / ${percentage}%`;
+}
+
+function updatePracticeLoop(now: number): void {
+  if (!elements.calibratedPracticeLoopToggle.checked || !selectedPracticeStroke ||
+      practiceRelaunchAt <= 0 || now < practiceRelaunchAt || ballController.ball.active) return;
+  playCalibratedStroke(selectedPracticeStroke);
+}
+
 function wireBallControls(): void {
+  elements.playCalibratedForehand.addEventListener("click", () => playCalibratedStroke("forehand"));
+  elements.playCalibratedBackhand.addEventListener("click", () => playCalibratedStroke("backhand"));
   elements.launchForehandBall.addEventListener("click", () => launchBall("easyForehand"));
   elements.launchBackhandBall.addEventListener("click", () => launchBall("easyBackhand"));
-  elements.launchGuaranteedEasyHit.addEventListener("click", () => {
+  const launchGuaranteedFeed = (preset: LaunchPreset): void => {
     assistMode = "easy";
     ballSpeedPreset = "normal";
     elements.assistModeSelect.value = "easy";
     elements.ballSpeedSelect.value = "normal";
-    launchBall(activeLaunchPreset === "easyBackhand" ? "easyBackhand" : "easyForehand");
+    const strokeType = isBackhandPreset(preset) ? "backhand" : "forehand";
+    const profile = elements.useCalibratedFeeds.checked ? trajectoryProfiles[strokeType] : null;
+    if (elements.useCalibratedFeeds.checked && !profile) {
+      elements.trajectoryCalibrationMessage.textContent = `CALIBRATION_PROFILE_NOT_LOADED: save the ${strokeType} trajectory first.`;
+      return;
+    }
+    launchBall(preset, profile ?? undefined);
+  };
+  elements.guaranteedForehandFeed.addEventListener("click", () => launchGuaranteedFeed("guaranteedForehand"));
+  elements.guaranteedBackhandFeed.addEventListener("click", () => launchGuaranteedFeed("guaranteedBackhand"));
+  elements.launchGuaranteedEasyHit.addEventListener("click", () => {
+    launchGuaranteedFeed(isBackhandPreset(activeLaunchPreset) ? "guaranteedBackhand" : "guaranteedForehand");
   });
   elements.resetBall.addEventListener("click", () => {
     ballController.reset();
@@ -1517,6 +2066,7 @@ function wireBallControls(): void {
   });
   elements.assistModeSelect.addEventListener("change", () => {
     assistMode = elements.assistModeSelect.value as AssistMode;
+    elements.playableCalibratedHitToggle.checked = assistMode === "easy";
   });
   elements.ballSpeedSelect.addEventListener("change", () => {
     ballSpeedPreset = elements.ballSpeedSelect.value as BallSpeedPreset;
@@ -1549,6 +2099,10 @@ function updateBallHelperVisibility(): void {
   predictedPathLine.visible = debug || elements.showTrajectoryToggle.checked;
   racketNormalArrow.visible = debug;
   ballVelocityArrow.visible = debug;
+  outgoingRawArrow.visible = debug && ballController.lastResponse !== null;
+  outgoingConstrainedArrow.visible = debug && ballController.lastResponse !== null;
+  outgoingNetMarker.visible = debug && ballController.lastResponse?.prediction.netCrossingPoint !== null;
+  outgoingBounceMarker.visible = debug && ballController.lastResponse?.prediction.bouncePoint !== null;
 }
 
 function updateBallVisualScale(): void {
@@ -1589,22 +2143,32 @@ function resetBallVisualSettings(): void {
   updateBallHelperVisibility();
 }
 
-function launchBall(preset: LaunchPreset): void {
+function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibrationProfile, preview = false): void {
   showBallAtContactPreview = false;
   elements.showBallAtContact.textContent = "Show Ball At Contact";
   activeLaunchPreset = preset;
-  const sideOffset = preset === "easyBackhand"
+  previewTrajectoryActive = preview;
+  easySwingIntentDetector.reset();
+  latestEasySwingIntent = null;
+  contactMagnetOffset.set(0, 0, 0);
+  const guaranteed = preset === "guaranteedForehand" || preset === "guaranteedBackhand";
+  const sideOffset = isBackhandPreset(preset)
     ? backhandSideOffset
     : preset === "centerPractice"
       ? 0
       : forehandSideOffset;
+  const presetConfig = BALL_CONFIG.launch[preset];
+  const targetOffsets = guaranteed
+    ? { heightOffset: presetConfig.contactHeight, sideOffset: presetConfig.contactSideOffset, depthOffset: presetConfig.depthOffset }
+    : { heightOffset: contactHeightOffset, sideOffset, depthOffset: contactDepthOffset };
   ballController.launch(
     preset,
     strokeStateMachine.getHandedness(),
     ballSpeedPreset,
     Date.now(),
     strokeStateMachine.getBackhandStyle(),
-    { heightOffset: contactHeightOffset, sideOffset, depthOffset: contactDepthOffset }
+    targetOffsets,
+    calibrationProfile
   );
   motionRecorder.recordBallLaunch(
     preset,
@@ -1612,7 +2176,7 @@ function launchBall(preset: LaunchPreset): void {
     strokeStateMachine.getBackhandStyle(),
     ballSpeedPreset,
     Date.now(),
-    { heightOffset: contactHeightOffset, sideOffset, depthOffset: contactDepthOffset },
+    targetOffsets,
     ballVisualScaleMultiplier
   );
   ballMesh.visible = true;
@@ -1621,6 +2185,8 @@ function launchBall(preset: LaunchPreset): void {
   ballTrailPositions.length = 0;
   ballMesh.quaternion.identity();
   lastBallBounceCount = 0;
+  observedIncomingApex.copy(ballController.ball.position);
+  observedBouncePoint.set(0, 0, 0);
   elements.ballResult.textContent = "--";
 }
 
@@ -1629,7 +2195,28 @@ function onBallHit(event: BallHitEvent): void {
   contactMarker.visible = true;
   elements.ballResult.textContent = "HIT";
   elements.outgoingBallSpeed.textContent = `${event.outgoingSpeed.toFixed(1)} m/s`;
+  elements.diagnosticResult.textContent =
+    `HIT | expected ${event.expectedStrokeType} | detected ${event.detectedStrokeType} | ` +
+    `resolved ${event.resolvedHitStrokeType} | ${event.strokeTypeMismatch}`;
+  const response = ballController.lastResponse;
+  if (response) {
+    outgoingRawArrow.position.copy(event.contactPointWorld);
+    outgoingRawArrow.setDirection(response.direction.rawDirection.clone().normalize());
+    outgoingConstrainedArrow.position.copy(event.contactPointWorld);
+    outgoingConstrainedArrow.setDirection(response.direction.constrainedDirection.clone().normalize());
+    if (response.prediction.netCrossingPoint) outgoingNetMarker.position.copy(response.prediction.netCrossingPoint);
+    if (response.prediction.bouncePoint) outgoingBounceMarker.position.copy(response.prediction.bouncePoint);
+    updateBallHelperVisibility();
+    const landing = response.prediction.bouncePoint ? formatVector(response.prediction.bouncePoint) : "none";
+    elements.playableProfileDetails.textContent +=
+      ` | Contact gap ${contactDistanceBeforeCorrection.toFixed(2)} -> ${contactDistanceAfterCorrection.toFixed(2)} m | ` +
+      `Correction ${appliedContactCorrection.toFixed(2)} m | Out ${formatVector(event.outgoingVelocity)} | Landing ${landing}`;
+  }
   contactFlashUntil = performance.now() + 150;
+  if (selectedPracticeStroke) {
+    practiceHits += 1;
+    practiceRelaunchAt = performance.now() + BALL_CONFIG.playableCalibratedHit.practiceResetMs;
+  }
   motionRecorder.recordBallResult({ type: "hit", event });
   window.setTimeout(() => finishRealHitAttempt("HIT", "accepted"), 0);
   console.info("Ball hit", event);
@@ -1638,6 +2225,10 @@ function onBallHit(event: BallHitEvent): void {
 function onBallMiss(event: BallMissEvent): void {
   elements.ballResult.textContent = "MISS";
   ballRelaunchAt = performance.now() + BALL_CONFIG.resetDelayMs;
+  if (selectedPracticeStroke) {
+    practiceMisses += 1;
+    practiceRelaunchAt = performance.now() + BALL_CONFIG.playableCalibratedHit.practiceResetMs;
+  }
   motionRecorder.recordBallResult({ type: "miss", event });
   window.setTimeout(() => finishRealHitAttempt("MISS", event.reason), 0);
   console.info("Ball miss", event);
@@ -1650,7 +2241,7 @@ function updateBallVisuals(deltaSeconds: number): void {
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle(),
     heightOffset: contactHeightOffset,
-    sideOffset: activeLaunchPreset === "easyBackhand" ? backhandSideOffset : forehandSideOffset,
+    sideOffset: isBackhandPreset(activeLaunchPreset) ? backhandSideOffset : forehandSideOffset,
     depthOffset: contactDepthOffset
   });
   ballMesh.visible = showBallAtContactPreview || ball.active || ball.state === "OUT";
@@ -1670,9 +2261,14 @@ function updateBallVisuals(deltaSeconds: number): void {
   } else {
     ballTrail.visible = false;
   }
+  if (ball.bounceCount === 1 && ball.position.y > observedIncomingApex.y) observedIncomingApex.copy(ball.position);
   if (ball.bounceCount > lastBallBounceCount) {
     bounceMarker.position.set(ball.position.x, BALL_CONFIG.courtHeight + 0.006, ball.position.z);
     bounceMarker.visible = true;
+    if (ball.bounceCount === 1) {
+      observedBouncePoint.copy(ball.position);
+      observedIncomingApex.copy(ball.position);
+    }
     lastBallBounceCount = ball.bounceCount;
   }
   if (elements.autoRelaunchToggle.checked && !ball.active &&
@@ -1695,7 +2291,7 @@ function updateContactTargetGuide(): void {
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle()
   });
-  const strokeType = activeLaunchPreset === "easyBackhand" ? "backhand" : "forehand";
+  const strokeType = isBackhandPreset(activeLaunchPreset) ? "backhand" : "forehand";
   const expected = getExpectedRacketContactTransform({
     strokeType,
     handedness: strokeStateMachine.getHandedness(),
@@ -1759,8 +2355,16 @@ function updateBallDebug(): void {
     `contact ETA ${Number.isFinite(timeToZone) ? `${timeToZone.toFixed(2)} s` : "--"}, target gap ${targetDistance.toFixed(2)} m, ` +
     `racket distance ${collision?.closestDistance.toFixed(2) ?? "--"} m, magnus ${formatVector(ball.magnusAcceleration)}`;
   const flag = (value: boolean) => value ? "PASS" : "FAIL";
+  const intentType = ball.lockedStrokeType === "backhand" ? "backhand" : "forehand";
+  const intent = easySwingIntentDetector.getSnapshot(Date.now(), intentType);
+  const swept = ballController.sweptDebug;
+  const hitTypes = ballController.lastHit
+    ? `${ballController.lastHit.expectedStrokeType}/${ballController.lastHit.detectedStrokeType}/${ballController.lastHit.resolvedHitStrokeType}`
+    : `${ball.expectedStrokeType}/${latestStrokeSnapshot?.lockedStrokeType ?? "unknown"}/--`;
   elements.hitDebugPanel.textContent =
-    `Easy hit checks | target ${flag(hitDebug.ballNearTarget)} | strings ${flag(hitDebug.ballNearStringBed)} | ` +
+    `Easy hit checks | expected/detected/resolved ${hitTypes} | intent ${flag(intent.active)} ${(intent.confidence * 100).toFixed(0)}% | ` +
+    `swept overlap ${flag(swept.sweptInsideEllipse)} ${Number.isFinite(swept.minimumSweptDistance) ? `${swept.minimumSweptDistance.toFixed(2)} m` : "--"} | ` +
+    `target ${flag(hitDebug.ballNearTarget)} | strings ${flag(hitDebug.ballNearStringBed)} | ` +
     `one bounce ${flag(hitDebug.oneBounceOnly)} | before second ${flag(hitDebug.beforeSecondBounce)} | ` +
     `plane ${flag(hitDebug.planeCrossed)} | ellipse ${flag(hitDebug.insideEllipse)} | ` +
     `contact-ready ${flag(hitDebug.strokeStateIsContactReady)} | recent event ${flag(hitDebug.recentContactEvent)} | ` +
@@ -1768,8 +2372,14 @@ function updateBallDebug(): void {
     `direction ${flag(hitDebug.swingDirectionValid)} | pose ${flag(hitDebug.racketPoseValid)} | accepted ${flag(hitDebug.hitAccepted)} | ` +
     `ball ${formatVector(ball.position)} | target ${formatVector(ball.contactTarget)} | strings ${formatVector(hitDebug.stringBedCenter)} | ` +
     `gaps ${hitDebug.ballToTargetDistance.toFixed(2)}/${hitDebug.ballToStringBedDistance.toFixed(2)} m | reject ${hitDebug.rejectionReason}`;
-  elements.debugBallResult.textContent = ballController.lastHit
-    ? `HIT ${ballController.lastHit.strokeType}, assisted ${ballController.lastHit.assisted}`
+  const returnDebug = ballController.lastResponse;
+  elements.debugBallResult.textContent = ballController.lastHit && returnDebug
+    ? `HIT ${ballController.lastHit.strokeType}, assisted ${ballController.lastHit.assisted}; ` +
+      `raw ${formatVector(returnDebug.direction.rawDirection)}, constrained ${formatVector(returnDebug.direction.constrainedDirection)}, ` +
+      `face ${formatVector(returnDebug.direction.faceContribution)}, forward ${formatVector(returnDebug.direction.forwardContribution)}, ` +
+      `lift ${formatVector(returnDebug.direction.liftContribution)}, side ${formatVector(returnDebug.direction.sideContribution)}, ` +
+      `net ${returnDebug.prediction.netCrossingPoint ? formatVector(returnDebug.prediction.netCrossingPoint) : "none"}, ` +
+      `bounce ${returnDebug.prediction.bouncePoint ? formatVector(returnDebug.prediction.bouncePoint) : "none"}`
     : ballController.lastMiss
       ? `MISS ${ballController.lastMiss.reason}`
       : "none";
@@ -1778,11 +2388,11 @@ function updateBallDebug(): void {
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle(),
     heightOffset: contactHeightOffset,
-    sideOffset: activeLaunchPreset === "easyBackhand" ? backhandSideOffset : forehandSideOffset,
+    sideOffset: isBackhandPreset(activeLaunchPreset) ? backhandSideOffset : forehandSideOffset,
     depthOffset: contactDepthOffset
   });
   const expected = getExpectedRacketContactTransform({
-    strokeType: activeLaunchPreset === "easyBackhand" ? "backhand" : "forehand",
+    strokeType: isBackhandPreset(activeLaunchPreset) ? "backhand" : "forehand",
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle()
   });
@@ -1977,10 +2587,15 @@ function setDiagnosticStatus(state: typeof diagnosticState, message: string): vo
   elements.diagnosticStatus.classList.toggle("is-error", state === "error");
 }
 
-function handleResize(): void {
-  camera.aspect = window.innerWidth / window.innerHeight;
+function resizeRendererToVisualizationPanel(): void {
+  const bounds = visualizationPanel.getBoundingClientRect();
+  const width = Math.max(1, Math.round(bounds.width));
+  const height = Math.max(1, Math.round(bounds.height));
+  const nextPixelRatio = Math.min(window.devicePixelRatio, 2);
+  if (renderer.getPixelRatio() !== nextPixelRatio) renderer.setPixelRatio(nextPixelRatio);
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(width, height, false);
 }
 
 function degreesToRadians(value: number): number {

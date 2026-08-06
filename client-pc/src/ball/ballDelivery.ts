@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { Handedness, BackhandStyle } from "../strokeDetection/strokeTypes.js";
 import { STROKE_CONFIG } from "../strokeDetection/strokeConfig.js";
 import { BALL_CONFIG } from "./ballConfig.js";
-import { AssistMode, LaunchPreset } from "./ballTypes.js";
+import { AssistMode, isBackhandPreset, LaunchPreset } from "./ballTypes.js";
+import { getRecordedReachEnvelope } from "./recordedReachEnvelope.js";
 
 const ROOT_POSITION = new THREE.Vector3(0, 1.45, 0);
 const ROOT_SCALE = 0.01;
@@ -59,6 +60,12 @@ export function getExpectedRacketContactTransform(options: {
   ), smoothingProgress);
   const correctedHead = HEAD_CENTER_LOCAL.clone().applyQuaternion(MODEL_CORRECTION).multiplyScalar(ROOT_SCALE);
   const position = procedural.add(correctedHead).applyQuaternion(BASE_READY).add(ROOT_POSITION);
+  const measuredCorrection = BALL_CONFIG.easyAssist.realAttemptCorrectionWorld;
+  position.add(new THREE.Vector3(
+    measuredCorrection.lateralMagnitude * strokeSign,
+    measuredCorrection.vertical,
+    measuredCorrection.depth
+  ));
   const quaternion = BASE_READY.clone().multiply(MODEL_CORRECTION);
   return {
     position: position.clone(),
@@ -104,9 +111,16 @@ export function getBallDeliveryTarget(options: {
   depthOffset?: number;
   assistMode?: AssistMode;
 }): THREE.Vector3 {
-  const type = options.preset === "easyBackhand" ? "backhand" : "forehand";
+  const type = isBackhandPreset(options.preset) ? "backhand" : "forehand";
   const expected = getExpectedRacketContactTransform({ strokeType: type, handedness: options.handedness, backhandStyle: options.backhandStyle });
   const preset = BALL_CONFIG.launch[options.preset];
+  if ((options.assistMode ?? "easy") === "easy" && options.preset !== "centerPractice") {
+    const target = getRecordedReachEnvelope(type, options.handedness).comfortableCenter;
+    target.x += (options.sideOffset ?? preset.contactSideOffset) - preset.contactSideOffset;
+    target.y += options.heightOffset ?? preset.contactHeight;
+    target.z += options.depthOffset ?? preset.depthOffset;
+    return target;
+  }
   const target = expected.stringBedCenter.clone();
   const comfort = new THREE.Vector3(...BALL_CONFIG.easyAssist.contactComfortOffsetLocal);
   comfort.y += options.heightOffset ?? preset.contactHeight;

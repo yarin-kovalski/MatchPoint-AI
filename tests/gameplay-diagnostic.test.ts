@@ -63,3 +63,11 @@ test("rejection reason is preserved and replay analysis is identical", () => {
   assert.equal(replayed.finalReason, "no stroke");
   assert.deepEqual(analyzeGameplayDiagnostic(replayed), analyzeGameplayDiagnostic(original));
 });
+test("multiple failed gates produce one ranked primary cause", () => {
+  const analysis = analyzeGameplayDiagnostic(recording([frame(100, {
+    sensorValid: false, strokeState: "READY", forwardScore: 0,
+    estimatedSwingSpeed: 0.5, minimumStrokeSpeed: 2, segmentPlaneCrossed: false
+  })]));
+  assert.ok(analysis.failedConditions.length > 1);
+  assert.equal(analysis.primaryRootCause, "PACKET_GAP");
+});

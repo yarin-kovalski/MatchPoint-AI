@@ -176,12 +176,13 @@ export class StrokeStateMachine {
     const wasReadyStable =
       this.readyStableSince !== null &&
       frame.timestamp - this.readyStableSince >= STROKE_CONFIG.timing.readyStableMs;
-    const nearNeutral = frame.relativePhoneQuaternion.angleTo(new THREE.Quaternion()) < 0.25;
     const lowMotion =
       frame.angularSpeed <= STROKE_CONFIG.noise.readyAngularSpeed &&
       frame.accelerationMagnitude <= STROKE_CONFIG.noise.readyAcceleration;
 
-    if (nearNeutral && lowMotion) {
+    // Calibration defines mapping, not the only valid human ready stance. Arm the
+    // detector after measured stillness so a stationary non-neutral grip can swing.
+    if (lowMotion) {
       this.readyStableSince ??= frame.timestamp;
     } else {
       this.readyStableSince = null;
@@ -199,7 +200,10 @@ export class StrokeStateMachine {
       frame.relativePhoneQuaternion.angleTo(new THREE.Quaternion()) >=
         STROKE_CONFIG.noise.minimumOrientationAngle;
 
-    if (wasReadyStable && cooldownComplete && deliberateMotion && candidateScore >= 0.34) {
+    if (
+      wasReadyStable && cooldownComplete && deliberateMotion &&
+      candidateScore >= STROKE_CONFIG.noise.preparationCandidateScore
+    ) {
       this.startSwing(frame.timestamp);
       this.transition("PREPARATION", frame.timestamp);
     }

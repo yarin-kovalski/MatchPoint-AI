@@ -3,24 +3,41 @@ import { BALL_CONFIG } from "./ballConfig.js";
 import { estimateSecondBounceDelay, getBallDeliveryTarget, getExpectedRacketContactTransform, solveVelocity } from "./ballDelivery.js";
 import { BackhandStyle } from "../strokeDetection/strokeTypes.js";
 import { Handedness } from "../strokeDetection/strokeTypes.js";
-import { BallSpeedPreset, LaunchPreset } from "./ballTypes.js";
+import { BallSpeedPreset, isBackhandPreset, LaunchPreset } from "./ballTypes.js";
+import { solveTrajectoryProfile, TrajectoryCalibrationProfile } from "./trajectoryCalibration.js";
 
 export function getLaunchParameters(
   preset: LaunchPreset,
   handedness: Handedness,
   speed: BallSpeedPreset,
   backhandStyle: BackhandStyle = "one-handed",
-  targetOffsets?: { heightOffset?: number; sideOffset?: number; depthOffset?: number }
+  targetOffsets?: { heightOffset?: number; sideOffset?: number; depthOffset?: number },
+  calibrationProfile?: TrajectoryCalibrationProfile
 ): { position: THREE.Vector3; velocity: THREE.Vector3; bouncePoint: THREE.Vector3; contactTarget: THREE.Vector3; contactQuaternion: THREE.Quaternion; strokeType: "forehand" | "backhand"; contactTimeAfterBounce: number; predictedSecondBounceTimeAfterBounce: number } {
   const values = BALL_CONFIG.launch[preset];
+  if (calibrationProfile) {
+    const solved = solveTrajectoryProfile(calibrationProfile);
+    if (!solved.valid) throw new Error(solved.errors.join("; "));
+    const postBounceDelay = estimateSecondBounceDelay(solved.postBounceVelocity.y);
+    return {
+      position: new THREE.Vector3().fromArray(calibrationProfile.launchPointWorld),
+      velocity: solved.preBounceVelocity.clone(),
+      bouncePoint: new THREE.Vector3().fromArray(calibrationProfile.bouncePointWorld),
+      contactTarget: new THREE.Vector3().fromArray(calibrationProfile.contactPointWorld),
+      contactQuaternion: new THREE.Quaternion().fromArray(calibrationProfile.contactRacketQuaternion),
+      strokeType: calibrationProfile.strokeType,
+      contactTimeAfterBounce: calibrationProfile.bounceToContactMs / 1000,
+      predictedSecondBounceTimeAfterBounce: postBounceDelay
+    };
+  }
   const position = new THREE.Vector3(...BALL_CONFIG.launch.launchPosition);
   const contactTarget = getBallDeliveryTarget({ preset, handedness, backhandStyle, ...targetOffsets });
-  const strokeType = preset === "easyBackhand" ? "backhand" : "forehand";
+  const strokeType = isBackhandPreset(preset) ? "backhand" : "forehand";
   const expected = getExpectedRacketContactTransform({ strokeType, handedness, backhandStyle });
   const bouncePoint = new THREE.Vector3(
     contactTarget.x * 0.55,
     BALL_CONFIG.courtHeight + BALL_CONFIG.scale.physicalRadiusMeters,
-    BALL_CONFIG.launch.bounceDepth
+    "bounceDepth" in values ? values.bounceDepth : BALL_CONFIG.launch.bounceDepth
   );
   const speedMultiplier = BALL_CONFIG.launch.speedMultipliers[speed];
   const bounceTime = values.bounceTime / speedMultiplier;

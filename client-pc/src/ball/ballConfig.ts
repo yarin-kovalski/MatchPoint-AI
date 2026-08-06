@@ -27,8 +27,10 @@ export const BALL_CONFIG = {
   bounds: { x: 9, y: 12, zBehindPlayer: 4.5, zFar: -13 },
   launch: {
     launchPosition: [0, 1.85, -7.5],
-    easyForehand: { contactSideOffset: 1.15, contactHeight: 0, depthOffset: 0, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
-    easyBackhand: { contactSideOffset: -1.15, contactHeight: 0, depthOffset: 0, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
+    easyForehand: { contactSideOffset: 1.15, contactHeight: 0, depthOffset: 0, bounceTime: 0.646, contactTimeAfterBounce: 0.2 },
+    easyBackhand: { contactSideOffset: -1.15, contactHeight: 0, depthOffset: 0, bounceTime: 0.646, contactTimeAfterBounce: 0.2 },
+    guaranteedForehand: { contactSideOffset: 1.15, contactHeight: 0.18, depthOffset: 0, bounceDepth: -4.7, bounceTime: 0.696, contactTimeAfterBounce: 0.15 },
+    guaranteedBackhand: { contactSideOffset: -1.15, contactHeight: 0.18, depthOffset: 0, bounceDepth: -4.7, bounceTime: 0.696, contactTimeAfterBounce: 0.15 },
     centerPractice: { contactSideOffset: 0, contactHeight: 0, depthOffset: 0, bounceTime: 1.4, contactTimeAfterBounce: 0.9 },
     bounceDepth: -4.35,
     netDepth: -5.5,
@@ -45,16 +47,21 @@ export const BALL_CONFIG = {
     contactEllipseMultiplier: 1.35,
     contactTimingToleranceMs: 250,
     targetRadius: 0.22,
-    minimumTargetHeight: 2.1,
+    minimumTargetHeight: 0.35,
     maximumTargetHeight: 2.7,
-    secondBounceSafetyMarginMs: 350,
+    secondBounceSafetyMarginMs: 220,
     minimumAngularSpeed: 0.65,
     maximumFaceAngleRadians: 1.55,
     assistedStringBedRadius: 0.35,
     naturalReachDepthOffset: 1,
     contactComfortOffsetLocal: [0, 0, 0],
     stationaryReach: { depthTolerance: 0.18, lateralTolerance: 0.2, verticalTolerance: 0.24 },
-    comfortableCore: { depthTolerance: 0.08, lateralTolerance: 0.1, verticalTolerance: 0.12 }
+    comfortableCore: { depthTolerance: 0.08, lateralTolerance: 0.1, verticalTolerance: 0.12 },
+    realAttemptCorrectionWorld: {
+      lateralMagnitude: 0.2702882277175593,
+      vertical: -1.180254966995514,
+      depth: -0.049179246641621
+    }
   },
   collision: {
     headCenterLocal: [0, 245, 0],
@@ -68,7 +75,7 @@ export const BALL_CONFIG = {
     movingRacketToleranceLocal: { off: 0, prototype: 2.5, easy: 5 }
   },
   easyTrajectoryAssist: {
-    enabled: true,
+    enabled: false,
     startAfterBounce: true,
     maxAcceleration: 3,
     positionGain: 2.4,
@@ -77,15 +84,60 @@ export const BALL_CONFIG = {
     stopDistance: 0.025,
     stopBeforeContactMs: 120
   },
+  easySwingIntent: {
+    stationaryAngularCeiling: 0.8,
+    stationaryAccelerationCeiling: 1.6,
+    minimumAngularSpeed: 1.2,
+    minimumAcceleration: 2.5,
+    minimumForwardScore: 0.09,
+    minimumPreparationScore: 0.45,
+    fullSwingAngularSpeed: 4.0,
+    fullSwingAcceleration: 8.0,
+    fullSwingForwardScore: 0.42,
+    fullSwingPreparationScore: 0.65,
+    minimumConfidence: 0.45,
+    maximumFaceAngleRadians: 1.55,
+    activeWindowMs: 320
+  },
+  playableCalibratedHit: {
+    windowBeforeMs: 220,
+    windowAfterMs: 180,
+    minimumAngularSpeed: 1.2,
+    minimumAcceleration: 2.5,
+    minimumForwardScore: 0.09,
+    maximumFaceAngleRadians: 1.55,
+    snapDurationMs: 60,
+    minimumActiveSwingMs: 40,
+    maximumCorrection: { lateral: 0.22, vertical: 0.20, depth: 0.24 },
+    practiceResetMs: 1700
+  },
+  sweptContact: {
+    historyMs: 140,
+    samplesPerFrame: 5,
+    overlapLifetimeMs: 160
+  },
   response: {
-    baseReturnSpeed: 7.5,
+    baseReturnSpeed: 6.5,
     minimumReturnSpeed: 6.5,
-    maximumReturnSpeed: 13.5,
+    maximumReturnSpeed: 11.2,
     faceInfluence: 0.34,
     courtForwardInfluence: 0.58,
     baseLift: 0.2,
     upwardLift: 0.34,
-    maximumSide: 0.22
+    maximumSide: 0.22,
+    targetInfluence: 0.72,
+    constrainedFaceInfluence: 0.12,
+    liftInfluence: 0.16,
+    sideInfluence: 0.08,
+    minimumReturnLift: 3.4,
+    maximumReturnLift: 5.6,
+    minimumNetClearance: 0.28,
+    targetFarCourtBounceDepth: -8.2,
+    safeTargets: {
+      forehand: [0.65, 1.15, -8.2],
+      backhand: [-0.65, 1.15, -8.2],
+      center: [0, 1.15, -8.2]
+    }
   },
   spin: { magnusCoefficient: 0.018, maximumAcceleration: 4.2, topspinStrength: 14, sliceStrength: 11 },
   resetDelayMs: 1100

@@ -1,8 +1,12 @@
 import * as THREE from "three";
 import { BackhandStyle, Handedness, SpinType, StrokeType } from "../strokeDetection/strokeTypes.js";
+import type { EasySwingIntentSnapshot } from "../strokeDetection/easySwingIntent.js";
 
 export type BallState = "IDLE" | "IN_FLIGHT_TO_PLAYER" | "BOUNCED" | "CONTACT_ZONE" | "RETURNED" | "MISSED" | "OUT" | "RESETTING";
-export type LaunchPreset = "easyForehand" | "easyBackhand" | "centerPractice";
+export type LaunchPreset = "easyForehand" | "easyBackhand" | "guaranteedForehand" | "guaranteedBackhand" | "centerPractice";
+export function isBackhandPreset(preset: LaunchPreset | null): boolean {
+  return preset === "easyBackhand" || preset === "guaranteedBackhand";
+}
 export type AssistMode = "off" | "prototype" | "easy";
 export type BallSpeedPreset = "slow" | "normal" | "fast";
 
@@ -19,6 +23,7 @@ export type EasyHitMotion = {
   motionForwardScore: number;
   handedness: Handedness;
   backhandStyle: BackhandStyle;
+  swingIntent?: EasySwingIntentSnapshot;
 };
 
 export type HitDebugSnapshot = {
@@ -64,6 +69,7 @@ export type BallSnapshot = {
   lockedContactTarget: THREE.Vector3;
   lockedContactQuaternion: THREE.Quaternion;
   lockedStrokeType: "forehand" | "backhand";
+  expectedStrokeType: "forehand" | "backhand";
   bouncePoint: THREE.Vector3;
   contactTimeAfterBounce: number;
   contactDeadline: number;
@@ -90,6 +96,10 @@ export type BallHitEvent = {
   timestamp: number;
   strokeContactEventId: string;
   strokeType: Exclude<StrokeType, "unknown">;
+  expectedStrokeType: "forehand" | "backhand";
+  detectedStrokeType: StrokeType;
+  resolvedHitStrokeType: "forehand" | "backhand";
+  strokeTypeMismatch: "EXPECTED_FOREHAND_DETECTED_BACKHAND" | "EXPECTED_BACKHAND_DETECTED_FOREHAND" | "STROKE_TYPE_UNRESOLVED" | "NONE";
   handedness: Handedness;
   backhandStyle: BackhandStyle;
   confidence: number;

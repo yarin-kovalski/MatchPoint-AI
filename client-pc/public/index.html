@@ -16,21 +16,26 @@
   </head>
   <body>
     <main class="app-shell">
-      <canvas id="sceneCanvas"></canvas>
-
-      <section id="calibrationOverlay" class="calibration-overlay" aria-live="polite">
-        <div class="calibration-message">
-          <strong id="calibrationTitle">Calibrate start position</strong>
-          <span id="calibrationInstructions">Align the tracked racket inside the angled ghost racket, then tap Calibrate on the phone.</span>
-        </div>
-      </section>
-
-      <section class="hud">
+      <section class="hud control-panel" aria-label="MatchPoint controls">
+        <div class="sticky-status">
         <div class="hero">
           <p class="eyebrow">Phase 1 Visualization</p>
           <h1>MatchPoint AI Neon Racket</h1>
           <p id="connectionStatus">Socket: disconnected</p>
         </div>
+
+        <div class="essential-status" aria-label="Essential status">
+          <div><span>Mobile clients</span><strong id="mobileClients">0</strong></div>
+          <div><span>Packet age</span><strong id="packetAge">--</strong></div>
+          <div><span>Calibration status</span><strong id="calibrationSummary">not calibrated</strong></div>
+          <div><span>Diagnostic status</span><strong id="diagnosticStatus" role="status" aria-live="polite">Diagnostic: idle - Connect Expo Go before recording</strong></div>
+          <div><span>Stroke state</span><strong id="strokeState">READY</strong></div>
+          <div><span>Last result</span><strong id="lastContact">none</strong></div>
+        </div>
+        </div>
+
+        <section class="control-section" aria-labelledby="connectionSectionTitle">
+          <h2 id="connectionSectionTitle">Connection and sensor status</h2>
 
         <div class="stats">
           <article>
@@ -38,16 +43,8 @@
             <strong id="packetCount">0</strong>
           </article>
           <article>
-            <span>Packet age</span>
-            <strong id="packetAge">--</strong>
-          </article>
-          <article>
             <span>Input mode</span>
             <strong id="inputMode">--</strong>
-          </article>
-          <article>
-            <span>Mobile clients</span>
-            <strong id="mobileClients">0</strong>
           </article>
           <article class="speed-card">
             <span>Estimated swing speed</span>
@@ -60,13 +57,14 @@
           <span>rotation.y <strong id="rotationY">0.000</strong></span>
           <span>peak <strong id="peakSwingSpeed">0 km/h</strong></span>
         </div>
+        </section>
 
+        <section class="control-section" aria-labelledby="strokeSectionTitle">
+          <h2 id="strokeSectionTitle">Stroke and recording controls</h2>
         <section class="stroke-status" aria-label="Stroke detection status">
-          <div><span>Stroke state</span><strong id="strokeState">READY</strong></div>
           <div><span>Type</span><strong id="strokeType">unknown</strong></div>
           <div><span>Confidence</span><strong id="strokeConfidence">0%</strong></div>
           <div><span>Spin</span><strong id="spinStatus">flat 0%</strong></div>
-          <div><span>Last contact</span><strong id="lastContact">none</strong></div>
         </section>
 
         <div class="stroke-controls">
@@ -93,6 +91,8 @@
             </select>
           </label>
         </div>
+        <details class="secondary-section">
+          <summary>Raw recorder controls</summary>
         <div class="recording-controls">
           <button id="startRecordingButton" type="button">Start recording</button>
           <button id="stopRecordingButton" type="button" disabled>Stop</button>
@@ -100,6 +100,7 @@
           <button id="replayRecordingButton" type="button" disabled>Replay last</button>
           <button id="stopReplayButton" type="button" disabled>Stop replay</button>
         </div>
+        </details>
 
         <section class="diagnostic-controls" aria-label="Real hit diagnostics">
           <div class="diagnostic-actions">
@@ -109,20 +110,28 @@
             <button id="replayLastDiagnostic" type="button" disabled>Replay Last Diagnostic</button>
             <button id="downloadLastDiagnostic" type="button" disabled>Download Last Diagnostic</button>
           </div>
-          <p id="diagnosticStatus" class="diagnostic-status" role="status" aria-live="polite">
-            Diagnostic: idle - Connect Expo Go before recording
-          </p>
           <div id="diagnosticResult" class="hit-debug-panel">No attempt recorded</div>
-          <div id="diagnosticTimeline" class="diagnostic-timeline"></div>
+          <details class="secondary-section">
+            <summary>Diagnostic timeline</summary>
+            <div id="diagnosticTimeline" class="diagnostic-timeline"></div>
+          </details>
+        </section>
         </section>
 
-        <section class="ball-panel" aria-label="Ball prototype controls">
+        <section class="ball-panel" aria-label="Ball launch and hit controls">
+          <h2>Ball launch and hit controls</h2>
           <div class="ball-actions">
+            <button id="playCalibratedForehand" type="button">Play Calibrated Forehand</button>
+            <button id="playCalibratedBackhand" type="button">Play Calibrated Backhand</button>
             <button id="launchForehandBall" type="button">Launch Forehand Ball</button>
             <button id="launchBackhandBall" type="button">Launch Backhand Ball</button>
+            <button id="guaranteedForehandFeed" type="button">Guaranteed Forehand Training Feed</button>
+            <button id="guaranteedBackhandFeed" type="button">Guaranteed Backhand Training Feed</button>
             <button id="resetBall" type="button">Reset Ball</button>
           </div>
           <div class="ball-options">
+            <label class="check-label"><input id="playableCalibratedHitToggle" type="checkbox" checked> Playable Calibrated Hit</label>
+            <label class="check-label"><input id="calibratedPracticeLoopToggle" type="checkbox"> Calibrated Practice Loop</label>
             <label>Assist
               <select id="assistModeSelect">
                 <option value="off">Off</option>
@@ -141,6 +150,13 @@
             <label class="check-label"><input id="ballDebugToggle" type="checkbox"> Ball debug</label>
           </div>
           <div class="ball-status">
+            <span>Play <strong id="playableCountdown">READY</strong></span>
+            <span>Window <strong id="playableWindowStatus">TOO EARLY</strong></span>
+            <span>Expected <strong id="playableExpectedStroke">--</strong></span>
+            <span>Detected <strong id="playableDetectedStroke">--</strong></span>
+            <span>Playable resolved <strong id="playableResolvedStroke">--</strong></span>
+            <span>Correction <strong id="playableCorrection">0.00 m</strong></span>
+            <span>Practice <strong id="practiceStats">0 attempts / 0 hits / 0 misses / 0%</strong></span>
             <span>Ball <strong id="ballState">IDLE</strong></span>
             <span>Result <strong id="ballResult">--</strong></span>
             <span>In <strong id="incomingBallSpeed">0.0 m/s</strong></span>
@@ -148,7 +164,11 @@
             <span>Spin <strong id="ballSpin">flat</strong></span>
             <span>Bounces <strong id="ballBounces">0</strong></span>
           </div>
-          <div id="hitDebugPanel" class="hit-debug-panel">Easy hit checks: waiting for ball</div>
+          <p id="playableProfileDetails" class="trajectory-timing">Loaded profile -- | Expected side -- | Contact local X -- | Contact world -- | Window -- | Magnet --</p>
+          <details class="secondary-section">
+            <summary>Ball debug</summary>
+            <div id="hitDebugPanel" class="hit-debug-panel">Easy hit checks: waiting for ball</div>
+          </details>
           <details class="ball-tuning">
             <summary>Ball delivery tuning</summary>
             <div class="ball-tuning-grid">
@@ -178,6 +198,44 @@
               <button id="resetBallVisualSettings" type="button">Reset visual settings</button>
             </div>
           </details>
+          <section class="trajectory-calibration control-section" aria-labelledby="trajectoryCalibrationTitle">
+            <h2 id="trajectoryCalibrationTitle">Ball Trajectory Calibration</h2>
+            <div class="trajectory-status">
+              <span>Forehand: <strong id="forehandCalibrationStatus">not calibrated</strong></span>
+              <span>Backhand: <strong id="backhandCalibrationStatus">not calibrated</strong></span>
+              <label class="check-label"><input id="useCalibratedFeeds" type="checkbox" checked> Use Calibrated Feeds</label>
+            </div>
+            <div class="trajectory-actions">
+              <button id="calibrateForehandTrajectory" type="button">Calibrate Forehand Trajectory</button>
+              <button id="calibrateBackhandTrajectory" type="button">Calibrate Backhand Trajectory</button>
+              <button id="captureForehandContact" type="button">Capture Forehand Contact Point</button>
+              <button id="captureBackhandContact" type="button">Capture Backhand Contact Point</button>
+              <button id="previewCalibratedFeed" type="button">Preview Calibrated Feed</button>
+              <button id="saveForehandTrajectory" type="button">Save Forehand Trajectory</button>
+              <button id="saveBackhandTrajectory" type="button">Save Backhand Trajectory</button>
+              <button id="resetForehandTrajectory" type="button">Reset Forehand Trajectory</button>
+              <button id="resetBackhandTrajectory" type="button">Reset Backhand Trajectory</button>
+            </div>
+            <div class="trajectory-fields">
+              <label>Bounce left/right <input id="trajectoryBounceX" type="range" min="-3" max="3" step="0.05"><output id="trajectoryBounceXValue"></output></label>
+              <label>Bounce depth <input id="trajectoryBounceZ" type="range" min="-5.45" max="1" step="0.05"><output id="trajectoryBounceZValue"></output></label>
+              <label>Bounce height <input id="trajectoryBounceHeight" type="range" min="0.10" max="0.20" step="0.005"><output id="trajectoryBounceHeightValue"></output></label>
+              <label>Arc Height / Physical Apex <input id="trajectoryApexHeight" type="range" min="0.8" max="2.5" step="0.05"><output id="trajectoryApexHeightValue"></output></label>
+              <label>Contact height <input id="trajectoryContactHeight" type="range" min="0.6" max="1.8" step="0.05"><output id="trajectoryContactHeightValue"></output></label>
+              <label>Physical apex time <input id="trajectoryBounceToApex" type="range" min="100" max="1200" step="10" disabled><output id="trajectoryBounceToApexValue"></output></label>
+              <label>Bounce to contact <input id="trajectoryBounceToContact" type="range" min="250" max="1400" step="10"><output id="trajectoryBounceToContactValue"></output></label>
+              <label>Overall feed speed <input id="trajectoryOverallSpeed" type="range" min="2.5" max="9" step="0.1"><output id="trajectoryOverallSpeedValue"></output></label>
+            </div>
+            <div class="trajectory-actions trajectory-camera-actions">
+              <button id="trajectorySideView" type="button">Side View</button>
+              <button id="trajectoryTopView" type="button">Top View</button>
+              <button id="trajectoryPlayerView" type="button">Player View</button>
+            </div>
+            <p id="trajectoryCalibrationMessage" class="trajectory-message">Select a stroke to begin calibration.</p>
+            <p id="trajectoryTimingStatus" class="trajectory-timing">Bounce -- | Apex -- | Contact -- | Second bounce --</p>
+            <p id="trajectoryViewValidation" class="trajectory-timing">Top-down direct -- | Side arc --</p>
+            <p class="trajectory-side-labels"><span>Player Left / Backhand Side</span><span>Player Right / Forehand Side</span></p>
+          </section>
         </section>
 
         <button id="calibrateButton" class="hud-calibrate" type="button" disabled>
@@ -221,6 +279,16 @@
             <dt>Mapping</dt><dd>phone +X → world +X; phone +Y → world -Z; phone +Z → world +Y</dd>
           </dl>
         </details>
+      </section>
+
+      <section id="visualizationPanel" class="visualization-panel" aria-label="Tennis court visualization">
+        <canvas id="sceneCanvas"></canvas>
+        <section id="calibrationOverlay" class="calibration-overlay" aria-live="polite">
+          <div class="calibration-message">
+            <strong id="calibrationTitle">Calibrate start position</strong>
+            <span id="calibrationInstructions">Align the tracked racket inside the angled ghost racket, then tap Calibrate on the phone.</span>
+          </div>
+        </section>
       </section>
     </main>
 

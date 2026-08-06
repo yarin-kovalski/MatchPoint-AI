@@ -6,7 +6,7 @@ import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
 import { getLaunchParameters } from "../client-pc/src/ball/ballLauncher.js";
 import { calculateMagnusAcceleration, isBallOutOfBounds, stepBallPhysics } from "../client-pc/src/ball/ballPhysics.js";
 import { calculateOutgoingVelocity } from "../client-pc/src/ball/ballResponse.js";
-import { sweepBallAgainstRacket } from "../client-pc/src/ball/racketCollider.js";
+import { sweepBallAgainstMovingRacket, sweepBallAgainstRacket } from "../client-pc/src/ball/racketCollider.js";
 import { BallSnapshot, EasyHitMotion } from "../client-pc/src/ball/ballTypes.js";
 import { EstimatedRacketContact, StrokeDetectorSnapshot } from "../client-pc/src/strokeDetection/strokeTypes.js";
 
@@ -20,7 +20,7 @@ function ball(): BallSnapshot {
     hit: false, active: true, launchTimestamp: 0, launchPreset: "easyForehand",
     contactTarget: new THREE.Vector3(0.16, 2.2, -2.94), bouncePoint: new THREE.Vector3(0.08, 0.1035, -4.35),
     lockedContactTarget: new THREE.Vector3(0.16, 2.2, -2.94), lockedContactQuaternion: new THREE.Quaternion(),
-    lockedStrokeType: "forehand",
+    lockedStrokeType: "forehand", expectedStrokeType: "forehand",
     contactTimeAfterBounce: 0.75, contactDeadline: 0, secondBounceDeadline: 0
   };
 }
@@ -63,7 +63,13 @@ function easyMotion(angularSpeed: number): EasyHitMotion {
     valid: true, angularSpeed, accelerationMagnitude: 5, racketQuaternion: new THREE.Quaternion(),
     racketFaceNormal: new THREE.Vector3(0, 0, 1), racketForwardVector: new THREE.Vector3(0, 1, 0),
     racketUpVector: new THREE.Vector3(0, 0, 1), racketSideVector: new THREE.Vector3(1, 0, 0),
-    racketFaceAngle: 0.4, motionForwardScore: 0.7, handedness: "right", backhandStyle: "one-handed"
+    racketFaceAngle: 0.4, motionForwardScore: 0.7, handedness: "right", backhandStyle: "one-handed",
+    swingIntent: {
+      active: angularSpeed >= BALL_CONFIG.easySwingIntent.minimumAngularSpeed,
+      confidence: angularSpeed >= BALL_CONFIG.easySwingIntent.minimumAngularSpeed ? 0.8 : 0,
+      strokeType: "forehand", startedAt: 900, peakAt: 1000,
+      peakAngularSpeed: angularSpeed, expiresAt: 1300
+    }
   };
 }
 
@@ -100,7 +106,8 @@ test("stationary racket overlap is not itself a controller hit", () => {
 });
 
 test("Easy assist accepts bounded live motion without a classified contact", () => {
-  const controller = new BallController();
+  let hits = 0;
+  const controller = new BallController(() => { hits += 1; });
   controller.launch("easyForehand", "right", "normal", 1000);
   controller.ball.bounceCount = 1;
   controller.ball.state = "CONTACT_ZONE";
@@ -110,10 +117,27 @@ test("Easy assist accepts bounded live motion without a classified contact", () 
   controller.ball.contactDeadline = 1100;
   controller.ball.secondBounceDeadline = 1600;
   const matrix = new THREE.Matrix4().setPosition(controller.ball.contactTarget);
-  controller.update(0.005, 1050, matrix, snapshot("READY"), null, "easy", easyMotion(0.9));
+  controller.update(0.005, 1050, matrix, snapshot("READY"), null, "easy", easyMotion(1.5));
   assert.equal(controller.ball.hit, true);
   assert.ok(controller.lastHit?.outgoingSpeed && controller.lastHit.outgoingSpeed > 0);
+  assert.ok(controller.lastHit!.outgoingVelocity.z < 0);
   assert.equal(controller.hitDebug.hitAccepted, true);
+  controller.update(0.005, 1055, matrix, snapshot("READY"), null, "easy", easyMotion(1.5));
+  assert.equal(hits, 1);
+});
+
+test("Easy hit rejects a reversed ball moving toward the opponent", () => {
+  const controller = new BallController();
+  controller.launch("easyForehand", "right", "normal", 1000);
+  controller.ball.bounceCount = 1;
+  controller.ball.state = "CONTACT_ZONE";
+  controller.ball.position.copy(controller.ball.contactTarget);
+  controller.ball.previousPosition.copy(controller.ball.position);
+  controller.ball.velocity.set(0, 0, -1);
+  controller.ball.contactDeadline = 1100;
+  controller.ball.secondBounceDeadline = 1600;
+  controller.update(0.005, 1050, new THREE.Matrix4().setPosition(controller.ball.contactTarget), snapshot("READY"), null, "easy", easyMotion(1.5));
+  assert.equal(controller.ball.hit, false);
 });
 
 test("Easy assist rejects a stationary racket near the ball", () => {
@@ -130,11 +154,34 @@ test("Easy assist rejects a stationary racket near the ball", () => {
   assert.equal(controller.ball.hit, false);
   assert.equal(controller.hitDebug.swingSpeedAboveThreshold, false);
 });
+test("calibrated preview disables HIT even with swing intent and overlap", () => {
+  let hits = 0;
+  const controller = new BallController(() => { hits += 1; });
+  controller.launch("easyForehand", "right", "normal", 1000);
+  controller.ball.bounceCount = 1;
+  controller.ball.state = "CONTACT_ZONE";
+  controller.ball.position.copy(controller.ball.contactTarget);
+  controller.ball.previousPosition.copy(controller.ball.position);
+  controller.ball.velocity.set(0, 0, 1);
+  controller.ball.contactDeadline = 1100;
+  controller.ball.secondBounceDeadline = 1600;
+  controller.update(0.005, 1050, new THREE.Matrix4().setPosition(controller.ball.contactTarget), snapshot("READY"), null, "easy", easyMotion(1.5), false);
+  assert.equal(controller.ball.hit, false);
+  assert.equal(hits, 0);
+});
 
 test("segment-plane crossing inside ellipse is accepted", () => assert.equal(crossing().candidate, true));
 test("fast segment cannot tunnel through racket plane", () => {
   const result = sweepBallAgainstRacket(new THREE.Vector3(0, 0, -20), new THREE.Vector3(0, 0, 20), 0.034, new THREE.Matrix4(), "off");
   assert.equal(result.candidate, true);
+});
+test("moving sweep detects contact missed by both endpoint racket transforms", () => {
+  const from = new THREE.Matrix4().compose(new THREE.Vector3(-1, 0, 0), new THREE.Quaternion(), new THREE.Vector3(0.01, 0.01, 0.01));
+  const to = new THREE.Matrix4().compose(new THREE.Vector3(1, 0, 0), new THREE.Quaternion(), new THREE.Vector3(0.01, 0.01, 0.01));
+  const ballPosition = new THREE.Vector3(0, 0, 0);
+  assert.equal(sweepBallAgainstRacket(ballPosition, ballPosition, BALL_CONFIG.scale.physicalRadiusMeters, from, "easy").candidate, false);
+  assert.equal(sweepBallAgainstRacket(ballPosition, ballPosition, BALL_CONFIG.scale.physicalRadiusMeters, to, "easy").candidate, false);
+  assert.equal(sweepBallAgainstMovingRacket(ballPosition, ballPosition, BALL_CONFIG.scale.physicalRadiusMeters, from, to, "easy", 8).candidate, true);
 });
 test("point outside string ellipse is rejected", () => assert.equal(crossing(new THREE.Matrix4(), 70).candidate, false));
 test("point inside string ellipse is accepted", () => assert.equal(crossing(new THREE.Matrix4(), 20).candidate, true));
