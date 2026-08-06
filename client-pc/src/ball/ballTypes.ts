@@ -13,6 +13,7 @@ export type BallSpeedPreset = "slow" | "normal" | "fast";
 export type EasyHitMotion = {
   valid: boolean;
   angularSpeed: number;
+  angularVelocityWorld?: THREE.Vector3;
   accelerationMagnitude: number;
   racketQuaternion: THREE.Quaternion;
   racketFaceNormal: THREE.Vector3;
@@ -21,6 +22,8 @@ export type EasyHitMotion = {
   racketSideVector: THREE.Vector3;
   racketFaceAngle: number;
   motionForwardScore: number;
+  motionUpwardScore?: number;
+  motionSidewaysScore?: number;
   handedness: Handedness;
   backhandStyle: BackhandStyle;
   swingIntent?: EasySwingIntentSnapshot;
@@ -88,6 +91,9 @@ export type RacketCollisionResult = {
   planeDistance: number;
   ellipseValue: number;
   closestDistance: number;
+  impactFraction: number;
+  physicalCandidate: boolean;
+  frameContact: boolean;
 };
 
 export type BallHitEvent = {

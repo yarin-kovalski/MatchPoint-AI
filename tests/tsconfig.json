@@ -24,6 +24,8 @@
     "playable-calibrated-hit.test.ts",
     "validated-trajectory-preset.test.ts",
     "feed-variation.test.ts",
+    "contact-realism.test.ts",
+    "tennis-environment.test.ts",
     "../client-pc/src/ball/validatedTrajectoryPreset.ts",
     "../client-pc/src/diagnostics/**/*.ts",
     "../client-pc/src/motion/**/*.ts",

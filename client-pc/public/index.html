@@ -65,6 +65,10 @@
             <div><span>Current stroke</span><strong id="playableExpectedStroke">--</strong></div>
             <div><span>Status</span><strong id="playableCountdown">READY</strong></div>
             <div><span>Result</span><strong id="ballResult">--</strong></div>
+            <div><span>Shot speed</span><strong id="playerShotSpeed">--</strong></div>
+            <div><span>Spin</span><strong id="playerSpinType">--</strong></div>
+            <div><span>Spin amount</span><strong id="playerSpinAmount">--</strong></div>
+            <div><span>Contact quality</span><strong id="playerContactQuality">--</strong></div>
           </div>
           <p id="practiceStatus" class="player-status">Ready for a validated feed.</p>
         </section>
@@ -75,6 +79,7 @@
             <div class="developer-options">
               <label>Feed seed <input id="feedSeed" type="number" inputmode="numeric" placeholder="generated"></label>
               <span id="feedVariationDebug">No varied feed launched.</span>
+              <pre id="contactPhysicsDebug">No physical impact recorded.</pre>
             </div>
         <section class="control-section" aria-labelledby="connectionSectionTitle">
           <h2 id="connectionSectionTitle">Connection and sensor status</h2>

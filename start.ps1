@@ -32,28 +32,44 @@ if (-not (Test-Path $ExpoNodeModules)) {
   }
 }
 
-$DefaultRoute = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
-  Sort-Object RouteMetric, InterfaceMetric |
-  Select-Object -First 1
+$LanAddress = $env:MATCHPOINT_LAN_IP
 
-$LanAddress = if ($DefaultRoute) {
-  Get-NetIPAddress -InterfaceIndex $DefaultRoute.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-    Where-Object { $_.IPAddress -notlike "169.254.*" } |
-    Select-Object -ExpandProperty IPAddress -First 1
+if (-not $LanAddress) {
+  $LanCandidates = [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() |
+    Where-Object {
+      $_.OperationalStatus -eq [System.Net.NetworkInformation.OperationalStatus]::Up -and
+      $_.NetworkInterfaceType -in @(
+        [System.Net.NetworkInformation.NetworkInterfaceType]::Ethernet,
+        [System.Net.NetworkInformation.NetworkInterfaceType]::Wireless80211
+      )
+    } |
+    ForEach-Object { $_.GetIPProperties().UnicastAddresses } |
+    Where-Object {
+      $_.Address.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork -and
+      $_.Address.IPAddressToString -notlike "127.*" -and
+      $_.Address.IPAddressToString -notlike "169.254.*"
+    } |
+    ForEach-Object { $_.Address.IPAddressToString }
+
+  $LanAddress = $LanCandidates |
+    Where-Object { $_ -match '^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)' } |
+    Select-Object -First 1
+  if (-not $LanAddress) {
+    $LanAddress = $LanCandidates | Select-Object -First 1
+  }
 }
 
 if (-not $LanAddress) {
-  $LanAddress = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-  Where-Object {
-    $_.IPAddress -notlike "127.*" -and
-    $_.IPAddress -notlike "169.254.*" -and
-    $_.PrefixOrigin -ne "WellKnown"
-  } |
-  Select-Object -ExpandProperty IPAddress -First 1
+  $LanAddress = ipconfig |
+    Select-String 'IPv4 Address[^:]*:\s*(\d+\.\d+\.\d+\.\d+)' |
+    ForEach-Object { $_.Matches[0].Groups[1].Value } |
+    Where-Object { $_ -notlike "127.*" -and $_ -notlike "169.254.*" } |
+    Select-Object -First 1
 }
 
 if (-not $LanAddress) {
-  throw "No LAN IPv4 address was found. Connect the PC to the same network as the phone."
+  $LanAddress = "127.0.0.1"
+  Write-Warning "No LAN IPv4 address was found. The PC page will run, but Expo Go cannot connect until the PC and phone share a network. Set MATCHPOINT_LAN_IP to override detection."
 }
 
 $ServerUrl = "http://${LanAddress}:3000"

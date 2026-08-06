@@ -36,6 +36,10 @@ export function sweepBallAgainstRacket(
   const insideHeight = Math.abs(crossing.y) <= halfHeight + radiusLocal;
   const ellipseValue = (crossing.x * crossing.x) / ((halfWidth + radiusLocal) ** 2) +
     (crossing.y * crossing.y) / ((halfHeight + radiusLocal) ** 2);
+  const physicalEllipse = (crossing.x * crossing.x) / ((BALL_CONFIG.collision.halfWidthLocal + radiusLocal) ** 2) +
+    (crossing.y * crossing.y) / ((BALL_CONFIG.collision.halfHeightLocal + radiusLocal) ** 2);
+  const physicalCandidate = (crossesPlane || planeDistance <= BALL_CONFIG.collision.thicknessLocal + radiusLocal) &&
+    physicalEllipse <= 1.12;
   const candidate = (crossesPlane || planeDistance <= planeTolerance) && ellipseValue <= 1;
   return {
     crossed: crossesPlane,
@@ -52,7 +56,10 @@ export function sweepBallAgainstRacket(
     insideHeight,
     planeDistance,
     ellipseValue,
-    closestDistance: Math.sqrt(crossing.x ** 2 + crossing.y ** 2 + crossing.z ** 2) * worldScale
+    closestDistance: Math.sqrt(crossing.x ** 2 + crossing.y ** 2 + crossing.z ** 2) * worldScale,
+    impactFraction: t,
+    physicalCandidate,
+    frameContact: physicalCandidate && physicalEllipse > 0.82
   };
 }
 
@@ -74,17 +81,18 @@ export function sweepBallAgainstMovingRacket(
       previousWorld.clone().lerp(currentWorld, start),
       previousWorld.clone().lerp(currentWorld, end),
       ballRadiusWorld,
-      interpolateMatrix(previousColliderWorldMatrix, colliderWorldMatrix, end),
+      interpolateRacketMatrix(previousColliderWorldMatrix, colliderWorldMatrix, end),
       assistMode,
-      interpolateMatrix(previousColliderWorldMatrix, colliderWorldMatrix, start)
+      interpolateRacketMatrix(previousColliderWorldMatrix, colliderWorldMatrix, start)
     );
-    if (!best || result.candidate || result.closestDistance < best.closestDistance) best = result;
-    if (result.candidate) return result;
+    result.impactFraction = start + (end - start) * result.impactFraction;
+    if (!best || result.physicalCandidate || result.candidate || result.closestDistance < best.closestDistance) best = result;
+    if (result.physicalCandidate || result.candidate) return result;
   }
   return best!;
 }
 
-function interpolateMatrix(from: THREE.Matrix4, to: THREE.Matrix4, amount: number): THREE.Matrix4 {
+export function interpolateRacketMatrix(from: THREE.Matrix4, to: THREE.Matrix4, amount: number): THREE.Matrix4 {
   const fromPosition = new THREE.Vector3();
   const fromQuaternion = new THREE.Quaternion();
   const fromScale = new THREE.Vector3();
@@ -93,6 +101,9 @@ function interpolateMatrix(from: THREE.Matrix4, to: THREE.Matrix4, amount: numbe
   const toScale = new THREE.Vector3();
   from.decompose(fromPosition, fromQuaternion, fromScale);
   to.decompose(toPosition, toQuaternion, toScale);
+  if (fromQuaternion.dot(toQuaternion) < 0) {
+    toQuaternion.set(-toQuaternion.x, -toQuaternion.y, -toQuaternion.z, -toQuaternion.w);
+  }
   return new THREE.Matrix4().compose(
     fromPosition.lerp(toPosition, amount),
     fromQuaternion.slerp(toQuaternion, amount),

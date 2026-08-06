@@ -140,6 +140,37 @@ export const BALL_CONFIG = {
     }
   },
   spin: { magnusCoefficient: 0.018, maximumAcceleration: 4.2, topspinStrength: 14, sliceStrength: 11 },
+  contactRealism: {
+    blockAngularSpeed: 0.8,
+    strongAngularSpeed: 7,
+    weakMotionScore: 0.08,
+    minimumIntentConfidence: 0.45,
+    offCenterQuality: 0.62,
+    mishitFaceAngle: 1.35,
+    stringRestitution: 0.58,
+    frameRestitution: 0.32,
+    blockRestitution: 0.2,
+    passiveDamping: 0.68,
+    racketEnergyTransfer: 0.72,
+    maximumAddedSpeed: 7.5,
+    swingLiftInfluence: 2.2,
+    minimumSeparationSpeed: 0.65,
+    maximumOutgoingSpeed: 18,
+    maximumAngularSpeed: 24,
+    maximumInferredPivotSpeed: 1.2,
+    maximumInferredSwingTranslation: 2.5,
+    pivotToSweetSpotMeters: 0.68,
+    spinTransfer: 0.22,
+    maximumSpinRate: 75,
+    flatSpinThreshold: 4,
+    easySafetyMinimumForwardSpeed: 4.2,
+    easySafetyMinimumLift: 2.8,
+    maximumSafetyCorrection: 3,
+    minimumForwardDirectionQuality: 0.35,
+    invalidDirectionDamping: 0.45,
+    contactCooldownMs: 120,
+    separationDistance: 0.09
+  },
   resetDelayMs: 1100
 } as const;
 

@@ -16,6 +16,7 @@ import {
   restoreValidatedTrajectoryPreset, TrajectoryProfileSource, VALIDATED_TRAJECTORY_PRESET
 } from "./ball/validatedTrajectoryPreset.js";
 import { canLaunchPracticeFeed, FeedVariationLevel, FeedVariationResult, generateSafeFeedVariation } from "./ball/feedVariation.js";
+import { configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createCourtBackdrop } from "./scene/tennisEnvironment.js";
 import { analyzeGameplayDiagnostic, AttemptType, diagnosticMarkdown, GameplayDiagnosticFrame, GameplayDiagnosticRecorder } from "./diagnostics/gameplayDiagnostic.js";
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
 import {
@@ -243,6 +244,11 @@ const elements = {
   feedVariationLevel: getElement<HTMLSelectElement>("feedVariationLevel"),
   feedSeed: getElement<HTMLInputElement>("feedSeed"),
   feedVariationDebug: getElement("feedVariationDebug"),
+  playerShotSpeed: getElement("playerShotSpeed"),
+  playerSpinType: getElement("playerSpinType"),
+  playerSpinAmount: getElement("playerSpinAmount"),
+  playerContactQuality: getElement("playerContactQuality"),
+  contactPhysicsDebug: getElement("contactPhysicsDebug"),
   playableProfileDetails: getElement("playableProfileDetails"),
   launchBackhandBall: getElement<HTMLButtonElement>("launchBackhandBall"),
   guaranteedForehandFeed: getElement<HTMLButtonElement>("guaranteedForehandFeed"),
@@ -385,6 +391,7 @@ let currentFeedVariation: FeedVariationResult | null = null;
 let activeCalibrationProfile: TrajectoryCalibrationProfile | null = null;
 let geometryMissStreak = 0;
 let forceValidatedBaseNext = false;
+let lastDisplayedPhysicalImpact: object | null = null;
 const gyroQuaternion = new THREE.Quaternion();
 const relativeOrientationQuaternion = new THREE.Quaternion();
 const calibrationBaselineInverse = new THREE.Quaternion();
@@ -431,8 +438,8 @@ const USE_LEGACY_STROKE_DETECTOR = false;
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x010511);
-scene.fog = new THREE.FogExp2(0x010511, 0.045);
+scene.background = new THREE.Color(0x8fb8c2);
+scene.fog = new THREE.FogExp2(0x8fb8c2, 0.018);
 
 const camera = new THREE.PerspectiveCamera(
   BALL_CONFIG.camera.fovDegrees,
@@ -449,34 +456,36 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 resizeRendererToVisualizationPanel();
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.18;
+configureAuthenticRenderer(renderer);
 
-const ambientLight = new THREE.AmbientLight(0x5d7bff, 0.82);
+const ambientLight = new THREE.HemisphereLight(0xddeef0, 0x31543d, 0.88);
 scene.add(ambientLight);
 
-const keyLight = new THREE.DirectionalLight(0xe8f6ff, 2.15);
-keyLight.position.set(4, 9, 5);
+const keyLight = new THREE.DirectionalLight(0xfff4d8, 1.65);
+keyLight.position.set(-6, 12, 7);
 keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(1024, 1024);
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.camera.left = -12;
+keyLight.shadow.camera.right = 12;
+keyLight.shadow.camera.top = 16;
+keyLight.shadow.camera.bottom = -16;
+keyLight.shadow.camera.near = 1;
+keyLight.shadow.camera.far = 38;
+keyLight.shadow.bias = -0.00015;
 scene.add(keyLight);
 
-const rimLight = new THREE.PointLight(0xb8ff2c, 26, 18);
+const rimLight = new THREE.PointLight(0xb8ff2c, 4.5, 14);
 rimLight.position.set(-3, 3, -4);
 scene.add(rimLight);
 
-const blueBackLight = new THREE.PointLight(0x0b5cff, 18, 24);
+const blueBackLight = new THREE.PointLight(0x91cbd1, 3.2, 24);
 blueBackLight.position.set(4, 4, -8);
 scene.add(blueBackLight);
 
-const purpleVolumeLight = new THREE.PointLight(0x7f3cff, 10, 22);
-purpleVolumeLight.position.set(-6, 5, -10);
-scene.add(purpleVolumeLight);
-
-const court = createCourt();
-scene.add(court);
+const court = createAuthenticCourt(BALL_CONFIG.launch.netDepth);
+const tennisNet = createAuthenticTennisNet(BALL_CONFIG.launch.netDepth);
+const courtBackdrop = createCourtBackdrop(BALL_CONFIG.launch.netDepth);
+scene.add(court, tennisNet, courtBackdrop);
 
 const racketRoot = new THREE.Group();
 racketRoot.name = "racketRoot";
@@ -822,111 +831,6 @@ visualizationResizeObserver.observe(visualizationPanel);
 window.addEventListener("resize", resizeRendererToVisualizationPanel);
 
 animate();
-
-function createCourt(): THREE.Group {
-  const group = new THREE.Group();
-
-  const planeGeometry = new THREE.PlaneGeometry(18, 24);
-  const courtTexture = createCourtTexture();
-  courtTexture.wrapS = THREE.RepeatWrapping;
-  courtTexture.wrapT = THREE.RepeatWrapping;
-  courtTexture.repeat.set(2, 3);
-  const planeMaterial = new THREE.MeshStandardMaterial({
-    color: 0x061223,
-    emissive: 0x010919,
-    map: courtTexture,
-    roughness: 0.46,
-    metalness: 0.22
-  });
-  const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-  plane.rotation.x = -Math.PI / 2;
-  plane.receiveShadow = true;
-  group.add(plane);
-
-  const grid = new THREE.GridHelper(24, 24, 0xb8ff2c, 0x123862);
-  grid.position.y = 0.012;
-  group.add(grid);
-
-  const lineMaterial = new THREE.MeshStandardMaterial({
-    color: 0xb8ff2c,
-    emissive: 0xb8ff2c,
-    emissiveIntensity: 1.85,
-    roughness: 0.18,
-    transparent: true,
-    opacity: 0.92
-  });
-  const lineSpecs = [
-    { width: 0.045, depth: 22, x: 0, z: 0 },
-    { width: 11, depth: 0.045, x: 0, z: -8 },
-    { width: 11, depth: 0.045, x: 0, z: 8 },
-    { width: 0.045, depth: 16, x: -5.5, z: 0 },
-    { width: 0.045, depth: 16, x: 5.5, z: 0 }
-  ];
-
-  for (const spec of lineSpecs) {
-    const groove = new THREE.Mesh(
-      new THREE.BoxGeometry(spec.width + 0.22, 0.018, spec.depth + 0.22),
-      new THREE.MeshStandardMaterial({
-        color: 0x02060d,
-        emissive: 0x001525,
-        roughness: 0.35,
-        metalness: 0.4
-      })
-    );
-    groove.position.set(spec.x, 0.023, spec.z);
-    group.add(groove);
-
-    const line = createNeonTubeLine(spec.width, spec.depth, lineMaterial);
-    line.position.set(spec.x, 0.052, spec.z);
-    group.add(line);
-
-    const glow = new THREE.Mesh(
-      new THREE.BoxGeometry(spec.width + 0.5, 0.012, spec.depth + 0.5),
-      new THREE.MeshBasicMaterial({
-        color: 0xb8ff2c,
-        transparent: true,
-        opacity: 0.105,
-        depthWrite: false
-      })
-    );
-    glow.position.set(spec.x, 0.061, spec.z);
-    group.add(glow);
-
-    const reflection = new THREE.Mesh(
-      new THREE.BoxGeometry(spec.width + 0.18, 0.01, spec.depth + 0.18),
-      new THREE.MeshBasicMaterial({
-        color: 0x76ff22,
-        transparent: true,
-        opacity: 0.075,
-        depthWrite: false
-      })
-    );
-    reflection.position.set(spec.x, 0.026, spec.z);
-    group.add(reflection);
-
-    const tubeLight = new THREE.PointLight(0xb8ff2c, 0.72, 6.2);
-    tubeLight.position.set(spec.x, 0.22, spec.z);
-    group.add(tubeLight);
-  }
-
-  return group;
-}
-
-function createNeonTubeLine(
-  width: number,
-  depth: number,
-  material: THREE.MeshStandardMaterial
-): THREE.Group {
-  const group = new THREE.Group();
-  const isHorizontal = width > depth;
-  const length = Math.max(width, depth);
-  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, length, 18), material);
-  tube.rotation.z = isHorizontal ? Math.PI / 2 : 0;
-  tube.rotation.x = isHorizontal ? 0 : Math.PI / 2;
-  tube.castShadow = false;
-  group.add(tube);
-  return group;
-}
 
 function loadRacketModel(): void {
   const loader = new GLTFLoader();
@@ -1406,6 +1310,7 @@ function createEasyHitMotion(): EasyHitMotion | null {
   return {
     valid: latestSensorFrame.valid,
     angularSpeed: latestSensorFrame.angularSpeed,
+    angularVelocityWorld: latestSensorFrame.angularVelocityWorld,
     accelerationMagnitude: latestSensorFrame.accelerationMagnitude,
     racketQuaternion: latestSensorFrame.mappedRacketQuaternion,
     racketFaceNormal: latestSensorFrame.racketFaceNormal,
@@ -1414,6 +1319,8 @@ function createEasyHitMotion(): EasyHitMotion | null {
     racketSideVector: latestSensorFrame.racketSideVector,
     racketFaceAngle: latestSensorFrame.racketFaceAngleToCourtRadians,
     motionForwardScore: latestSensorFrame.motionForwardScore,
+    motionUpwardScore: latestSensorFrame.motionUpwardScore,
+    motionSidewaysScore: latestSensorFrame.motionSidewaysScore,
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle(),
     swingIntent
@@ -2340,7 +2247,8 @@ function onBallHit(event: BallHitEvent): void {
 }
 
 function onBallMiss(event: BallMissEvent): void {
-  elements.ballResult.textContent = "MISS";
+  elements.ballResult.textContent = /too early/i.test(event.reason) ? "Too Early"
+    : /too late/i.test(event.reason) ? "Too Late" : "MISS";
   ballRelaunchAt = performance.now() + BALL_CONFIG.resetDelayMs;
   if (selectedPracticeStroke) {
     practiceMisses += 1;
@@ -2363,7 +2271,54 @@ function onBallMiss(event: BallMissEvent): void {
   console.info("Ball miss", event);
 }
 
+function updatePhysicalContactFeedback(): void {
+  const impact = ballController.lastPhysicalImpact;
+  if (!impact || impact === lastDisplayedPhysicalImpact) return;
+  lastDisplayedPhysicalImpact = impact;
+  const labels = {
+    VALID_HIT: "Clean Hit", TOPSPIN_HIT: "Topspin Hit", FLAT_HIT: "Flat Hit", SLICE_HIT: "Slice Hit",
+    WEAK_CONTACT: "Weak Hit", STRING_BLOCK: "Defensive Block",
+    OFF_CENTER_HIT: "Off-Center", FRAME_CONTACT: "Frame", MISHIT: "Mishit",
+    INVALID_SHOT_DIRECTION: "Invalid Direction", NO_CONTACT: "No Contact"
+  } as const;
+  elements.ballResult.textContent = impact.outcome === "MISHIT" && impact.contactNormal.y > 0.25
+    ? "Face Too Open"
+    : impact.outcome === "MISHIT" && impact.contactNormal.y < -0.25
+      ? "Face Too Closed"
+      : labels[impact.outcome];
+  elements.playerShotSpeed.textContent = `${impact.outgoingVelocity.length().toFixed(1)} m/s`;
+  elements.playerSpinType.textContent = impact.spinType;
+  elements.playerSpinAmount.textContent = `${impact.spinRateRadiansPerSecond.toFixed(1)} rad/s`;
+  elements.playerContactQuality.textContent = `${Math.round(impact.contactQuality * 100)}%`;
+  elements.contactPhysicsDebug.textContent = JSON.stringify({
+    outcome: impact.outcome,
+    units: { position: "m", velocity: "m/s", angularVelocity: "rad/s", impulse: "m/s equivalent" },
+    contactPointWorld: ballController.lastCollision?.contactPointWorld,
+    contactPointLocal: ballController.lastCollision?.contactPointLocal,
+    sweetSpotDistance: impact.sweetSpotDistance,
+    racketContactPointVelocity: impact.racketContactPointVelocity,
+    relativeVelocity: impact.relativeVelocity,
+    incomingNormalVelocity: impact.incomingNormalVelocity,
+    incomingTangentialVelocity: impact.incomingTangentialVelocity,
+    normalImpulse: impact.normalImpulse,
+    tangentialImpulse: impact.tangentialImpulse,
+    rawOutgoingVelocity: impact.rawOutgoingVelocity,
+    assistedOutgoingVelocity: impact.assistedOutgoingVelocity,
+    outgoingAngularVelocity: impact.outgoingAngularVelocity,
+    faceAngleRadians: impact.faceAngleRadians,
+    swingPathAngleRadians: impact.swingPathAngleRadians,
+    contactQuality: impact.contactQuality,
+    forwardDirectionQuality: impact.forwardDirectionQuality,
+    alignmentAssistance: appliedContactCorrection,
+    safetyCorrection: impact.safetyCorrection,
+    lifecycle: ballController.contactLifecycle,
+    predictedNetCrossing: impact.prediction.netCrossingPoint,
+    predictedLanding: impact.prediction.bouncePoint
+  }, null, 2);
+}
+
 function updateBallVisuals(deltaSeconds: number): void {
+  updatePhysicalContactFeedback();
   const ball = ballController.ball;
   const previewTarget = getBallDeliveryTarget({
     preset: activeLaunchPreset,

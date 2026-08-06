@@ -5,11 +5,12 @@ import { getLaunchParameters } from "./ballLauncher.js";
 import { isBallOutOfBounds, stepBallPhysics } from "./ballPhysics.js";
 import { calculateOutgoingVelocity } from "./ballResponse.js";
 import { estimateSecondBounceDelay, solveVelocity } from "./ballDelivery.js";
-import { sweepBallAgainstMovingRacket } from "./racketCollider.js";
+import { interpolateRacketMatrix, sweepBallAgainstMovingRacket } from "./racketCollider.js";
 import { applyEasyTrajectoryAssist, EasyTrajectoryAssistResult } from "./easyTrajectoryAssist.js";
 import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset, EasyHitMotion, HitDebugSnapshot, LaunchPreset, RacketCollisionResult } from "./ballTypes.js";
 import { TrajectoryCalibrationProfile } from "./trajectoryCalibration.js";
 import { evaluatePlayableCalibratedHit, PlayableHitDecision } from "./playableCalibratedHit.js";
+import { ContactLifecycle, isSuccessfulTennisOutcome, PhysicalImpactResolution, resolvePhysicalImpact } from "./contactRealism.js";
 
 export function shouldEnterContactZone(ball: BallSnapshot, now: number, assistMode: AssistMode = "prototype"): boolean {
   const timeToContact = ball.contactDeadline - now;
@@ -40,6 +41,8 @@ export class BallController {
   lastTrajectoryAssist: EasyTrajectoryAssistResult | null = null;
   lastResponse: ReturnType<typeof calculateOutgoingVelocity> | null = null;
   lastPlayableDecision: PlayableHitDecision | null = null;
+  lastPhysicalImpact: PhysicalImpactResolution | null = null;
+  contactLifecycle: ContactLifecycle = "APPROACHING";
   readonly hitDebug: HitDebugSnapshot = {
     ballNearTarget: false, ballNearStringBed: false, oneBounceOnly: false, beforeSecondBounce: false,
     planeCrossed: false, insideEllipse: false, strokeStateIsContactReady: false,
@@ -56,6 +59,7 @@ export class BallController {
   private hasPreviousColliderMatrix = false;
   private sweptContact: { collision: RacketCollisionResult; timestamp: number } | null = null;
   private readonly sweptHistory: Array<{ collision: RacketCollisionResult; timestamp: number }> = [];
+  private impactResolvedAt = 0;
   readonly sweptDebug = {
     minimumSweptDistance: Number.POSITIVE_INFINITY,
     sweptPlaneCrossed: false,
@@ -110,6 +114,9 @@ export class BallController {
     this.lastMiss = null;
     this.lastResponse = null;
     this.lastPlayableDecision = null;
+    this.lastPhysicalImpact = null;
+    this.contactLifecycle = "APPROACHING";
+    this.impactResolvedAt = 0;
     this.hasPreviousColliderMatrix = false;
     this.sweptContact = null;
     this.sweptHistory.length = 0;
@@ -210,8 +217,20 @@ export class BallController {
       }
       this.updateHitDebug(now, stroke, contact, assistMode, easyMotion ?? null, colliderWorldMatrix);
       this.closestDistance = Math.min(this.closestDistance, this.lastCollision.closestDistance);
-      if (this.lastCollision.candidate || (assistMode === "easy" && this.sweptContact !== null)) {
+      if (this.lastCollision.physicalCandidate && this.contactLifecycle === "APPROACHING") {
+        this.resolvePhysicalContact(now, deltaSeconds, colliderWorldMatrix, stroke, contact, easyMotion ?? null);
+      } else if (this.lastCollision.candidate || (assistMode === "easy" && this.sweptContact !== null)) {
         this.tryHit(now, stroke, contact, assistMode, easyMotion ?? null);
+      }
+    }
+    if (this.contactLifecycle === "IMPACT_RESOLVED") this.contactLifecycle = "SEPARATING";
+    if (this.contactLifecycle === "SEPARATING" && now - this.impactResolvedAt >= BALL_CONFIG.contactRealism.contactCooldownMs) {
+      this.contactLifecycle = "CONTACT_COOLDOWN";
+    }
+    if (this.contactLifecycle === "CONTACT_COOLDOWN") {
+      const racketCenter = new THREE.Vector3().setFromMatrixPosition(colliderWorldMatrix);
+      if (this.ball.position.distanceTo(racketCenter) >= BALL_CONFIG.contactRealism.separationDistance) {
+        this.contactLifecycle = "APPROACHING";
       }
     }
     if (!this.ball.hit && this.ball.position.z > BALL_CONFIG.bounds.zBehindPlayer) {
@@ -226,6 +245,84 @@ export class BallController {
     this.hasPreviousColliderMatrix = true;
   }
 
+  private resolvePhysicalContact(
+    now: number,
+    deltaSeconds: number,
+    colliderWorldMatrix: THREE.Matrix4,
+    stroke: StrokeDetectorSnapshot,
+    contact: EstimatedRacketContact | null,
+    motion: EasyHitMotion | null
+  ): void {
+    if (!this.lastCollision || this.contactLifecycle !== "APPROACHING") return;
+    this.contactLifecycle = "CONTACT_CANDIDATE";
+    const impactMatrix = interpolateRacketMatrix(
+      this.hasPreviousColliderMatrix ? this.previousColliderWorldMatrix : colliderWorldMatrix,
+      colliderWorldMatrix,
+      this.lastCollision.impactFraction
+    );
+    const previousPosition = new THREE.Vector3();
+    const previousQuaternion = new THREE.Quaternion();
+    const currentPosition = new THREE.Vector3();
+    const currentQuaternion = new THREE.Quaternion();
+    impactMatrix.decompose(currentPosition, currentQuaternion, new THREE.Vector3());
+    (this.hasPreviousColliderMatrix ? this.previousColliderWorldMatrix : impactMatrix)
+      .decompose(previousPosition, previousQuaternion, new THREE.Vector3());
+    const hasIntent = this.lastPlayableDecision?.accepted === true ||
+      stroke.currentState === "CONTACT_WINDOW" || !!motion?.swingIntent?.active;
+    const resolution = resolvePhysicalImpact({
+      incomingVelocity: this.ball.velocity.clone(), incomingSpin: this.ball.spinVector.clone(),
+      contactPointWorld: this.lastCollision.contactPointWorld.clone(),
+      contactPointLocal: this.lastCollision.contactPointLocal.clone(),
+      racketPosition: currentPosition, racketQuaternion: currentQuaternion,
+      previousRacketPosition: previousPosition, previousRacketQuaternion: previousQuaternion,
+      frameSeconds: Math.max(deltaSeconds, 1 / 240), swingIntent: hasIntent,
+      swingConfidence: motion?.swingIntent?.confidence ?? contact?.confidence ?? 0,
+      sensorAngularSpeed: motion?.swingIntent?.peakAngularSpeed ?? motion?.angularSpeed ?? contact?.peakAngularVelocity ?? 0,
+      angularVelocityWorld: motion?.angularVelocityWorld,
+      sensorAcceleration: motion?.accelerationMagnitude ?? contact?.peakAcceleration ?? 0,
+      forwardScore: motion?.motionForwardScore ?? contact?.forwardScore ?? 0,
+      upwardScore: contact?.upwardScore ?? motion?.motionUpwardScore ?? 0,
+      frameContact: this.lastCollision.frameContact
+    });
+    this.lastPhysicalImpact = resolution;
+    const incoming = this.ball.velocity.clone();
+    this.ball.position.copy(this.ball.previousPosition).lerp(this.ball.position, this.lastCollision.impactFraction)
+      .addScaledVector(resolution.contactNormal, this.ball.physicsRadius + 0.002);
+    this.ball.previousPosition.copy(this.ball.position);
+    this.ball.velocity.copy(resolution.outgoingVelocity);
+    this.ball.spinVector.copy(resolution.outgoingAngularVelocity);
+    this.ball.angularVelocity.copy(resolution.outgoingAngularVelocity);
+    this.ball.spinStrength = resolution.spinRateRadiansPerSecond;
+    this.ball.spinType = resolution.spinType === "TOPSPIN" ? "topspin"
+      : resolution.spinType === "SLICE" ? "slice" : "flat";
+    this.ball.state = "RETURNED";
+    this.contactLifecycle = "IMPACT_RESOLVED";
+    this.impactResolvedAt = now;
+    if (!isSuccessfulTennisOutcome(resolution.outcome)) return;
+    const effective = contact ?? (motion ? this.createEasyContact(now, motion) : null);
+    if (!effective) return;
+    this.ball.hit = true;
+    this.finalResultEmitted = true;
+    const event: BallHitEvent = {
+      id: `hit-${this.ball.id}`, ballId: this.ball.id, timestamp: now,
+      strokeContactEventId: effective.id, strokeType: this.ball.expectedStrokeType,
+      expectedStrokeType: this.ball.expectedStrokeType, detectedStrokeType: contact?.strokeType ?? "unknown",
+      resolvedHitStrokeType: this.ball.expectedStrokeType, strokeTypeMismatch: "NONE",
+      handedness: effective.handedness, backhandStyle: effective.backhandStyle,
+      confidence: effective.confidence, assisted: this.lastCollision.assisted,
+      contactPointWorld: this.ball.position.clone(), contactPointRacketLocal: this.lastCollision.contactPointLocal.clone(),
+      racketQuaternion: currentQuaternion.clone(), racketFaceNormal: resolution.contactNormal.clone(),
+      incomingVelocity: incoming, outgoingVelocity: resolution.outgoingVelocity.clone(),
+      outgoingSpeed: resolution.outgoingVelocity.length(), spinType: this.ball.spinType,
+      spinVector: resolution.outgoingAngularVelocity.clone(), topspinScore: effective.topspinScore,
+      sliceScore: effective.sliceScore, racketFaceAngle: resolution.faceAngleRadians
+    };
+    this.lastHit = event;
+    this.hitDebug.hitAccepted = true;
+    this.hitDebug.rejectionReason = "none";
+    this.onHit?.(event);
+  }
+
   private acceptPlayableCalibratedHit(
     now: number,
     profile: TrajectoryCalibrationProfile,
@@ -238,16 +335,37 @@ export class BallController {
     const effectiveContact = this.createEasyContact(now, motion);
     const localContactPoint = new THREE.Vector3(0, 0, 0);
     const response = calculateOutgoingVelocity(effectiveContact, localContactPoint, calibratedPoint, incoming);
+    const pivot = calibratedPoint.clone().addScaledVector(
+      effectiveContact.racketUpVector,
+      -BALL_CONFIG.contactRealism.pivotToSweetSpotMeters
+    );
+    const physical = resolvePhysicalImpact({
+      incomingVelocity: incoming, incomingSpin: this.ball.spinVector.clone(),
+      contactPointWorld: calibratedPoint, contactPointLocal: localContactPoint,
+      racketPosition: pivot, previousRacketPosition: pivot,
+      racketQuaternion: effectiveContact.racketQuaternion,
+      previousRacketQuaternion: effectiveContact.racketQuaternion,
+      frameSeconds: 1 / 60, swingIntent: true, swingConfidence: effectiveContact.confidence,
+      sensorAngularSpeed: motion.swingIntent?.peakAngularSpeed ?? motion.angularSpeed,
+      angularVelocityWorld: motion.angularVelocityWorld,
+      sensorAcceleration: motion.accelerationMagnitude, forwardScore: motion.motionForwardScore,
+      upwardScore: effectiveContact.upwardScore, frameContact: false
+    });
     this.ball.position.copy(calibratedPoint);
     this.ball.previousPosition.copy(calibratedPoint);
-    this.ball.velocity.copy(response.velocity);
-    this.ball.spinVector.copy(response.spinVector);
-    this.ball.angularVelocity.copy(response.spinVector);
-    this.ball.spinType = effectiveContact.spinType;
-    this.ball.spinStrength = response.spinVector.length();
-    this.ball.hit = true;
+    this.ball.velocity.copy(physical.outgoingVelocity);
+    this.ball.spinVector.copy(physical.outgoingAngularVelocity);
+    this.ball.angularVelocity.copy(physical.outgoingAngularVelocity);
+    this.ball.spinType = physical.spinType === "TOPSPIN" ? "topspin" : physical.spinType === "SLICE" ? "slice" : "flat";
+    this.ball.spinStrength = physical.spinRateRadiansPerSecond;
     this.ball.state = "RETURNED";
     this.lastResponse = response;
+    this.lastPhysicalImpact = physical;
+    if (!isSuccessfulTennisOutcome(physical.outcome)) {
+      this.ball.hit = false;
+      return;
+    }
+    this.ball.hit = true;
     const detectedStrokeType = strictContact?.strokeType ?? "unknown";
     const mismatch = detectedStrokeType !== "unknown" && detectedStrokeType !== this.ball.expectedStrokeType
       ? this.ball.expectedStrokeType === "forehand" ? "EXPECTED_FOREHAND_DETECTED_BACKHAND" : "EXPECTED_BACKHAND_DETECTED_FOREHAND"
@@ -262,8 +380,8 @@ export class BallController {
       contactPointWorld: calibratedPoint.clone(), contactPointRacketLocal: localContactPoint,
       racketQuaternion: effectiveContact.racketQuaternion.clone(),
       racketFaceNormal: effectiveContact.racketFaceNormal.clone(), incomingVelocity: incoming,
-      outgoingVelocity: response.velocity.clone(), outgoingSpeed: response.speed,
-      spinType: effectiveContact.spinType, spinVector: response.spinVector.clone(),
+      outgoingVelocity: physical.outgoingVelocity.clone(), outgoingSpeed: physical.outgoingVelocity.length(),
+      spinType: this.ball.spinType, spinVector: physical.outgoingAngularVelocity.clone(),
       topspinScore: effectiveContact.topspinScore, sliceScore: effectiveContact.sliceScore,
       racketFaceAngle: effectiveContact.racketFaceAngle
     };
@@ -382,15 +500,22 @@ export class BallController {
     return {
       id: `easy-${this.ball.id}-${Math.round(now)}`, swingId: `easy-${this.ball.id}`, timestamp: now,
       strokeType, handedness: motion.handedness, backhandStyle: motion.backhandStyle, confidence: 0.72,
-      estimatedSpeed: Math.max(2.2, (motion.swingIntent?.peakAngularSpeed ?? motion.angularSpeed) * 3.2), forwardScore: 0.65,
-      upwardScore: 0.25, sidewaysScore: strokeType === "forehand" ? 0.5 : -0.5,
+      estimatedSpeed: Math.max(2.2, (motion.swingIntent?.peakAngularSpeed ?? motion.angularSpeed) * 3.2),
+      forwardScore: motion.motionForwardScore,
+      upwardScore: motion.motionUpwardScore ?? 0,
+      sidewaysScore: motion.motionSidewaysScore ?? (strokeType === "forehand" ? 0.5 : -0.5),
       racketFaceAngle: motion.racketFaceAngle, racketQuaternion: motion.racketQuaternion.clone(),
       racketPosition: this.hitDebug.stringBedCenter.clone(), racketForwardVector: motion.racketForwardVector.clone(),
       racketUpVector: motion.racketUpVector.clone(), racketSideVector: motion.racketSideVector.clone(),
       racketFaceNormal: motion.racketFaceNormal.clone(), peakAngularVelocity: motion.angularSpeed,
       peakAcceleration: motion.accelerationMagnitude, peakJerk: 0, preparationDuration: 0,
-      forwardSwingDuration: 0, lowToHighScore: 0.25, highToLowScore: 0,
-      topspinScore: 0.2, sliceScore: 0.1, spinType: "flat"
+      forwardSwingDuration: 0,
+      lowToHighScore: Math.max(0, motion.motionUpwardScore ?? 0),
+      highToLowScore: Math.max(0, -(motion.motionUpwardScore ?? 0)),
+      topspinScore: Math.max(0, motion.motionUpwardScore ?? 0),
+      sliceScore: Math.max(0, -(motion.motionUpwardScore ?? 0)),
+      spinType: (motion.motionUpwardScore ?? 0) > 0.25 ? "topspin"
+        : (motion.motionUpwardScore ?? 0) < -0.25 ? "slice" : "flat"
     };
   }
 
