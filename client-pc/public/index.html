@@ -101,6 +101,21 @@
           <button id="stopReplayButton" type="button" disabled>Stop replay</button>
         </div>
 
+        <section class="diagnostic-controls" aria-label="Real hit diagnostics">
+          <div class="diagnostic-actions">
+            <button id="recordForehandAttempt" type="button" disabled>Record Forehand Attempt</button>
+            <button id="recordBackhandAttempt" type="button" disabled>Record Backhand Attempt</button>
+            <button id="analyzeLastAttempt" type="button" disabled>Analyze Last Attempt</button>
+            <button id="replayLastDiagnostic" type="button" disabled>Replay Last Diagnostic</button>
+            <button id="downloadLastDiagnostic" type="button" disabled>Download Last Diagnostic</button>
+          </div>
+          <p id="diagnosticStatus" class="diagnostic-status" role="status" aria-live="polite">
+            Diagnostic: idle - Connect Expo Go before recording
+          </p>
+          <div id="diagnosticResult" class="hit-debug-panel">No attempt recorded</div>
+          <div id="diagnosticTimeline" class="diagnostic-timeline"></div>
+        </section>
+
         <section class="ball-panel" aria-label="Ball prototype controls">
           <div class="ball-actions">
             <button id="launchForehandBall" type="button">Launch Forehand Ball</button>

@@ -5,6 +5,7 @@ import { BALL_CONFIG } from "./ball/ballConfig.js";
 import { getBallDeliveryTarget, getExpectedRacketContactTransform, projectPixelDiameter } from "./ball/ballDelivery.js";
 import { AssistMode, BallHitEvent, BallMissEvent, BallSpeedPreset, EasyHitMotion, LaunchPreset } from "./ball/ballTypes.js";
 import { createProceduralTennisBallTexture, integrateBallRotation } from "./ball/ballVisuals.js";
+import { analyzeGameplayDiagnostic, AttemptType, diagnosticMarkdown, GameplayDiagnosticFrame, GameplayDiagnosticRecorder } from "./diagnostics/gameplayDiagnostic.js";
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
 import {
   NormalizedSensorFrame,
@@ -142,6 +143,19 @@ declare const io: SocketFactory;
 const socket = io();
 const canvas = getElement<HTMLCanvasElement>("sceneCanvas");
 
+const DIAGNOSTIC_ELEMENT_IDS = [
+  "recordForehandAttempt",
+  "recordBackhandAttempt",
+  "analyzeLastAttempt",
+  "replayLastDiagnostic",
+  "downloadLastDiagnostic",
+  "diagnosticStatus",
+  "diagnosticResult",
+  "diagnosticTimeline"
+] as const;
+
+assertDiagnosticElements();
+
 const elements = {
   connectionStatus: getElement("connectionStatus"),
   packetCount: getElement("packetCount"),
@@ -211,6 +225,14 @@ const elements = {
   debugBallCollision: getElement("debugBallCollision"),
   debugBallValidity: getElement("debugBallValidity"),
   hitDebugPanel: getElement("hitDebugPanel"),
+  recordForehandAttempt: getElement<HTMLButtonElement>("recordForehandAttempt"),
+  recordBackhandAttempt: getElement<HTMLButtonElement>("recordBackhandAttempt"),
+  downloadLastDiagnostic: getElement<HTMLButtonElement>("downloadLastDiagnostic"),
+  replayLastDiagnostic: getElement<HTMLButtonElement>("replayLastDiagnostic"),
+  analyzeLastAttempt: getElement<HTMLButtonElement>("analyzeLastAttempt"),
+  diagnosticStatus: getElement("diagnosticStatus"),
+  diagnosticResult: getElement("diagnosticResult"),
+  diagnosticTimeline: getElement("diagnosticTimeline"),
   debugBallResult: getElement("debugBallResult"),
   ballVisualSizeSelect: getElement<HTMLSelectElement>("ballVisualSizeSelect"),
   ballVisualScaleInput: getElement<HTMLInputElement>("ballVisualScaleInput"),
@@ -296,6 +318,12 @@ const ghostAlignedColor = new THREE.Color(0x8dff75);
 const ghostCurrentColor = new THREE.Color();
 const sensorNormalizer = new SensorNormalizer();
 const motionRecorder = new MotionRecorder();
+const gameplayDiagnosticRecorder = new GameplayDiagnosticRecorder();
+let diagnosticTimeout: number | null = null;
+let diagnosticReplayTimer: number | null = null;
+let mobileClientCount = 0;
+let diagnosticState: "idle" | "recording" | "analyzing" | "ready" | "error" = "idle";
+const DIAGNOSTIC_PACKET_FRESHNESS_MS = 500;
 const USE_LEGACY_STROKE_DETECTOR = false;
 
 const clock = new THREE.Clock();
@@ -501,6 +529,7 @@ const strokeStateMachine = new StrokeStateMachine(
 );
 wireStrokeControls();
 wireBallControls();
+wireDiagnosticControls();
 loadRacketModel();
 
 const farCourtHaze = createFarCourtHaze();
@@ -516,11 +545,15 @@ socket.on("connect", () => {
 
 socket.on("disconnect", () => {
   updateConnectionStatus();
+  mobileClientCount = 0;
+  updateDiagnosticReadiness();
 });
 
 socket.on("broker:status", (payload: unknown) => {
   const status = payload as BrokerStatus;
+  mobileClientCount = status.mobileClients;
   elements.mobileClients.textContent = String(status.mobileClients);
+  updateDiagnosticReadiness();
 });
 
 socket.on("controller:state", (payload: unknown) => {
@@ -946,6 +979,7 @@ function animate(): void {
   updateOrientationDebug();
   updateStrokeDebug();
   updateBallDebug();
+  captureGameplayDiagnostic(now, ballDeltaSeconds);
   updateConnectionStatus();
   updatePacketAge();
 
@@ -1351,6 +1385,121 @@ function stopReplay(): void {
   elements.replayRecordingButton.disabled = motionRecorder.getLastRecording() === null;
 }
 
+function wireDiagnosticControls(): void {
+  elements.recordForehandAttempt.addEventListener("click", () => startRealHitAttempt("forehand"));
+  elements.recordBackhandAttempt.addEventListener("click", () => startRealHitAttempt("backhand"));
+  elements.downloadLastDiagnostic.addEventListener("click", downloadLastDiagnostic);
+  elements.replayLastDiagnostic.addEventListener("click", replayLastDiagnostic);
+  elements.analyzeLastAttempt.addEventListener("click", showLastDiagnosticAnalysis);
+  updateDiagnosticReadiness();
+}
+
+function startRealHitAttempt(type: AttemptType): void {
+  if (!isDiagnosticInputReady()) {
+    setDiagnosticStatus("error", diagnosticReadinessMessage());
+    return;
+  }
+  if (diagnosticTimeout !== null) window.clearTimeout(diagnosticTimeout);
+  ballController.reset();
+  assistMode = "easy"; ballSpeedPreset = "normal";
+  elements.assistModeSelect.value = "easy"; elements.ballSpeedSelect.value = "normal";
+  gameplayDiagnosticRecorder.start(type, performance.now());
+  setDiagnosticStatus("recording", `recording ${type} attempt`);
+  launchBall(type === "forehand" ? "easyForehand" : "easyBackhand");
+  diagnosticTimeout = window.setTimeout(() => finishRealHitAttempt("TIMEOUT", "attempt timeout"), 7000);
+}
+
+function captureGameplayDiagnostic(timestamp: number, deltaTime: number): void {
+  if (!gameplayDiagnosticRecorder.isRecording() || !latestSensorFrame) return;
+  const ball = ballController.ball;
+  const collision = ballController.lastCollision;
+  const debug = ballController.hitDebug;
+  const stringCenter = new THREE.Vector3().setFromMatrixPosition(racketStringCollider.matrixWorld);
+  const stringQuaternion = new THREE.Quaternion();
+  racketStringCollider.matrixWorld.decompose(stringCenter, stringQuaternion, new THREE.Vector3());
+  const localBall = ball.position.clone().applyMatrix4(racketStringCollider.matrixWorld.clone().invert());
+  const snapshot = latestStrokeSnapshot ?? strokeStateMachine.getSnapshot(Date.now());
+  const contactAge = lastContactEvent ? Date.now() - lastContactEvent.timestamp : null;
+  const frame: GameplayDiagnosticFrame = {
+    timestamp, deltaTime, phoneQuaternion: latestSensorFrame.currentPhoneQuaternion.toArray(),
+    relativePhoneQuaternion: latestSensorFrame.relativePhoneQuaternion.toArray(),
+    racketQuaternion: latestSensorFrame.mappedRacketQuaternion.toArray(),
+    angularVelocity: latestSensorFrame.angularVelocityWorld.toArray(), angularSpeed: latestSensorFrame.angularSpeed,
+    acceleration: latestSensorFrame.smoothedAcceleration.toArray(), accelerationMagnitude: latestSensorFrame.accelerationMagnitude,
+    jerk: latestSensorFrame.jerk, strokeState: snapshot.currentState, strokeType: snapshot.lockedStrokeType,
+    preparationScore: snapshot.scores.preparationScore, forwardScore: latestSensorFrame.motionForwardScore,
+    upwardScore: latestSensorFrame.motionUpwardScore, sidewaysScore: latestSensorFrame.motionSidewaysScore,
+    contactScore: snapshot.scores.contactScore, strokeConfidence: snapshot.confidence,
+    estimatedSwingSpeed: lastContactEvent?.estimatedSpeed ?? latestSensorFrame.angularSpeed * 3.2,
+    ballState: ball.state, ballPosition: ball.position.toArray(), previousBallPosition: ball.previousPosition.toArray(),
+    ballVelocity: ball.velocity.toArray(), bounceCount: ball.bounceCount, stringBedCenterWorld: stringCenter.toArray(),
+    stringBedQuaternion: stringQuaternion.toArray(), racketFaceNormal: latestSensorFrame.racketFaceNormal.toArray(),
+    ballPositionRacketLocal: localBall.toArray(), planeDistance: collision?.planeDistance ?? localBall.z,
+    segmentPlaneCrossed: collision?.crossed ?? false, insideEllipse: (collision?.ellipseValue ?? Infinity) <= 1,
+    insideWidth: collision?.insideWidth ?? false, insideHeight: collision?.insideHeight ?? false,
+    approachingCorrectFace: ball.velocity.dot(latestSensorFrame.racketFaceNormal) < 0,
+    contactWindowActive: snapshot.currentState === "CONTACT_WINDOW", recentContactEvent: debug.recentContactEvent,
+    contactEventAgeMs: contactAge, minimumStrokeSpeed: debug.minimumSwingSpeed * 3.2,
+    swingSpeedPassed: debug.swingSpeedAboveThreshold, racketFaceAngle: latestSensorFrame.racketFaceAngleToCourtRadians,
+    racketFaceAnglePassed: debug.racketPoseValid, ballNearTarget: debug.ballNearTarget,
+    ballNearStringBed: debug.ballNearStringBed, finalHitAccepted: ball.hit,
+    rejectionReason: debug.rejectionReason, sensorValid: latestSensorFrame.valid
+  };
+  gameplayDiagnosticRecorder.capture(frame);
+}
+
+function finishRealHitAttempt(result: "HIT" | "MISS" | "TIMEOUT", reason: string): void {
+  if (!gameplayDiagnosticRecorder.isRecording()) return;
+  if (diagnosticTimeout !== null) { window.clearTimeout(diagnosticTimeout); diagnosticTimeout = null; }
+  const recording = gameplayDiagnosticRecorder.stop(result, reason);
+  if (!recording) return;
+  elements.downloadLastDiagnostic.disabled = false;
+  elements.replayLastDiagnostic.disabled = recording.frames.length === 0;
+  elements.analyzeLastAttempt.disabled = false;
+  setDiagnosticStatus("analyzing", "analyzing last attempt");
+  showLastDiagnosticAnalysis();
+  const analysis = analyzeGameplayDiagnostic(recording);
+  socket.emit("diagnostic:report", { markdown: diagnosticMarkdown(recording, analysis) });
+}
+
+function showLastDiagnosticAnalysis(): void {
+  const recording = gameplayDiagnosticRecorder.getLast();
+  if (!recording) return;
+  const analysis = analyzeGameplayDiagnostic(recording);
+  elements.diagnosticResult.textContent = `${analysis.result}: ${analysis.primaryRootCause}; closest ${analysis.closestApproachDistance.toFixed(3)} m; peak ${analysis.peakSwingSpeed.toFixed(1)}; failed ${analysis.failedConditions.join(", ") || "none"}`;
+  setDiagnosticStatus("ready", "ready - last attempt analyzed");
+  elements.diagnosticTimeline.textContent = recording.frames.filter((_frame, index) => index % 6 === 0).map(frame =>
+    `${(frame.timestamp - recording.createdAt).toFixed(0)}ms  d=${Math.hypot(frame.ballPosition[0]-frame.stringBedCenterWorld[0], frame.ballPosition[1]-frame.stringBedCenterWorld[1], frame.ballPosition[2]-frame.stringBedCenterWorld[2]).toFixed(2)}  speed=${frame.estimatedSwingSpeed.toFixed(1)}  score=${frame.contactScore.toFixed(2)}  ${frame.strokeState}  age=${frame.contactEventAgeMs ?? "--"}  plane=${frame.planeDistance.toFixed(2)}`
+  ).join("\n");
+}
+
+function downloadLastDiagnostic(): void {
+  const recording = gameplayDiagnosticRecorder.getLast();
+  if (!recording) return;
+  const blob = new Blob([JSON.stringify(recording, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob); const link = document.createElement("a");
+  link.href = url; link.download = `real-hit-attempt-${recording.createdAt}.json`; link.click(); URL.revokeObjectURL(url);
+}
+
+function replayLastDiagnostic(): void {
+  const recording = gameplayDiagnosticRecorder.getLast();
+  if (!recording?.frames.length) return;
+  if (diagnosticReplayTimer !== null) window.clearTimeout(diagnosticReplayTimer);
+  const closestTime = analyzeGameplayDiagnostic(recording).closestApproachTime;
+  const play = (index: number): void => {
+    const frame = recording.frames[index];
+    ballMesh.visible = true; ballMesh.position.fromArray(frame.ballPosition);
+    racketStringCollider.quaternion.fromArray(frame.stringBedQuaternion);
+    if (frame.timestamp === closestTime || frame.segmentPlaneCrossed || frame.contactWindowActive) {
+      contactMarker.position.fromArray(frame.ballPosition); contactMarker.visible = true;
+    }
+    if (index < recording.frames.length - 1) {
+      diagnosticReplayTimer = window.setTimeout(() => play(index + 1), clamp(recording.frames[index + 1].timestamp - frame.timestamp, 1, 100));
+    }
+  };
+  play(0);
+}
+
 function wireBallControls(): void {
   elements.launchForehandBall.addEventListener("click", () => launchBall("easyForehand"));
   elements.launchBackhandBall.addEventListener("click", () => launchBall("easyBackhand"));
@@ -1482,6 +1631,7 @@ function onBallHit(event: BallHitEvent): void {
   elements.outgoingBallSpeed.textContent = `${event.outgoingSpeed.toFixed(1)} m/s`;
   contactFlashUntil = performance.now() + 150;
   motionRecorder.recordBallResult({ type: "hit", event });
+  window.setTimeout(() => finishRealHitAttempt("HIT", "accepted"), 0);
   console.info("Ball hit", event);
 }
 
@@ -1489,6 +1639,7 @@ function onBallMiss(event: BallMissEvent): void {
   elements.ballResult.textContent = "MISS";
   ballRelaunchAt = performance.now() + BALL_CONFIG.resetDelayMs;
   motionRecorder.recordBallResult({ type: "miss", event });
+  window.setTimeout(() => finishRealHitAttempt("MISS", event.reason), 0);
   console.info("Ball miss", event);
 }
 
@@ -1787,11 +1938,43 @@ function updatePacketAge(): void {
 
   if (!packetTime) {
     elements.packetAge.textContent = "--";
+    updateDiagnosticReadiness();
     return;
   }
 
   const ageMs = Date.now() - packetTime;
   elements.packetAge.textContent = `${ageMs} ms`;
+  updateDiagnosticReadiness();
+}
+
+function isDiagnosticInputReady(): boolean {
+  const packetTime = latestPacket?.serverReceivedAt ?? latestOrientationPacket?.serverReceivedAt;
+  const packetIsFresh = packetTime !== undefined && Date.now() - packetTime <= DIAGNOSTIC_PACKET_FRESHNESS_MS;
+  return socket.connected && mobileClientCount === 1 && packetIsFresh && latestSensorFrame?.valid === true && isCalibrated;
+}
+
+function diagnosticReadinessMessage(): string {
+  if (!socket.connected || mobileClientCount !== 1) return "Connect Expo Go before recording";
+  const packetTime = latestPacket?.serverReceivedAt ?? latestOrientationPacket?.serverReceivedAt;
+  if (!packetTime || Date.now() - packetTime > DIAGNOSTIC_PACKET_FRESHNESS_MS) return "Connect Expo Go before recording - waiting for fresh phone packets";
+  if (!latestSensorFrame?.valid) return "Connect Expo Go before recording - sensor data is not valid";
+  if (!isCalibrated) return "Calibrate the racket before recording";
+  return "ready - phone connected and packets are fresh";
+}
+
+function updateDiagnosticReadiness(): void {
+  if (diagnosticState === "recording" || diagnosticState === "analyzing") return;
+  const ready = isDiagnosticInputReady();
+  elements.recordForehandAttempt.disabled = !ready;
+  elements.recordBackhandAttempt.disabled = !ready;
+  if (diagnosticState !== "ready" || !ready) setDiagnosticStatus(ready ? "idle" : "idle", diagnosticReadinessMessage());
+}
+
+function setDiagnosticStatus(state: typeof diagnosticState, message: string): void {
+  diagnosticState = state;
+  elements.diagnosticStatus.textContent = `Diagnostic: ${state}${message ? ` - ${message}` : ""}`;
+  elements.diagnosticStatus.classList.toggle("is-ready", state === "ready" || message.startsWith("ready"));
+  elements.diagnosticStatus.classList.toggle("is-error", state === "error");
 }
 
 function handleResize(): void {
@@ -1840,4 +2023,13 @@ function getElement<T extends HTMLElement = HTMLElement>(id: string): T {
   }
 
   return element as T;
+}
+
+function assertDiagnosticElements(): void {
+  const missing = DIAGNOSTIC_ELEMENT_IDS.filter((id) => document.getElementById(id) === null);
+  if (missing.length > 0) {
+    const message = `Diagnostic UI startup failure: missing ${missing.map((id) => `#${id}`).join(", ")}`;
+    console.error(message);
+    throw new Error(message);
+  }
 }

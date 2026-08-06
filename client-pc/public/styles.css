@@ -355,6 +355,50 @@ article strong {
   overflow-wrap: anywhere;
 }
 
+.diagnostic-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.diagnostic-actions button {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.diagnostic-controls {
+  margin-top: 8px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(184, 255, 44, 0.18);
+  border-bottom: 1px solid rgba(184, 255, 44, 0.18);
+}
+
+.diagnostic-status {
+  margin: 7px 0 0;
+  color: #ffda79;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.diagnostic-status.is-ready {
+  color: #b8ff2c;
+}
+
+.diagnostic-status.is-error {
+  color: #ff6670;
+}
+
+.diagnostic-timeline {
+  max-height: 150px;
+  margin-top: 6px;
+  overflow: auto;
+  color: #aebbc9;
+  font: 0.62rem/1.35 Consolas, monospace;
+  white-space: pre;
+}
+
 .ball-tuning {
   margin-top: 8px;
   color: #aebbc9;

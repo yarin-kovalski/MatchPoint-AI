@@ -1,6 +1,6 @@
 import { createServer as createHttpServer, IncomingMessage, ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
-import { stat } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { extname, normalize, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
@@ -243,6 +243,14 @@ for (const io of ioServers) {
       };
 
       emitToPcClients("stroke_detected", brokeredStroke);
+    });
+
+    socket.on("diagnostic:report", async (payload: { markdown?: string } = {}) => {
+      if (typeof payload.markdown !== "string" || payload.markdown.length > 100_000) return;
+      const directory = resolve(process.cwd(), "docs", "diagnostics");
+      await mkdir(directory, { recursive: true });
+      await writeFile(resolve(directory, "latest-hit-attempt.md"), payload.markdown, "utf8");
+      socket.emit("diagnostic:report-saved", { ok: true });
     });
 
     socket.on("disconnecting", () => {

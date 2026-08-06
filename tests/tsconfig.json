@@ -14,6 +14,9 @@
     "phase-c.test.ts",
     "phase-d.test.ts",
     "phase-d1.test.ts",
+    "gameplay-diagnostic.test.ts",
+    "diagnostic-ui-integration.test.ts",
+    "../client-pc/src/diagnostics/**/*.ts",
     "../client-pc/src/motion/**/*.ts",
     "../client-pc/src/strokeDetection/**/*.ts",
     "../client-pc/src/ball/**/*.ts"
