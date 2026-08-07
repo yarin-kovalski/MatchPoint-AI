@@ -240,7 +240,9 @@ test("slice and topspin alter bounce differently", () => {
 test("miss emits once and resets after delay", () => {
   const misses: unknown[] = []; const controller = new BallController(undefined, event => misses.push(event));
   controller.launch("easyForehand", "right", "normal", 1000);
-  controller.ball.position.z = 5; controller.ball.velocity.z = 1;
+  controller.ball.position.z = BALL_CONFIG.bounds.zBehindPlayer + 0.5;
+  controller.ball.previousPosition.copy(controller.ball.position);
+  controller.ball.velocity.z = 1;
   controller.update(0, 1100, new THREE.Matrix4(), snapshot("READY"), null, "off");
   controller.update(0, 1200, new THREE.Matrix4(), snapshot("READY"), null, "off");
   assert.equal(misses.length, 1);

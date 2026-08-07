@@ -68,6 +68,8 @@
             <div><span>Shot speed</span><strong id="playerShotSpeed">--</strong></div>
             <div><span>Spin</span><strong id="playerSpinType">--</strong></div>
             <div><span>Spin amount</span><strong id="playerSpinAmount">--</strong></div>
+            <div><span>Power</span><strong id="playerPowerLevel">--</strong></div>
+            <div><span>Launch</span><strong id="playerLaunchTendency">--</strong></div>
             <div><span>Contact quality</span><strong id="playerContactQuality">--</strong></div>
           </div>
           <p id="practiceStatus" class="player-status">Ready for a validated feed.</p>
@@ -80,6 +82,18 @@
               <label>Feed seed <input id="feedSeed" type="number" inputmode="numeric" placeholder="generated"></label>
               <span id="feedVariationDebug">No varied feed launched.</span>
               <pre id="contactPhysicsDebug">No physical impact recorded.</pre>
+              <pre id="ballVisualInvariant">Ball visual audit: idle</pre>
+              <pre id="performanceTelemetry">Performance telemetry: collecting</pre>
+              <label>Stroke example
+                <select id="strokeExampleLabel">
+                  <option>Flat Forehand</option><option>Topspin Forehand</option><option>Slice Forehand</option>
+                  <option>Flat Backhand</option><option>Topspin Backhand</option><option>Slice Backhand</option>
+                  <option>Weak</option><option>Medium</option><option>Strong</option>
+                </select>
+              </label>
+              <button id="recordStrokeExample" type="button">Record Stroke Example</button>
+              <button id="analyzeStrokeExamples" type="button">Analyze Stroke Examples</button>
+              <pre id="strokeExampleAnalysis">No stroke examples recorded.</pre>
             </div>
         <section class="control-section" aria-labelledby="connectionSectionTitle">
           <h2 id="connectionSectionTitle">Connection and sensor status</h2>

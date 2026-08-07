@@ -21,8 +21,10 @@ import {
   createFeedOriginMarker
 } from "./scene/tennisEnvironment.js";
 import { PLAYER_BASELINE_OFFSET_Z, positionValidatedProfileAtBaseline } from "./ball/courtPositioning.js";
+import { assertBallVisualState } from "./ball/ballVisualState.js";
 import { analyzeGameplayDiagnostic, AttemptType, diagnosticMarkdown, GameplayDiagnosticFrame, GameplayDiagnosticRecorder } from "./diagnostics/gameplayDiagnostic.js";
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
+import { adaptiveVisualSmoothingFactor, SensorResampler } from "./motion/sensorResampler.js";
 import {
   NormalizedSensorFrame,
   SensorNormalizer
@@ -35,6 +37,7 @@ import {
 } from "./strokeDetection/motionRecorder.js";
 import { StrokeStateMachine } from "./strokeDetection/strokeStateMachine.js";
 import { EasySwingIntentDetector, EasySwingIntentSnapshot } from "./strokeDetection/easySwingIntent.js";
+import { ContactFeatureSnapshot, featureSnapshotFromImpact } from "./strokeDetection/strokeFidelity.js";
 import {
   BackhandStyle,
   EstimatedRacketContact,
@@ -252,8 +255,16 @@ const elements = {
   playerShotSpeed: getElement("playerShotSpeed"),
   playerSpinType: getElement("playerSpinType"),
   playerSpinAmount: getElement("playerSpinAmount"),
+  playerPowerLevel: getElement("playerPowerLevel"),
+  playerLaunchTendency: getElement("playerLaunchTendency"),
   playerContactQuality: getElement("playerContactQuality"),
   contactPhysicsDebug: getElement("contactPhysicsDebug"),
+  ballVisualInvariant: getElement("ballVisualInvariant"),
+  performanceTelemetry: getElement("performanceTelemetry"),
+  strokeExampleLabel: getElement<HTMLSelectElement>("strokeExampleLabel"),
+  recordStrokeExample: getElement<HTMLButtonElement>("recordStrokeExample"),
+  analyzeStrokeExamples: getElement<HTMLButtonElement>("analyzeStrokeExamples"),
+  strokeExampleAnalysis: getElement("strokeExampleAnalysis"),
   playableProfileDetails: getElement("playableProfileDetails"),
   launchBackhandBall: getElement<HTMLButtonElement>("launchBackhandBall"),
   guaranteedForehandFeed: getElement<HTMLButtonElement>("guaranteedForehandFeed"),
@@ -431,6 +442,7 @@ const ghostFarColor = new THREE.Color(0xff3048);
 const ghostAlignedColor = new THREE.Color(0x8dff75);
 const ghostCurrentColor = new THREE.Color();
 const sensorNormalizer = new SensorNormalizer();
+const sensorResampler = new SensorResampler();
 const motionRecorder = new MotionRecorder();
 const gameplayDiagnosticRecorder = new GameplayDiagnosticRecorder();
 const easySwingIntentDetector = new EasySwingIntentDetector();
@@ -445,6 +457,14 @@ const PLAYER_UI_INTERVAL_MS = 100;
 const DEVELOPER_UI_INTERVAL_MS = 200;
 let lastPlayerUiUpdateAt = 0;
 let lastDeveloperUiUpdateAt = 0;
+let telemetryWindowStartedAt = performance.now();
+let telemetryFrames = 0;
+let telemetryRenderMs = 0;
+let telemetryPhysicsMs = 0;
+let telemetryLongFrames = 0;
+let telemetryPreviousPhysicsSteps = 0;
+const STROKE_EXAMPLE_STORAGE_KEY = "matchpoint.stroke-examples.v1";
+let armedStrokeExampleLabel: string | null = null;
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
@@ -501,6 +521,8 @@ const feedOriginMarker = createFeedOriginMarker();
 feedOriginMarker.visible = false;
 scene.add(feedOriginMarker);
 let feedOriginVisibleUntil = 0;
+let previousBallVisualState = "IDLE";
+let lastBallVisualWarningAt = 0;
 
 const racketRoot = new THREE.Group();
 racketRoot.name = "racketRoot";
@@ -517,15 +539,24 @@ proceduralPositionPivot.name = "proceduralPositionPivot";
 racketRoot.add(proceduralPositionPivot);
 proceduralPositionPivot.add(orientationPivot);
 
+const visualOrientationPivot = new THREE.Group();
+visualOrientationPivot.name = "visualOrientationPivot";
+proceduralPositionPivot.add(visualOrientationPivot);
+
 const modelCorrectionPivot = new THREE.Group();
 modelCorrectionPivot.name = "modelCorrectionPivot";
 modelCorrectionPivot.quaternion.copy(racketModelCorrectionQuaternion);
-orientationPivot.add(modelCorrectionPivot);
+visualOrientationPivot.add(modelCorrectionPivot);
+
+const physicsCorrectionPivot = new THREE.Group();
+physicsCorrectionPivot.name = "physicsCorrectionPivot";
+physicsCorrectionPivot.quaternion.copy(racketModelCorrectionQuaternion);
+orientationPivot.add(physicsCorrectionPivot);
 
 const racketStringCollider = new THREE.Group();
 racketStringCollider.name = "racketStringCollider";
 racketStringCollider.position.set(...BALL_CONFIG.collision.headCenterLocal);
-modelCorrectionPivot.add(racketStringCollider);
+physicsCorrectionPivot.add(racketStringCollider);
 
 const colliderPoints: THREE.Vector3[] = [];
 for (let index = 0; index < 48; index += 1) {
@@ -785,6 +816,16 @@ socket.on("continuous_orientation", (payload: unknown) => {
       orientationPacket.accelerationIncludingGravity
     )
   });
+  if (processedFrame.valid) {
+    sensorResampler.add({
+      timestamp: orientationPacket.serverReceivedAt,
+      quaternion: processedFrame.relativePhoneQuaternion,
+      angularVelocity: processedFrame.angularVelocityLocal,
+      angularSpeed: processedFrame.angularSpeed,
+      accelerationMagnitude: processedFrame.accelerationMagnitude,
+      jerk: processedFrame.jerk
+    });
+  }
 
   if (!replayActive) {
     latestSensorFrame = processedFrame;
@@ -1016,12 +1057,12 @@ function animate(): void {
   const now = performance.now();
   const nowEpoch = Date.now();
   const ballDeltaSeconds = Math.min((now - lastBallFrameAt) / 1000, 0.1);
+  if (ballDeltaSeconds > 1 / 30) telemetryLongFrames += 1;
   lastBallFrameAt = now;
 
   if (latestOrientationPacket) {
-    if (latestSensorFrame?.valid) {
-      relativeOrientationQuaternion.copy(latestSensorFrame.relativePhoneQuaternion);
-    }
+    const resampledOrientation = sensorResampler.sample(nowEpoch);
+    if (resampledOrientation) relativeOrientationQuaternion.copy(resampledOrientation);
   } else {
     gyroEuler.set(targetRotationX, targetRotationY, targetRotationZ);
     gyroQuaternion.setFromEuler(gyroEuler);
@@ -1029,11 +1070,15 @@ function animate(): void {
   }
 
   targetRacketQuaternion.copy(relativeOrientationQuaternion);
-  orientationPivot.quaternion.slerp(
-    targetRacketQuaternion,
-    MOTION_CONFIG.smoothing.visualizationOrientation
+  orientationPivot.quaternion.copy(targetRacketQuaternion);
+  const visualSmoothing = adaptiveVisualSmoothingFactor(
+    latestSensorFrame?.angularSpeed ?? 0,
+    latestSensorFrame?.accelerationMagnitude ?? 0,
+    latestSensorFrame?.jerk ?? 0,
+    latestSensorFrame?.valid ?? false
   );
-  displayedRelativeQuaternion.copy(orientationPivot.quaternion);
+  visualOrientationPivot.quaternion.slerp(targetRacketQuaternion, visualSmoothing);
+  displayedRelativeQuaternion.copy(visualOrientationPivot.quaternion);
   racketRoot.position.copy(neutralRacketPosition);
   updateProceduralPosition();
   if (USE_LEGACY_STROKE_DETECTOR) {
@@ -1042,6 +1087,7 @@ function animate(): void {
   racketRoot.updateMatrixWorld(true);
   applyPlayableContactMagnet(nowEpoch);
   const detectorSnapshot = latestStrokeSnapshot ?? strokeStateMachine.getSnapshot(nowEpoch);
+  const physicsStartedAt = performance.now();
   const previewAtContact = previewTrajectoryActive && ballController.ball.bounceCount === 1 &&
     ballController.ball.contactDeadline > 0 && nowEpoch >= ballController.ball.contactDeadline - 25;
   if (previewAtContact) {
@@ -1059,6 +1105,7 @@ function animate(): void {
       isPlayableCalibratedHitEnabled()
     );
   }
+  telemetryPhysicsMs += performance.now() - physicsStartedAt;
   updateBallVisuals(ballDeltaSeconds);
   rimLight.intensity = now < contactFlashUntil ? 12 : 4.5;
   targetSwingSpeedKmh *= 0.94;
@@ -1090,7 +1137,41 @@ function animate(): void {
   updatePracticeLoop(now);
   captureGameplayDiagnostic(now, ballDeltaSeconds);
 
+  const renderStartedAt = performance.now();
   renderer.render(scene, camera);
+  telemetryRenderMs += performance.now() - renderStartedAt;
+  telemetryFrames += 1;
+  updatePerformanceTelemetry(now, nowEpoch);
+}
+
+function updatePerformanceTelemetry(now: number, nowEpoch: number): void {
+  const elapsedMs = now - telemetryWindowStartedAt;
+  if (!elements.developerPanel.open || elapsedMs < 1000) return;
+  const physicsSteps = ballController.physicsState.totalSteps - telemetryPreviousPhysicsSteps;
+  const latestPacketTime = latestOrientationPacket?.serverReceivedAt;
+  elements.performanceTelemetry.textContent = JSON.stringify({
+    renderFps: Number((telemetryFrames * 1000 / elapsedMs).toFixed(1)),
+    physicsStepsPerSecond: Number((physicsSteps * 1000 / elapsedMs).toFixed(1)),
+    averageRenderMs: Number((telemetryRenderMs / Math.max(1, telemetryFrames)).toFixed(2)),
+    averagePhysicsMs: Number((telemetryPhysicsMs / Math.max(1, telemetryFrames)).toFixed(3)),
+    longFrames: telemetryLongFrames,
+    sensorPacketRateHz: Number(sensorResampler.telemetry.packetRateHz.toFixed(1)),
+    averagePacketAgeMs: latestPacketTime ? Math.max(0, nowEpoch - latestPacketTime) : null,
+    packetJitterMs: Number(sensorResampler.telemetry.packetJitterMs.toFixed(1)),
+    duplicatePackets: sensorResampler.telemetry.duplicatePackets,
+    outOfOrderPackets: sensorResampler.telemetry.outOfOrderPackets,
+    staleFrames: sensorResampler.telemetry.staleFrames,
+    maximumAngularDeltaRadians: Number(sensorResampler.telemetry.maximumAngularDeltaRadians.toFixed(3)),
+    interpolationDelayMs: 40,
+    currentExtrapolationMs: sensorResampler.telemetry.extrapolationMs,
+    droppedPhysicsMs: Math.round(ballController.physicsState.droppedSeconds * 1000)
+  }, null, 2);
+  telemetryWindowStartedAt = now;
+  telemetryPreviousPhysicsSteps = ballController.physicsState.totalSteps;
+  telemetryFrames = 0;
+  telemetryRenderMs = 0;
+  telemetryPhysicsMs = 0;
+  telemetryLongFrames = 0;
 }
 
 function updateCalibrationGuide(elapsed: number): void {
@@ -1147,6 +1228,7 @@ function beginCalibration(currentPhoneQuaternion: THREE.Quaternion): void {
   neutralPhoneQuaternion.copy(currentPhoneQuaternion).normalize();
   calibrationBaselineInverse.copy(neutralPhoneQuaternion).invert();
   sensorNormalizer.reset();
+  sensorResampler.reset();
   latestSensorFrame = null;
   hasCalibrationBaseline = true;
   isCalibrated = false;
@@ -2077,6 +2159,11 @@ function updatePracticeLoop(now: number): void {
 }
 
 function wireBallControls(): void {
+  elements.recordStrokeExample.addEventListener("click", () => {
+    armedStrokeExampleLabel = elements.strokeExampleLabel.value;
+    elements.strokeExampleAnalysis.textContent = `Armed: ${armedStrokeExampleLabel}. The next resolved contact will be saved.`;
+  });
+  elements.analyzeStrokeExamples.addEventListener("click", analyzeStrokeExamples);
   elements.playCalibratedForehand.addEventListener("click", () => playCalibratedStroke("forehand"));
   elements.playCalibratedBackhand.addEventListener("click", () => playCalibratedStroke("backhand"));
   elements.stopPractice.addEventListener("click", () => {
@@ -2329,6 +2416,18 @@ function updatePhysicalContactFeedback(): void {
   elements.playerShotSpeed.textContent = `${impact.outgoingVelocity.length().toFixed(1)} m/s`;
   elements.playerSpinType.textContent = impact.spinType;
   elements.playerSpinAmount.textContent = `${impact.spinRateRadiansPerSecond.toFixed(1)} rad/s`;
+  const featureSnapshot = featureSnapshotFromImpact(Date.now(), impact, {
+    peakAngularSpeed: latestSensorFrame?.angularSpeed ?? 0,
+    peakAcceleration: latestSensorFrame?.accelerationMagnitude ?? 0,
+    jerk: latestSensorFrame?.jerk ?? 0,
+    forwardScore: latestSensorFrame?.motionForwardScore ?? 0,
+    upwardScore: latestSensorFrame?.motionUpwardScore ?? 0,
+    sidewaysScore: latestSensorFrame?.motionSidewaysScore ?? 0
+  });
+  elements.playerPowerLevel.textContent = featureSnapshot.powerLevel;
+  elements.playerLaunchTendency.textContent = featureSnapshot.launchTendency;
+  elements.playerSpinType.textContent = `${featureSnapshot.shotShape} HIT`;
+  captureArmedStrokeExample(featureSnapshot);
   elements.playerContactQuality.textContent = `${Math.round(impact.contactQuality * 100)}%`;
   elements.contactPhysicsDebug.textContent = JSON.stringify({
     outcome: impact.outcome,
@@ -2357,9 +2456,61 @@ function updatePhysicalContactFeedback(): void {
   }, null, 2);
 }
 
+type StoredStrokeExample = { label: string; recordedAt: number; features: ContactFeatureSnapshot };
+
+function readStrokeExamples(): StoredStrokeExample[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STROKE_EXAMPLE_STORAGE_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function captureArmedStrokeExample(features: ContactFeatureSnapshot): void {
+  if (!armedStrokeExampleLabel) return;
+  const examples = readStrokeExamples();
+  examples.push({ label: armedStrokeExampleLabel, recordedAt: Date.now(), features });
+  localStorage.setItem(STROKE_EXAMPLE_STORAGE_KEY, JSON.stringify(examples));
+  elements.strokeExampleAnalysis.textContent = `Saved ${armedStrokeExampleLabel}. Total examples: ${examples.length}.`;
+  armedStrokeExampleLabel = null;
+}
+
+function analyzeStrokeExamples(): void {
+  const examples = readStrokeExamples();
+  if (examples.length === 0) {
+    elements.strokeExampleAnalysis.textContent = "No stroke examples recorded.";
+    return;
+  }
+  const groups = new Map<string, StoredStrokeExample[]>();
+  for (const example of examples) groups.set(example.label, [...(groups.get(example.label) ?? []), example]);
+  const report = [...groups.entries()].map(([label, values]) => {
+    const range = (select: (entry: StoredStrokeExample) => number) => {
+      const selected = values.map(select);
+      return [Math.min(...selected), Math.max(...selected)].map(value => Number(value.toFixed(3)));
+    };
+    return {
+      label,
+      samples: values.length,
+      angularSpeed: range(entry => entry.features.peakAngularSpeed),
+      acceleration: range(entry => entry.features.peakAcceleration),
+      forwardScore: range(entry => entry.features.forwardScore),
+      upwardScore: range(entry => entry.features.upwardScore),
+      powerScore: range(entry => entry.features.powerScore),
+      spinRate: range(entry => entry.features.estimatedContactSpeed),
+      note: values.length < 3 ? "Collect at least 3 examples before considering threshold changes." : "Review overlap manually; production thresholds unchanged."
+    };
+  });
+  elements.strokeExampleAnalysis.textContent = JSON.stringify(report, null, 2);
+}
+
 function updateBallVisuals(deltaSeconds: number): void {
   updatePhysicalContactFeedback();
   const ball = ballController.ball;
+  if (ball.state !== previousBallVisualState) {
+    ballController.lifecycleDebug.lastStateTransition = `${previousBallVisualState} -> ${ball.state}`;
+    previousBallVisualState = ball.state;
+  }
   const previewTarget = getBallDeliveryTarget({
     preset: activeLaunchPreset,
     handedness: strokeStateMachine.getHandedness(),
@@ -2468,6 +2619,19 @@ function updateBallDebugGeometry(): void {
 
 function updateBallDebug(): void {
   const ball = ballController.ball;
+  ballMesh.updateMatrixWorld(true);
+  const visualAudit = assertBallVisualState(
+    ball, ballMesh, camera, scene, ballController.lifecycleDebug
+  );
+  elements.ballVisualInvariant.textContent = JSON.stringify({
+    ...visualAudit,
+    physicsSteps: ballController.physicsState.totalSteps,
+    droppedPhysicsMs: Math.round(ballController.physicsState.droppedSeconds * 1000)
+  }, null, 2);
+  if (!visualAudit.valid && performance.now() - lastBallVisualWarningAt > 1000) {
+    console.warn("Ball visual invariant failed", visualAudit);
+    lastBallVisualWarningAt = performance.now();
+  }
   const collision = ballController.lastCollision;
   const hitDebug = ballController.hitDebug;
   elements.ballState.textContent = ball.state;

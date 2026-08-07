@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { EstimatedRacketContact, StrokeDetectorSnapshot } from "../strokeDetection/strokeTypes.js";
 import { BALL_CONFIG } from "./ballConfig.js";
 import { getLaunchParameters } from "./ballLauncher.js";
-import { isBallOutOfBounds, stepBallPhysics } from "./ballPhysics.js";
+import { isBallOutOfBounds } from "./ballPhysics.js";
+import { advanceBallFixedStep, createFixedStepPhysicsState } from "./fixedStepBallPhysics.js";
 import { calculateOutgoingVelocity } from "./ballResponse.js";
 import { estimateSecondBounceDelay, solveVelocity } from "./ballDelivery.js";
 import { interpolateRacketMatrix, sweepBallAgainstMovingRacket } from "./racketCollider.js";
@@ -67,6 +68,12 @@ export class BallController {
     sweptContactPoint: new THREE.Vector3(),
     sweptContactTimestamp: 0
   };
+  readonly physicsState = createFixedStepPhysicsState();
+  readonly lifecycleDebug = {
+    lastStateTransition: "created -> IDLE",
+    lastResetReason: "initial state",
+    lastHideReason: "initially idle"
+  };
 
   constructor(
     private readonly onHit?: (event: BallHitEvent) => void,
@@ -86,6 +93,8 @@ export class BallController {
     this.sequence += 1;
     this.ball.id = `ball-${this.sequence}`;
     this.ball.state = "IN_FLIGHT_TO_PLAYER";
+    this.lifecycleDebug.lastStateTransition = "IDLE -> IN_FLIGHT_TO_PLAYER (launch)";
+    this.lifecycleDebug.lastHideReason = "none";
     this.ball.position.copy(launch.position);
     this.ball.previousPosition.copy(launch.position);
     this.ball.velocity.copy(launch.velocity);
@@ -124,9 +133,13 @@ export class BallController {
     this.sweptDebug.sweptPlaneCrossed = false;
     this.sweptDebug.sweptInsideEllipse = false;
     this.sweptDebug.sweptContactTimestamp = 0;
+    this.physicsState.accumulatorSeconds = 0;
   }
 
-  reset(): void {
+  reset(reason = "scheduled lifecycle reset"): void {
+    this.lifecycleDebug.lastStateTransition = `${this.ball.state} -> IDLE (${reason})`;
+    this.lifecycleDebug.lastResetReason = reason;
+    this.lifecycleDebug.lastHideReason = reason;
     this.ball.state = "IDLE";
     this.ball.active = false;
     this.ball.velocity.set(0, 0, 0);
@@ -153,7 +166,8 @@ export class BallController {
       if (this.ball.state === "MISSED" && now >= this.resetAt) this.reset();
       return;
     }
-    const bounced = stepBallPhysics(this.ball, deltaSeconds);
+    const physics = advanceBallFixedStep(this.ball, deltaSeconds, this.physicsState);
+    const bounced = physics.bounced;
     if (bounced) {
       if (this.ball.hit) {
         this.ball.state = "OUT";
