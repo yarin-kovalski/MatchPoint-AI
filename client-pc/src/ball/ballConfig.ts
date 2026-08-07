@@ -10,8 +10,8 @@ export const BALL_CONFIG = {
   },
   camera: {
     fovDegrees: 50,
-    position: [0, 4.6, 7.6],
-    target: [0, 1.25, -1.2],
+    position: [0, 5.2, 13.6],
+    target: [0, 1.3, 0.8],
     near: 0.1,
     far: 100
   },

@@ -16,7 +16,11 @@ import {
   restoreValidatedTrajectoryPreset, TrajectoryProfileSource, VALIDATED_TRAJECTORY_PRESET
 } from "./ball/validatedTrajectoryPreset.js";
 import { canLaunchPracticeFeed, FeedVariationLevel, FeedVariationResult, generateSafeFeedVariation } from "./ball/feedVariation.js";
-import { configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createCourtBackdrop } from "./scene/tennisEnvironment.js";
+import {
+  configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createCourtBackdrop,
+  createFeedOriginMarker
+} from "./scene/tennisEnvironment.js";
+import { PLAYER_BASELINE_OFFSET_Z, positionValidatedProfileAtBaseline } from "./ball/courtPositioning.js";
 import { analyzeGameplayDiagnostic, AttemptType, diagnosticMarkdown, GameplayDiagnosticFrame, GameplayDiagnosticRecorder } from "./diagnostics/gameplayDiagnostic.js";
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
 import {
@@ -171,6 +175,7 @@ const DIAGNOSTIC_ELEMENT_IDS = [
 assertDiagnosticElements();
 
 const elements = {
+  developerPanel: document.querySelector<HTMLDetailsElement>(".developer-panel")!,
   connectionStatus: getElement("connectionStatus"),
   packetCount: getElement("packetCount"),
   packetAge: getElement("packetAge"),
@@ -402,8 +407,9 @@ const convertedPhoneQuaternion = new THREE.Quaternion();
 const neutralPhoneQuaternion = new THREE.Quaternion();
 const displayedRelativeQuaternion = new THREE.Quaternion();
 const finalRacketQuaternion = new THREE.Quaternion();
+const displayedRacketEuler = new THREE.Euler(0, 0, 0, "YXZ");
 const identityQuaternion = new THREE.Quaternion();
-const neutralRacketPosition = new THREE.Vector3(0, 1.45, 0);
+const neutralRacketPosition = new THREE.Vector3(0, 1.45, PLAYER_BASELINE_OFFSET_Z);
 const SHOW_ORIENTATION_DEBUG = true;
 const SHOW_AXIS_HELPERS = false;
 const PHONE_TO_THREE_BASIS = new THREE.Quaternion().setFromAxisAngle(
@@ -435,6 +441,10 @@ let mobileClientCount = 0;
 let diagnosticState: "idle" | "recording" | "analyzing" | "ready" | "error" = "idle";
 const DIAGNOSTIC_PACKET_FRESHNESS_MS = 500;
 const USE_LEGACY_STROKE_DETECTOR = false;
+const PLAYER_UI_INTERVAL_MS = 100;
+const DEVELOPER_UI_INTERVAL_MS = 200;
+let lastPlayerUiUpdateAt = 0;
+let lastDeveloperUiUpdateAt = 0;
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
@@ -454,7 +464,7 @@ const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: true
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 resizeRendererToVisualizationPanel();
 configureAuthenticRenderer(renderer);
 
@@ -464,7 +474,7 @@ scene.add(ambientLight);
 const keyLight = new THREE.DirectionalLight(0xfff4d8, 1.65);
 keyLight.position.set(-6, 12, 7);
 keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.mapSize.set(1024, 1024);
 keyLight.shadow.camera.left = -12;
 keyLight.shadow.camera.right = 12;
 keyLight.shadow.camera.top = 16;
@@ -486,6 +496,11 @@ const court = createAuthenticCourt(BALL_CONFIG.launch.netDepth);
 const tennisNet = createAuthenticTennisNet(BALL_CONFIG.launch.netDepth);
 const courtBackdrop = createCourtBackdrop(BALL_CONFIG.launch.netDepth);
 scene.add(court, tennisNet, courtBackdrop);
+
+const feedOriginMarker = createFeedOriginMarker();
+feedOriginMarker.visible = false;
+scene.add(feedOriginMarker);
+let feedOriginVisibleUntil = 0;
 
 const racketRoot = new THREE.Group();
 racketRoot.name = "racketRoot";
@@ -560,6 +575,11 @@ scene.add(ballShadow);
 
 const ballTrailPositions: THREE.Vector3[] = [];
 const ballTrailGeometry = new THREE.BufferGeometry();
+const ballTrailBuffer = new Float32Array(18 * 3);
+const ballTrailAttribute = new THREE.BufferAttribute(ballTrailBuffer, 3);
+ballTrailAttribute.setUsage(THREE.DynamicDrawUsage);
+ballTrailGeometry.setAttribute("position", ballTrailAttribute);
+ballTrailGeometry.setDrawRange(0, 0);
 const ballTrailMaterial = new THREE.LineBasicMaterial({ color: 0xdfff72, transparent: true, opacity: 0.38 });
 const ballTrail = new THREE.Line(
   ballTrailGeometry,
@@ -994,6 +1014,7 @@ function animate(): void {
   requestAnimationFrame(animate);
   const elapsed = clock.getElapsedTime();
   const now = performance.now();
+  const nowEpoch = Date.now();
   const ballDeltaSeconds = Math.min((now - lastBallFrameAt) / 1000, 0.1);
   lastBallFrameAt = now;
 
@@ -1018,11 +1039,11 @@ function animate(): void {
   if (USE_LEGACY_STROKE_DETECTOR) {
     racketRoot.position.add(getStrokePositionOffset());
   }
-  scene.updateMatrixWorld(true);
-  applyPlayableContactMagnet(Date.now());
-  const detectorSnapshot = latestStrokeSnapshot ?? strokeStateMachine.getSnapshot(Date.now());
+  racketRoot.updateMatrixWorld(true);
+  applyPlayableContactMagnet(nowEpoch);
+  const detectorSnapshot = latestStrokeSnapshot ?? strokeStateMachine.getSnapshot(nowEpoch);
   const previewAtContact = previewTrajectoryActive && ballController.ball.bounceCount === 1 &&
-    ballController.ball.contactDeadline > 0 && Date.now() >= ballController.ball.contactDeadline - 25;
+    ballController.ball.contactDeadline > 0 && nowEpoch >= ballController.ball.contactDeadline - 25;
   if (previewAtContact) {
     ballController.ball.position.copy(ballController.ball.contactTarget);
     ballController.ball.previousPosition.copy(ballController.ball.contactTarget);
@@ -1032,13 +1053,14 @@ function animate(): void {
     contactMarker.visible = true;
   } else {
     ballController.update(
-      ballDeltaSeconds, Date.now(), racketStringCollider.matrixWorld, detectorSnapshot,
+      ballDeltaSeconds, nowEpoch, racketStringCollider.matrixWorld, detectorSnapshot,
       lastContactEvent, assistMode, createEasyHitMotion(), !previewTrajectoryActive,
-      trajectoryProfiles[ballController.ball.expectedStrokeType], isPlayableCalibratedHitEnabled()
+      activeCalibrationProfile ?? trajectoryProfiles[ballController.ball.expectedStrokeType],
+      isPlayableCalibratedHitEnabled()
     );
   }
   updateBallVisuals(ballDeltaSeconds);
-  rimLight.intensity = performance.now() < contactFlashUntil ? 42 : 26;
+  rimLight.intensity = now < contactFlashUntil ? 12 : 4.5;
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
 
@@ -1046,21 +1068,27 @@ function animate(): void {
     .copy(baseReadyPoseQuaternion)
     .multiply(displayedRelativeQuaternion)
     .multiply(racketModelCorrectionQuaternion);
-  const displayedEuler = new THREE.Euler().setFromQuaternion(finalRacketQuaternion, "YXZ");
-  elements.rotationX.textContent = displayedEuler.x.toFixed(3);
-  elements.rotationY.textContent = displayedEuler.y.toFixed(3);
-  elements.swingSpeed.textContent = `${Math.round(displayedSwingSpeedKmh)} km/h`;
-  elements.peakSwingSpeed.textContent = `${Math.round(peakSwingSpeedKmh)} km/h`;
+  displayedRacketEuler.setFromQuaternion(finalRacketQuaternion, "YXZ");
   animateDust(elapsed);
   updateCalibrationGuide(elapsed);
-  updateOrientationDebug();
-  updateStrokeDebug();
-  updateBallDebug();
-  updatePlayableStatus(Date.now());
+  if (now - lastPlayerUiUpdateAt >= PLAYER_UI_INTERVAL_MS) {
+    elements.rotationX.textContent = displayedRacketEuler.x.toFixed(3);
+    elements.rotationY.textContent = displayedRacketEuler.y.toFixed(3);
+    elements.swingSpeed.textContent = `${Math.round(displayedSwingSpeedKmh)} km/h`;
+    elements.peakSwingSpeed.textContent = `${Math.round(peakSwingSpeedKmh)} km/h`;
+    updateStrokeDebug();
+    updatePlayableStatus(nowEpoch);
+    updateConnectionStatus();
+    updatePacketAge();
+    lastPlayerUiUpdateAt = now;
+  }
+  if (elements.developerPanel.open && now - lastDeveloperUiUpdateAt >= DEVELOPER_UI_INTERVAL_MS) {
+    updateOrientationDebug();
+    updateBallDebug();
+    lastDeveloperUiUpdateAt = now;
+  }
   updatePracticeLoop(now);
   captureGameplayDiagnostic(now, ballDeltaSeconds);
-  updateConnectionStatus();
-  updatePacketAge();
 
   renderer.render(scene, camera);
 }
@@ -1933,7 +1961,11 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   const seed = elements.feedSeed.value.trim() && Number.isFinite(enteredSeed)
     ? Math.trunc(enteredSeed)
     : crypto.getRandomValues(new Uint32Array(1))[0];
-  currentFeedVariation = generateSafeFeedVariation(strokeType, level, seed);
+  const generatedVariation = generateSafeFeedVariation(strokeType, level, seed);
+  currentFeedVariation = {
+    ...generatedVariation,
+    profile: positionValidatedProfileAtBaseline(generatedVariation.profile)
+  };
   const launchProfiles = {
     forehand: strokeType === "forehand" ? currentFeedVariation.profile : VALIDATED_TRAJECTORY_PRESET.forehand,
     backhand: strokeType === "backhand" ? currentFeedVariation.profile : VALIDATED_TRAJECTORY_PRESET.backhand
@@ -2010,7 +2042,7 @@ function applyPlayableContactMagnet(now: number): void {
   appliedContactCorrection = contactMagnetOffset.length();
   contactDistanceAfterCorrection = currentStringCenter.clone().add(contactMagnetOffset)
     .distanceTo(new THREE.Vector3().fromArray(profile.contactPointWorld));
-  scene.updateMatrixWorld(true);
+  racketRoot.updateMatrixWorld(true);
 }
 
 function updatePlayableStatus(now: number): void {
@@ -2198,9 +2230,17 @@ function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibra
     ballVisualScaleMultiplier
   );
   ballMesh.visible = true;
+  feedOriginMarker.position.set(
+    ballController.ball.position.x,
+    BALL_CONFIG.courtHeight,
+    ballController.ball.position.z
+  );
+  feedOriginMarker.visible = true;
+  feedOriginVisibleUntil = performance.now() + 2200;
   bounceMarker.visible = false;
   contactMarker.visible = false;
   ballTrailPositions.length = 0;
+  ballTrailGeometry.setDrawRange(0, 0);
   ballMesh.quaternion.identity();
   lastBallBounceCount = 0;
   observedIncomingApex.copy(ballController.ball.position);
@@ -2338,13 +2378,25 @@ function updateBallVisuals(deltaSeconds: number): void {
   ballShadow.scale.set(ball.visualRadius * shadowScale, ball.visualRadius * shadowScale * 0.65, 1);
   (ballShadow.material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.clamp(0.42 - height * 0.07, 0.09, 0.38);
   if (ball.active) {
-    ballTrailPositions.push(ball.position.clone());
-    if (ballTrailPositions.length > 18) ballTrailPositions.shift();
-    ballTrailGeometry.setFromPoints(ballTrailPositions);
+    if (ballTrailPositions.length < 18) {
+      ballTrailPositions.push(new THREE.Vector3().copy(ball.position));
+    } else {
+      for (let index = 1; index < ballTrailPositions.length; index += 1) {
+        ballTrailPositions[index - 1].copy(ballTrailPositions[index]);
+      }
+      ballTrailPositions[ballTrailPositions.length - 1].copy(ball.position);
+    }
+    for (let index = 0; index < ballTrailPositions.length; index += 1) {
+      const point = ballTrailPositions[index];
+      ballTrailAttribute.setXYZ(index, point.x, point.y, point.z);
+    }
+    ballTrailAttribute.needsUpdate = true;
+    ballTrailGeometry.setDrawRange(0, ballTrailPositions.length);
     ballTrail.visible = ball.velocity.length() > 4 && ballTrailPositions.length > 2;
   } else {
     ballTrail.visible = false;
   }
+  feedOriginMarker.visible = ball.active && performance.now() < feedOriginVisibleUntil;
   if (ball.bounceCount === 1 && ball.position.y > observedIncomingApex.y) observedIncomingApex.copy(ball.position);
   if (ball.bounceCount > lastBallBounceCount) {
     bounceMarker.position.set(ball.position.x, BALL_CONFIG.courtHeight + 0.006, ball.position.z);
@@ -2675,7 +2727,7 @@ function resizeRendererToVisualizationPanel(): void {
   const bounds = visualizationPanel.getBoundingClientRect();
   const width = Math.max(1, Math.round(bounds.width));
   const height = Math.max(1, Math.round(bounds.height));
-  const nextPixelRatio = Math.min(window.devicePixelRatio, 2);
+  const nextPixelRatio = Math.min(window.devicePixelRatio, 1.5);
   if (renderer.getPixelRatio() !== nextPixelRatio) renderer.setPixelRatio(nextPixelRatio);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();

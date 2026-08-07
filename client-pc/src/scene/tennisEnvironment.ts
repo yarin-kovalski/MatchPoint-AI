@@ -125,3 +125,29 @@ export function createCourtBackdrop(netDepth: number): THREE.Group {
   group.add(back);
   return group;
 }
+
+export function createFeedOriginMarker(): THREE.Group {
+  const group = new THREE.Group();
+  group.name = "feedOriginMarker";
+
+  const markerMaterial = new THREE.MeshBasicMaterial({
+    color: 0xc9ff38,
+    transparent: true,
+    opacity: 0.82,
+    depthWrite: false
+  });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.19, 0.28, 32), markerMaterial);
+  ring.name = "feedOriginRing";
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.012;
+
+  const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.62, 10), markerMaterial);
+  beacon.name = "feedOriginBeacon";
+  beacon.position.y = 0.31;
+
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 8), markerMaterial);
+  cap.name = "feedOriginCap";
+  cap.position.y = 0.62;
+  group.add(ring, beacon, cap);
+  return group;
+}

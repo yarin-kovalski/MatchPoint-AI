@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 import {
-  configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, TENNIS_COURT
+  configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createFeedOriginMarker,
+  TENNIS_COURT
 } from "../client-pc/src/scene/tennisEnvironment.js";
 
 test("authentic court creates regulation markings and shadow receiving surfaces", () => {
@@ -37,4 +38,12 @@ test("renderer configuration enables soft shadows and color-managed tone mapping
   assert.equal(renderer.shadowMap.type, THREE.PCFSoftShadowMap);
   assert.equal(renderer.outputColorSpace, THREE.SRGBColorSpace);
   assert.equal(renderer.toneMapping, THREE.ACESFilmicToneMapping);
+});
+
+test("feed origin marker provides a compact ground ring and vertical beacon", () => {
+  const marker = createFeedOriginMarker();
+  assert.equal(marker.name, "feedOriginMarker");
+  assert.ok(marker.getObjectByName("feedOriginRing"));
+  assert.ok(marker.getObjectByName("feedOriginBeacon"));
+  assert.ok(marker.getObjectByName("feedOriginCap"));
 });
