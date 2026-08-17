@@ -78,7 +78,9 @@ Write-Host ""
 Write-Host "MatchPoint AI phone-to-racket demo" -ForegroundColor Green
 Write-Host "PC racket: $PcUrl"
 Write-Host "Expo server URL: $ServerUrl" -ForegroundColor Yellow
+Write-Host "Expected Expo Go address: exp://${LanAddress}:8081" -ForegroundColor Yellow
 Write-Host "Scan the Expo QR code, then tap Connect and Start in the phone app."
+Write-Host "Do not scan a QR code that shows exp://127.0.0.1:8081."
 Write-Host "Keep both terminals open. Press Ctrl+C here to stop the project."
 Write-Host ""
 
@@ -89,7 +91,9 @@ $BrowserJob = Start-Job -ScriptBlock {
 } -ArgumentList $PcUrl
 
 $PreviousExpoServerUrl = $env:EXPO_PUBLIC_SERVER_URL
+$PreviousPackagerHostname = $env:REACT_NATIVE_PACKAGER_HOSTNAME
 $env:EXPO_PUBLIC_SERVER_URL = $ServerUrl
+$env:REACT_NATIVE_PACKAGER_HOSTNAME = $LanAddress
 try {
   $ExpoProcess = Start-Process powershell.exe -PassThru -WorkingDirectory $ExpoDir -ArgumentList @(
     "-NoExit",
@@ -97,11 +101,12 @@ try {
     "-ExecutionPolicy",
     "Bypass",
     "-Command",
-    "npx expo start --lan --clear"
+    "npx.cmd expo start --lan --offline --clear"
   )
 }
 finally {
   $env:EXPO_PUBLIC_SERVER_URL = $PreviousExpoServerUrl
+  $env:REACT_NATIVE_PACKAGER_HOSTNAME = $PreviousPackagerHostname
 }
 
 try {

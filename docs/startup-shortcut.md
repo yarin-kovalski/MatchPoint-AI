@@ -26,6 +26,12 @@ This command automatically:
 4. In the controller, tap **Connect** and then **Start**.
 5. Confirm that the PC page shows one mobile client and an increasing packet count.
 
+The address below the QR code must contain the PC's LAN IP, for example
+`exp://192.168.18.57:8081`. Never scan `exp://127.0.0.1:8081`: on the phone,
+`127.0.0.1` points back to the phone instead of the PC. The shortcut forces the
+detected LAN address with `REACT_NATIVE_PACKAGER_HOSTNAME` and starts Expo in
+offline mode so an unavailable Expo API does not prevent Metro from starting.
+
 Do not manually reuse an old server IP. The launcher supplies the current address
 through `EXPO_PUBLIC_SERVER_URL` every time it starts.
 
