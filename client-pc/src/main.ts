@@ -468,8 +468,8 @@ let armedStrokeExampleLabel: string | null = null;
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8fb8c2);
-scene.fog = new THREE.FogExp2(0x8fb8c2, 0.018);
+scene.background = new THREE.Color(0xa9ced7);
+scene.fog = new THREE.Fog(0xa9ced7, 24, 58);
 
 const camera = new THREE.PerspectiveCamera(
   BALL_CONFIG.camera.fovDegrees,
@@ -488,29 +488,35 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 resizeRendererToVisualizationPanel();
 configureAuthenticRenderer(renderer);
 
-const ambientLight = new THREE.HemisphereLight(0xddeef0, 0x31543d, 0.88);
+const ambientLight = new THREE.HemisphereLight(0xe8f5f7, 0x315449, 1.12);
 scene.add(ambientLight);
 
-const keyLight = new THREE.DirectionalLight(0xfff4d8, 1.65);
-keyLight.position.set(-6, 12, 7);
+const keyLight = new THREE.DirectionalLight(0xfff4dc, 2.25);
+keyLight.position.set(-7.5, 13.5, 8.5);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(1024, 1024);
-keyLight.shadow.camera.left = -12;
-keyLight.shadow.camera.right = 12;
-keyLight.shadow.camera.top = 16;
-keyLight.shadow.camera.bottom = -16;
+keyLight.shadow.camera.left = -10;
+keyLight.shadow.camera.right = 10;
+keyLight.shadow.camera.top = 14;
+keyLight.shadow.camera.bottom = -14;
 keyLight.shadow.camera.near = 1;
-keyLight.shadow.camera.far = 38;
-keyLight.shadow.bias = -0.00015;
+keyLight.shadow.camera.far = 36;
+keyLight.shadow.bias = -0.00012;
+keyLight.shadow.normalBias = 0.025;
+keyLight.shadow.radius = 2;
 scene.add(keyLight);
 
-const rimLight = new THREE.PointLight(0xb8ff2c, 4.5, 14);
-rimLight.position.set(-3, 3, -4);
-scene.add(rimLight);
+const softFillLight = new THREE.DirectionalLight(0xbadce6, 0.72);
+softFillLight.position.set(8, 6, 3);
+scene.add(softFillLight);
 
-const blueBackLight = new THREE.PointLight(0x91cbd1, 3.2, 24);
-blueBackLight.position.set(4, 4, -8);
-scene.add(blueBackLight);
+const courtBounceLight = new THREE.DirectionalLight(0xaed9c5, 0.34);
+courtBounceLight.position.set(0, 2, -12);
+scene.add(courtBounceLight);
+
+const impactLight = new THREE.PointLight(0xd8ff87, 0, 8, 2);
+impactLight.position.set(0, 2.2, 2.8);
+scene.add(impactLight);
 
 const court = createAuthenticCourt(BALL_CONFIG.launch.netDepth);
 const tennisNet = createAuthenticTennisNet(BALL_CONFIG.launch.netDepth);
@@ -1107,7 +1113,7 @@ function animate(): void {
   }
   telemetryPhysicsMs += performance.now() - physicsStartedAt;
   updateBallVisuals(ballDeltaSeconds);
-  rimLight.intensity = now < contactFlashUntil ? 12 : 4.5;
+  impactLight.intensity = now < contactFlashUntil ? 5 : 0;
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
 
