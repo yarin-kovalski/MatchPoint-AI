@@ -101,7 +101,7 @@ try {
     "-ExecutionPolicy",
     "Bypass",
     "-Command",
-    "npx.cmd expo start --lan --offline --clear"
+    "npx.cmd expo start --offline --clear"
   )
 }
 finally {
