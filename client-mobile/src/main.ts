@@ -1,5 +1,8 @@
 type NullableNumber = number | null;
 
+
+
+
 type SensorVector = {
   x: NullableNumber;
   y: NullableNumber;
