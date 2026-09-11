@@ -67,18 +67,24 @@ if (-not $LanAddress) {
     Select-Object -First 1
 }
 
-if (-not $LanAddress) {
-  $LanAddress = "127.0.0.1"
-  Write-Warning "No LAN IPv4 address was found. The PC page will run, but Expo Go cannot connect until the PC and phone share a network. Set MATCHPOINT_LAN_IP to override detection."
+if ($LanAddress) {
+  $LanAddress = $LanAddress.Trim()
+}
+$ParsedLanAddress = $null
+if (-not [System.Net.IPAddress]::TryParse($LanAddress, [ref]$ParsedLanAddress) -or
+    $ParsedLanAddress.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork -or
+    $LanAddress -notmatch '^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)') {
+  throw "No private LAN IPv4 address was found. Connect to Wi-Fi or set MATCHPOINT_LAN_IP to this PC's active private IPv4 address."
 }
 
 $ServerUrl = "http://${LanAddress}:3000"
+$ExpoUrl = "exp://${LanAddress}:8081"
 
 Write-Host ""
 Write-Host "MatchPoint AI phone-to-racket demo" -ForegroundColor Green
 Write-Host "PC racket: $PcUrl"
 Write-Host "Expo server URL: $ServerUrl" -ForegroundColor Yellow
-Write-Host "Expected Expo Go address: exp://${LanAddress}:8081" -ForegroundColor Yellow
+Write-Host "Expo Go LAN URL: $ExpoUrl" -ForegroundColor Yellow
 Write-Host "Scan the Expo QR code, then tap Connect and Start in the phone app."
 Write-Host "Do not scan a QR code that shows exp://127.0.0.1:8081."
 Write-Host "Keep both terminals open. Press Ctrl+C here to stop the project."
@@ -92,8 +98,12 @@ $BrowserJob = Start-Job -ScriptBlock {
 
 $PreviousExpoServerUrl = $env:EXPO_PUBLIC_SERVER_URL
 $PreviousPackagerHostname = $env:REACT_NATIVE_PACKAGER_HOSTNAME
+$PreviousPackagerProxyUrl = $env:EXPO_PACKAGER_PROXY_URL
+$PreviousExpoOffline = $env:EXPO_OFFLINE
 $env:EXPO_PUBLIC_SERVER_URL = $ServerUrl
 $env:REACT_NATIVE_PACKAGER_HOSTNAME = $LanAddress
+$env:EXPO_PACKAGER_PROXY_URL = "http://${LanAddress}:8081"
+$env:EXPO_OFFLINE = "0"
 try {
   $ExpoProcess = Start-Process powershell.exe -PassThru -WorkingDirectory $ExpoDir -ArgumentList @(
     "-NoExit",
@@ -101,12 +111,14 @@ try {
     "-ExecutionPolicy",
     "Bypass",
     "-Command",
-    "npx.cmd expo start --offline --clear"
+    "npx.cmd expo start --lan --go --port 8081 --clear"
   )
 }
 finally {
   $env:EXPO_PUBLIC_SERVER_URL = $PreviousExpoServerUrl
   $env:REACT_NATIVE_PACKAGER_HOSTNAME = $PreviousPackagerHostname
+  $env:EXPO_PACKAGER_PROXY_URL = $PreviousPackagerProxyUrl
+  $env:EXPO_OFFLINE = $PreviousExpoOffline
 }
 
 try {

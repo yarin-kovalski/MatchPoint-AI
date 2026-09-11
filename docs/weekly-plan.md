@@ -1,5 +1,17 @@
 # One-Week Execution Plan
 
+## Expo SDK 57 Compatibility
+
+The physical iPhone confirms its Expo Go requires SDK 57. Restore SDK 57 and align dependencies using Expo install --fix. Keep the existing LAN detection, force Expo Go, and remove SDK 54 offline startup. No controller or game changes are in scope.
+
+Acceptance: install --check, mobile TypeScript, root build, and LAN manifest/iOS bundle checks pass; the manifest advertises exposdk:57.0.0 and a private LAN host. Phone launch remains a manual check.
+
+Verified: Expo 57.0.21, React 19.2.3, React Native 0.86.3, sensors 57.0.2,
+and Babel preset 57.0.11. Expo install --fix/--check passed, Expo Doctor passed
+21/21, mobile TypeScript and root build passed. LAN manifest and iOS development
+bundle returned HTTP 200 at 10.100.102.217:8081; the bundle contains the matching
+PC server URL. The SDK 57 asset schema resolved successfully.
+
 ## Day 1
 
 Focus: project setup and sensor capture.

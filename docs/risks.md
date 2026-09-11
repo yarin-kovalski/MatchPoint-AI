@@ -1,5 +1,19 @@
 # Risks and Mitigations
 
+## Expo Go SDK Compatibility
+
+The physical iPhone confirms SDK 57 support. SDK 54 was incompatible and is no longer the target. The launcher has no login gate, but Expo Go on iPhone enforces its own authentication requirement; changing SDK versions does not bypass it.
+
+Source: https://expo.dev/changelog/expo-go-57-login
+
+## Expo Schema Connectivity
+
+The earlier manifest-assets warning came from Expo CLI fetching its configuration schema; ECONNRESET was reproduced. No icon, splash, adaptive-icon, or font paths are configured. No warnings are suppressed or dependency internals patched. SDK 57 startup uses online LAN mode to allow schema requests.
+
+Latest verification: the SDK 57 schema resolved successfully and repeated LAN
+manifest requests plus the iOS development bundle returned HTTP 200. Intermittent
+network resets occurred during installation but retries succeeded.
+
 ## Sensor Permission Issues
 
 Risk: iOS Safari requires explicit user permission for motion and orientation events.
