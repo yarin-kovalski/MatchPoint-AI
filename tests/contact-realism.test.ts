@@ -118,3 +118,16 @@ test("controller resolves stationary physical contact once without HIT", () => {
   assert.ok(firstVelocity.z < 0);
   assert.notEqual(controller.contactLifecycle, "APPROACHING");
 });
+
+test("resolving an overlapping physical contact at zero dt never teleports the ball", () => {
+  const controller = new BallController();
+  controller.launch("easyForehand", "right", "normal", 1000);
+  controller.ball.position.set(0, 1, -0.02);
+  controller.ball.previousPosition.copy(controller.ball.position);
+  controller.ball.velocity.set(0,0,7);
+  const before = controller.ball.position.clone();
+  const idle = { currentState: "READY", lockedStrokeType: "unknown", scores: {} } as StrokeDetectorSnapshot;
+  controller.update(0,1000,new THREE.Matrix4().setPosition(0,1,0),idle,null,"off");
+  assert.equal(controller.lastPhysicalImpact?.outcome, "STRING_BLOCK");
+  assert.deepEqual(controller.ball.position,before);
+});

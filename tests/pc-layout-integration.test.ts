@@ -12,7 +12,7 @@ test("desktop workspace orders controls before an isolated visualization panel",
   const canvas = html.indexOf('id="sceneCanvas"');
   assert.ok(controls >= 0 && visualization > controls);
   assert.ok(canvas > visualization);
-  assert.match(css, /grid-template-columns:\s*minmax\(420px, 40%\)\s+minmax\(0, 60%\)/);
+  assert.match(css, /grid-template-columns:\s*minmax\(340px, 28%\)\s+minmax\(0, 1fr\)/);
 });
 
 test("desktop page is fixed while the left panel owns vertical scrolling", () => {

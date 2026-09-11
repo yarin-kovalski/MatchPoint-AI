@@ -10,6 +10,7 @@
     "outDir": "../dist-tests"
   },
   "include": [
+    "premium-quality.test.ts",
     "phase-b.test.ts",
     "phase-c.test.ts",
     "phase-d.test.ts",

@@ -1,5 +1,15 @@
 # Risks and Mitigations
 
+## D7 physical-phone and GPU acceptance
+
+Automated regressions and software-renderer comparisons cannot establish real
+phone swing latency or stable hardware-accelerated FPS. The supplied recording
+is only 10 fps. ASTRA was requested but reached its usage limit before findings;
+the primary agent reviewed extracted frames instead, without restarting ASTRA.
+The in-app browser was unavailable; isolated local Chromium was used for QA.
+Keep D7 acceptance open until the real-phone checks in
+`docs/matchpoint-d7-quality-pass.md` pass. No saved calibration or presets were reset.
+
 ## Expo Go SDK Compatibility
 
 The physical iPhone confirms SDK 57 support. SDK 54 was incompatible and is no longer the target. The launcher has no login gate, but Expo Go on iPhone enforces its own authentication requirement; changing SDK versions does not bypass it.

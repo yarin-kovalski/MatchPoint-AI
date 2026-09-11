@@ -76,7 +76,7 @@ test("contact magnet stays inside every configured axis bound", () => {
   assert.equal(correction.z, BALL_CONFIG.playableCalibratedHit.maximumCorrection.depth);
 });
 
-test("playable contact snaps once to calibration and returns safely over the net", () => {
+test("playable contact resolves once at the actual ball position without snapping", () => {
   const hits: unknown[] = [];
   const controller = new BallController(event => hits.push(event));
   const profile = createDefaultTrajectoryProfile("forehand", "right");
@@ -85,17 +85,33 @@ test("playable contact snaps once to calibration and returns safely over the net
   controller.ball.bounceCount = 1;
   controller.ball.contactDeadline = now;
   controller.ball.secondBounceDeadline = now + 800;
-  controller.ball.position.set(5, 1, 2);
+  controller.ball.position.fromArray(profile.contactPointWorld).add(new THREE.Vector3(0.02, 0, 0));
+  const actualContact = controller.ball.position.toArray();
   controller.ball.previousPosition.copy(controller.ball.position);
   controller.ball.velocity.set(0, 1, 4);
   controller.update(0, now, new THREE.Matrix4(), snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true);
   controller.update(0, now + 1, new THREE.Matrix4(), snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true);
   assert.equal(hits.length, 1);
-  assert.deepEqual(controller.lastHit?.contactPointWorld.toArray(), profile.contactPointWorld);
-  assert.deepEqual(controller.ball.position.toArray(), profile.contactPointWorld);
+  assert.deepEqual(controller.lastHit?.contactPointWorld.toArray(), actualContact);
+  assert.deepEqual(controller.ball.position.toArray(), actualContact);
   assert.equal(controller.ball.state, "RETURNED");
   assert.ok(controller.lastResponse?.prediction.netCrossingPoint);
   assert.ok(controller.lastResponse!.prediction.netCrossingPoint!.y >= BALL_CONFIG.launch.netHeight + BALL_CONFIG.response.minimumNetClearance);
   const bounce = controller.lastResponse!.prediction.bouncePoint!;
   assert.ok(Math.abs(bounce.x) < 4.2 && bounce.z < BALL_CONFIG.launch.netDepth && bounce.z > BALL_CONFIG.bounds.zFar);
+});
+
+test("a timed real swing cannot hit a ball outside the bounded contact reach", () => {
+  const controller = new BallController();
+  const profile = createDefaultTrajectoryProfile("forehand", "right");
+  controller.launch("guaranteedForehand", "right", "normal", 0, "one-handed", undefined, profile);
+  controller.ball.bounceCount = 1;
+  controller.ball.contactDeadline = 1000;
+  controller.ball.position.set(5, 1, 2);
+  controller.ball.previousPosition.copy(controller.ball.position);
+  // A real racket is centimetre-scaled; identity made a 102-metre collider.
+  const racket = new THREE.Matrix4().makeScale(0.01, 0.01, 0.01);
+  controller.update(0, 1000, racket, snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true);
+  assert.equal(controller.ball.hit, false);
+  assert.deepEqual(controller.ball.position.toArray(), [5, 1, 2]);
 });

@@ -90,6 +90,8 @@ test("both validated preset play paths still produce exactly one HIT", () => {
     controller.ball.bounceCount = 1;
     controller.ball.contactDeadline = 1000;
     controller.ball.secondBounceDeadline = 1800;
+    controller.ball.position.fromArray(profile.contactPointWorld);
+    controller.ball.previousPosition.copy(controller.ball.position);
     controller.ball.velocity.set(0, 1, 4);
     controller.update(0, 1000, new THREE.Matrix4(), snapshot(strokeType), null, "easy", motion(strokeType), true, profile, true);
     controller.update(0, 1001, new THREE.Matrix4(), snapshot(strokeType), null, "easy", motion(strokeType), true, profile, true);

@@ -184,6 +184,10 @@ export class SensorNormalizer {
     this.previousTimestamp = input.timestamp;
     if (frame.valid) {
       this.previousQuaternion = currentQuaternion.clone();
+    } else if (rejectionReason === "impossible rotation spike") {
+      // Reject this sample for analytics, but do not compare every subsequent
+      // packet to an old pose over a single-packet dt (which latches rejection).
+      this.previousQuaternion = currentQuaternion.clone();
     } else if (packetGapInvalid) {
       this.previousQuaternion = null;
     }

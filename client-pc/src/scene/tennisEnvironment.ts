@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 export const TENNIS_COURT = {
   length: 23.77,
@@ -13,13 +14,14 @@ export const TENNIS_COURT = {
 } as const;
 
 const COURT_LEVEL = 0.006;
-const LINE_LEVEL = 0.019;
+const LINE_LEVEL = 0.010;
 const SURROUND_WIDTH = 21;
 const SURROUND_LENGTH = 36;
 
 interface SurfaceTextures {
   color: THREE.DataTexture;
   roughness: THREE.DataTexture;
+  normal: THREE.DataTexture;
 }
 
 const surfaceTextureCache = new Map<string, SurfaceTextures>();
@@ -36,7 +38,7 @@ export function createAuthenticCourt(netDepth: number): THREE.Group {
   const group = new THREE.Group();
   group.name = "authenticTennisCourt";
 
-  const surroundMaps = getSurfaceTextures("surround", [38, 86, 76], 18);
+  const surroundMaps = getSurfaceTextures("surround", [39, 65, 60], 8);
   const surround = new THREE.Mesh(
     new THREE.PlaneGeometry(SURROUND_WIDTH, SURROUND_LENGTH),
     new THREE.MeshStandardMaterial({
@@ -44,8 +46,8 @@ export function createAuthenticCourt(netDepth: number): THREE.Group {
       map: surroundMaps.color,
       roughness: 0.92,
       roughnessMap: surroundMaps.roughness,
-      bumpMap: surroundMaps.roughness,
-      bumpScale: 0.012,
+      normalMap: surroundMaps.normal,
+      normalScale: new THREE.Vector2(0.12, 0.12),
       metalness: 0
     })
   );
@@ -55,14 +57,14 @@ export function createAuthenticCourt(netDepth: number): THREE.Group {
   surround.receiveShadow = true;
   group.add(surround);
 
-  const courtMaps = getSurfaceTextures("playing", [39, 126, 112], 12);
+  const courtMaps = getSurfaceTextures("playing", [49, 111, 116], 7);
   const surfaceMaterial = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     map: courtMaps.color,
     roughness: 0.84,
     roughnessMap: courtMaps.roughness,
-    bumpMap: courtMaps.roughness,
-    bumpScale: 0.008,
+    normalMap: courtMaps.normal,
+    normalScale: new THREE.Vector2(0.1, 0.1),
     metalness: 0
   });
   const surface = new THREE.Mesh(
@@ -86,7 +88,7 @@ export function createAuthenticCourt(netDepth: number): THREE.Group {
   const doublesHalf = TENNIS_COURT.doublesWidth / 2;
   const singlesHalf = TENNIS_COURT.singlesWidth / 2;
   const addLine = (name: string, width: number, depth: number, x: number, z: number): void => {
-    const line = new THREE.Mesh(new THREE.BoxGeometry(width, 0.018, depth), lineMaterial);
+    const line = new THREE.Mesh(new THREE.BoxGeometry(width, 0.001, depth), lineMaterial);
     line.name = name;
     line.position.set(x, LINE_LEVEL, z);
     line.receiveShadow = true;
@@ -119,14 +121,16 @@ export function createAuthenticTennisNet(netDepth: number): THREE.Group {
   const group = new THREE.Group();
   group.name = "authenticTennisNet";
 
-  const netGeometry = createSaggingNetGridGeometry(TENNIS_COURT.netWidth, 64, 15);
-  const wire = new THREE.LineSegments(
-    netGeometry,
-    new THREE.LineBasicMaterial({ color: 0x1c2628, transparent: true, opacity: 0.82 })
-  );
+  const wire = new THREE.Mesh(createNetCordGeometry(),
+    new THREE.MeshLambertMaterial({ color: 0x18231f }));
   wire.name = "netMesh";
-  wire.position.set(0, 0.045, netDepth);
-  group.add(wire);
+  wire.castShadow = false; // Subpixel cord shadows shimmer; band/posts cast stable shadows.
+  wire.receiveShadow = true;
+  const netLod = new THREE.LOD();
+  netLod.position.set(0, 0.045, netDepth);
+  netLod.addLevel(wire, 0);
+  netLod.addLevel(createFilteredNetMesh(), 7);
+  group.add(netLod);
 
   const band = new THREE.Mesh(
     createSaggingBandGeometry(TENNIS_COURT.netWidth, 0.075, 64),
@@ -189,8 +193,6 @@ export function createCourtBackdrop(netDepth: number): THREE.Group {
   const windscreenMaterial = new THREE.MeshStandardMaterial({
     color: 0x173e37,
     roughness: 0.88,
-    transparent: true,
-    opacity: 0.94,
     side: THREE.DoubleSide
   });
 
@@ -230,7 +232,75 @@ export function createCourtBackdrop(netDepth: number): THREE.Group {
     seating.receiveShadow = true;
     group.add(seating);
   }
+  const foliage = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 12, 8),
+    new THREE.MeshLambertMaterial({ color: 0x63776e }), 18);
+  foliage.name = "distantTreeCanopy";
+  const transform = new THREE.Object3D();
+  for (let i = 0; i < 18; i++) {
+    transform.position.set(-26 + i * 3.2, 2.5 + Math.sin(i * 1.7) * 0.5, farZ - 11 - (i % 3));
+    transform.scale.set(3.2, 2.7 + (i % 3) * 0.4, 3);
+    transform.rotation.y = i * 0.7;
+    transform.updateMatrix();
+    foliage.setMatrixAt(i, transform.matrix);
+  }
+  group.add(foliage);
   return group;
+}
+
+/** Analytically filtered cord coverage prevents moire once 40mm cells become subpixel. */
+function createFilteredNetMesh(): THREE.Mesh {
+  const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
+  for (let i = 0; i <= 64; i++) {
+    const x = TENNIS_COURT.netWidth * (i / 64 - 0.5);
+    positions.push(x, 0.02, 0, x, saggedNetHeight(x, TENNIS_COURT.netWidth), 0);
+    uvs.push(i / 64 * 320, 0, i / 64 * 320, 24);
+    if (i < 64) { const j = i * 2; indices.push(j,j+2,j+1,j+1,j+2,j+3); }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs,2));
+  geometry.setIndex(indices); geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    vertexShader: `varying vec2 cell; void main(){cell=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    fragmentShader: `varying vec2 cell; void main(){
+      vec2 width=max(fwidth(cell),vec2(.001));
+      vec2 distanceToCord=abs(fract(cell+.5)-.5);
+      vec2 coverage=1.-smoothstep(vec2(.0375)-width*.5,vec2(.0375)+width*.5,distanceToCord);
+      coverage=mix(coverage,vec2(.075),smoothstep(vec2(.4),vec2(1.2),width));
+      gl_FragColor=vec4(.055,.075,.065,1.-(1.-coverage.x)*(1.-coverage.y));
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`
+  }));
+  mesh.name = "filteredNetCords";
+  return mesh;
+}
+
+function createNetCordGeometry(): THREE.BufferGeometry {
+  const width = TENNIS_COURT.netWidth;
+  const columns = 320; // 40 mm mesh openings, rather than 200 mm placeholder grid.
+  const rows = 24;
+  const geometries: THREE.BufferGeometry[] = [];
+  const cordRadius = 0.0015;
+  for (let column = 0; column <= columns; column++) {
+    const x = -width / 2 + width * column / columns;
+    const height = saggedNetHeight(x, width) - 0.02;
+    geometries.push(new THREE.CylinderGeometry(cordRadius, cordRadius, height, 4, 1, true)
+      .translate(x, 0.02 + height / 2, 0));
+  }
+  for (let row = 0; row <= rows; row++) {
+    const points: THREE.Vector3[] = [];
+    for (let i = 0; i <= 64; i++) {
+      const x = -width / 2 + width * i / 64;
+      points.push(new THREE.Vector3(x, THREE.MathUtils.lerp(0.02, saggedNetHeight(x, width), row / rows), 0));
+    }
+    geometries.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 64, cordRadius, 4, false));
+  }
+  const merged = mergeGeometries(geometries, false);
+  for (const geometry of geometries) geometry.dispose();
+  merged.computeBoundingSphere();
+  return merged;
 }
 
 export function createFeedOriginMarker(): THREE.Group {
@@ -257,11 +327,9 @@ export function createFeedOriginMarker(): THREE.Group {
 }
 
 function addServiceBoxTone(group: THREE.Group, netDepth: number, baseMaterial: THREE.MeshStandardMaterial): void {
-  const material = baseMaterial.clone();
-  material.color.set(0xdcefe8);
-  material.opacity = 0.045;
-  material.transparent = true;
-  material.depthWrite = false;
+  // Tint only: the underlying court already supplies PBR shading and shadows.
+  const material = new THREE.MeshBasicMaterial({ color: 0xdcefe8,
+    opacity: 0.035, transparent: true, depthWrite: false });
   const boxWidth = TENNIS_COURT.singlesWidth / 2;
   for (const x of [-boxWidth / 2, boxWidth / 2]) {
     for (const direction of [-1, 1]) {
@@ -269,7 +337,7 @@ function addServiceBoxTone(group: THREE.Group, netDepth: number, baseMaterial: T
       box.name = `${direction < 0 ? "far" : "near"}${x < 0 ? "Left" : "Right"}ServiceBoxTone`;
       box.rotation.x = -Math.PI / 2;
       box.position.set(x, COURT_LEVEL + 0.003, netDepth + direction * TENNIS_COURT.serviceLineDistance / 2);
-      box.receiveShadow = true;
+      box.receiveShadow = false;
       group.add(box);
     }
   }
@@ -345,14 +413,28 @@ function getSurfaceTextures(key: string, base: [number, number, number], variati
   const color = new THREE.DataTexture(colorData, size, size, THREE.RGBAFormat);
   color.colorSpace = THREE.SRGBColorSpace;
   const roughness = new THREE.DataTexture(roughnessData, size, size, THREE.RGBAFormat);
-  for (const texture of [color, roughness]) {
+  // Bake tiny grain normals once, avoiding repeated height derivatives per pixel.
+  const normalData = new Uint8Array(size * size * 4);
+  for (let y=0;y<size;y++) for (let x=0;x<size;x++) {
+    const i=(y*size+x)*4;
+    normalData[i]=128+(roughnessData[(y*size+(x+size-1)%size)*4]-roughnessData[(y*size+(x+1)%size)*4])*.5;
+    normalData[i+1]=128+(roughnessData[(((y+size-1)%size)*size+x)*4]-roughnessData[(((y+1)%size)*size+x)*4])*.5;
+    normalData[i+2]=255; normalData[i+3]=255;
+  }
+  const normal = new THREE.DataTexture(normalData,size,size,THREE.RGBAFormat);
+  for (const texture of [color, roughness, normal]) {
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(7, 13);
-    texture.anisotropy = 4;
+    // Mip filtering is sufficient for this subtle grain. Four anisotropic
+    // samples per map doubled software-renderer frame cost in the D7 audit.
+    texture.anisotropy = 1;
+    texture.generateMipmaps = true;
+    texture.minFilter = THREE.LinearMipmapNearestFilter;
+    texture.magFilter = THREE.LinearFilter;
     texture.needsUpdate = true;
   }
-  const textures = { color, roughness };
+  const textures = { color, roughness, normal };
   surfaceTextureCache.set(key, textures);
   return textures;
 }

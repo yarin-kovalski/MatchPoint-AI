@@ -16,18 +16,22 @@ import {
   restoreValidatedTrajectoryPreset, TrajectoryProfileSource, VALIDATED_TRAJECTORY_PRESET
 } from "./ball/validatedTrajectoryPreset.js";
 import { canLaunchPracticeFeed, FeedVariationLevel, FeedVariationResult, generateSafeFeedVariation } from "./ball/feedVariation.js";
+import { createArchetypeFeed, FeedArchetype } from "./ball/feedArchetypes.js";
 import {
   configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createCourtBackdrop,
   createFeedOriginMarker
 } from "./scene/tennisEnvironment.js";
 import { PLAYER_BASELINE_OFFSET_Z, positionValidatedProfileAtBaseline } from "./ball/courtPositioning.js";
 import { assertBallVisualState } from "./ball/ballVisualState.js";
+import { sampleBallVisualPosition } from "./ball/fixedStepBallPhysics.js";
+import { addPremiumEnvironment, courtPixelRatio, createMicroTexture, createSoftContactShadowTexture, finishPremiumRacket } from "./scene/premiumVisuals.js";
 import { analyzeGameplayDiagnostic, AttemptType, diagnosticMarkdown, GameplayDiagnosticFrame, GameplayDiagnosticRecorder } from "./diagnostics/gameplayDiagnostic.js";
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
-import { adaptiveVisualSmoothingFactor, SensorResampler } from "./motion/sensorResampler.js";
+import { FrameTelemetry } from "./diagnostics/frameTelemetry.js";
+import { adaptiveVisualSmoothingFactor, SensorResampler, updateVisualRacketQuaternion } from "./motion/sensorResampler.js";
 import {
   NormalizedSensorFrame,
-  SensorNormalizer
+  SensorNormalizer, phoneVectorToThreeVector
 } from "./motion/sensorNormalization.js";
 import { STROKE_CONFIG } from "./strokeDetection/strokeConfig.js";
 import {
@@ -349,6 +353,7 @@ const elements = {
 };
 
 let packetCount = 0;
+const frameTelemetry = new FrameTelemetry();
 let latestPacket: BrokeredMotionPacket | null = null;
 let previousPacket: BrokeredMotionPacket | null = null;
 let latestOrientationPacket: BrokeredContinuousOrientationPacket | null = null;
@@ -487,11 +492,12 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 resizeRendererToVisualizationPanel();
 configureAuthenticRenderer(renderer);
+addPremiumEnvironment(scene, renderer);
 
-const ambientLight = new THREE.HemisphereLight(0xe8f5f7, 0x315449, 1.12);
+const ambientLight = new THREE.HemisphereLight(0xe8f5f7, 0x315449, 1.4);
 scene.add(ambientLight);
 
-const keyLight = new THREE.DirectionalLight(0xfff4dc, 2.25);
+const keyLight = new THREE.DirectionalLight(0xfff4dc, 1.9);
 keyLight.position.set(-7.5, 13.5, 8.5);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(1024, 1024);
@@ -589,12 +595,13 @@ const ballMesh = new THREE.Mesh(
   ),
   new THREE.MeshPhysicalMaterial({
     map: createProceduralTennisBallTexture(renderer),
-    color: 0xdfff3f,
-    roughness: 0.88,
+    color: 0xffffff,
+    roughness: 0.96,
+    bumpMap: createMicroTexture(),
+    bumpScale: 0.0006,
     metalness: 0,
-    clearcoat: 0.04,
-    emissive: 0x304d00,
-    emissiveIntensity: 0.22
+    clearcoat: 0,
+    emissiveIntensity: 0
   })
 );
 ballMesh.castShadow = true;
@@ -603,8 +610,8 @@ ballMesh.visible = false;
 scene.add(ballMesh);
 
 const ballShadow = new THREE.Mesh(
-  new THREE.CircleGeometry(1, 24),
-  new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.38, depthWrite: false })
+  new THREE.PlaneGeometry(2, 2),
+  new THREE.MeshBasicMaterial({ map: createSoftContactShadowTexture(), color: 0x14221d, transparent: true, opacity: 0.38, depthWrite: false })
 );
 ballShadow.rotation.x = -Math.PI / 2;
 ballShadow.visible = false;
@@ -623,6 +630,7 @@ const ballTrail = new THREE.Line(
   ballTrailMaterial
 );
 ballTrail.visible = false;
+ballTrail.frustumCulled = false;
 scene.add(ballTrail);
 
 const ballController = new BallController(onBallHit, onBallMiss);
@@ -748,11 +756,8 @@ wireDiagnosticControls();
 wireTrajectoryCalibration();
 loadRacketModel();
 
-const farCourtHaze = createFarCourtHaze();
-scene.add(farCourtHaze);
-
 const dustParticles = createDustParticles();
-scene.add(dustParticles);
+// No floating particles or translucent court layers in the training view.
 
 socket.on("connect", () => {
   socket.emit("client:hello", { role: "pc" });
@@ -826,7 +831,7 @@ socket.on("continuous_orientation", (payload: unknown) => {
     sensorResampler.add({
       timestamp: orientationPacket.serverReceivedAt,
       quaternion: processedFrame.relativePhoneQuaternion,
-      angularVelocity: processedFrame.angularVelocityLocal,
+      angularVelocity: phoneVectorToThreeVector(processedFrame.angularVelocityLocal),
       angularSpeed: processedFrame.angularSpeed,
       accelerationMagnitude: processedFrame.accelerationMagnitude,
       jerk: processedFrame.jerk
@@ -896,6 +901,7 @@ socket.on("stroke_detected", (payload: unknown) => {
 const visualizationResizeObserver = new ResizeObserver(resizeRendererToVisualizationPanel);
 visualizationResizeObserver.observe(visualizationPanel);
 window.addEventListener("resize", resizeRendererToVisualizationPanel);
+elements.developerPanel.addEventListener("toggle", updateBallHelperVisibility);
 
 animate();
 
@@ -906,9 +912,10 @@ function loadRacketModel(): void {
     "/pc/racket_new.glb",
     (gltf) => {
       const model = gltf.scene;
+      finishPremiumRacket(model);
       model.traverse((child) => {
         if (child instanceof THREE.Mesh) {
-          child.castShadow = true;
+          child.castShadow = (child.material as THREE.Material).name !== "premiumStrings";
           child.receiveShadow = true;
         }
       });
@@ -917,11 +924,14 @@ function loadRacketModel(): void {
       const ghostModel = model.clone(true);
       ghostModel.traverse((child) => {
         if (child instanceof THREE.Mesh) {
+          // Keep the alignment silhouette; duplicate string geometry obscures
+          // the live frame and adds thousands of subpixel wire segments.
+          if ((child.material as THREE.Material).name === "premiumStrings") child.visible = false;
           const ghostMaterial = new THREE.MeshBasicMaterial({
             color: ghostFarColor,
             transparent: true,
             opacity: 0.34,
-            wireframe: true,
+            wireframe: false,
             depthTest: false,
             depthWrite: false,
             side: THREE.DoubleSide,
@@ -1063,6 +1073,7 @@ function animate(): void {
   const now = performance.now();
   const nowEpoch = Date.now();
   const ballDeltaSeconds = Math.min((now - lastBallFrameAt) / 1000, 0.1);
+  frameTelemetry.record(now - lastBallFrameAt);
   if (ballDeltaSeconds > 1 / 30) telemetryLongFrames += 1;
   lastBallFrameAt = now;
 
@@ -1081,9 +1092,10 @@ function animate(): void {
     latestSensorFrame?.angularSpeed ?? 0,
     latestSensorFrame?.accelerationMagnitude ?? 0,
     latestSensorFrame?.jerk ?? 0,
-    latestSensorFrame?.valid ?? false
+    latestSensorFrame?.valid ?? false,
+    ballDeltaSeconds
   );
-  visualOrientationPivot.quaternion.slerp(targetRacketQuaternion, visualSmoothing);
+  updateVisualRacketQuaternion(visualOrientationPivot.quaternion, targetRacketQuaternion, visualSmoothing, ballDeltaSeconds);
   displayedRelativeQuaternion.copy(visualOrientationPivot.quaternion);
   racketRoot.position.copy(neutralRacketPosition);
   updateProceduralPosition();
@@ -1113,7 +1125,7 @@ function animate(): void {
   }
   telemetryPhysicsMs += performance.now() - physicsStartedAt;
   updateBallVisuals(ballDeltaSeconds);
-  impactLight.intensity = now < contactFlashUntil ? 5 : 0;
+  impactLight.intensity = 0;
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
 
@@ -1152,10 +1164,13 @@ function animate(): void {
 
 function updatePerformanceTelemetry(now: number, nowEpoch: number): void {
   const elapsedMs = now - telemetryWindowStartedAt;
-  if (!elements.developerPanel.open || elapsedMs < 1000) return;
+  if (elapsedMs < 1000) return;
+  const frameStats = frameTelemetry.snapshot();
+  document.getElementById("frameBudget")!.textContent = `${Math.round(frameStats.fps)} FPS`;
   const physicsSteps = ballController.physicsState.totalSteps - telemetryPreviousPhysicsSteps;
   const latestPacketTime = latestOrientationPacket?.serverReceivedAt;
-  elements.performanceTelemetry.textContent = JSON.stringify({
+  if (elements.developerPanel.open) elements.performanceTelemetry.textContent = JSON.stringify({
+    ...frameStats,
     renderFps: Number((telemetryFrames * 1000 / elapsedMs).toFixed(1)),
     physicsStepsPerSecond: Number((physicsSteps * 1000 / elapsedMs).toFixed(1)),
     averageRenderMs: Number((telemetryRenderMs / Math.max(1, telemetryFrames)).toFixed(2)),
@@ -2049,7 +2064,10 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   const seed = elements.feedSeed.value.trim() && Number.isFinite(enteredSeed)
     ? Math.trunc(enteredSeed)
     : crypto.getRandomValues(new Uint32Array(1))[0];
-  const generatedVariation = generateSafeFeedVariation(strokeType, level, seed);
+  const baseVariation = generateSafeFeedVariation(strokeType, level, seed);
+  const style = (document.getElementById("feedArchetype") as HTMLSelectElement).value;
+  const premium = style === "validated" || level === "off" ? null : createArchetypeFeed(baseVariation, style as FeedArchetype);
+  const generatedVariation = premium?.variation ?? baseVariation;
   currentFeedVariation = {
     ...generatedVariation,
     profile: positionValidatedProfileAtBaseline(generatedVariation.profile)
@@ -2091,7 +2109,7 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   elements.feedVariationDebug.textContent = JSON.stringify(variationSummary, null, 2);
   elements.practiceStatus.textContent = currentFeedVariation.fallback
     ? "Stability fallback: validated base feed"
-    : `${strokeType} ${level} variation, seed ${seed}`;
+    : `${premium?.label ?? "Validated"} · ${strokeType} · ${level} variation`;
   console.info("Feed variation", variationSummary);
   const limits = BALL_CONFIG.playableCalibratedHit.maximumCorrection;
   elements.playableProfileDetails.textContent =
@@ -2102,6 +2120,13 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   practiceAttempts += 1;
   practiceRelaunchAt = 0;
   launchBall(strokeType === "forehand" ? "guaranteedForehand" : "guaranteedBackhand", plan.profile);
+  if (premium && !premium.variation.fallback) {
+    ballController.ball.velocity.copy(premium.launchVelocity);
+    ballController.ball.spinVector.copy(premium.spin);
+    ballController.ball.angularVelocity.copy(premium.spin);
+    ballController.ball.spinStrength = premium.spin.length();
+    ballController.ball.spinType = premium.spin.x > 0 ? "topspin" : "flat";
+  }
 }
 
 function applyPlayableContactMagnet(now: number): void {
@@ -2235,7 +2260,8 @@ function wireBallControls(): void {
 }
 
 function updateBallHelperVisibility(): void {
-  const debug = elements.ballDebugToggle.checked;
+  const advanced = elements.developerPanel.open;
+  const debug = advanced && elements.ballDebugToggle.checked;
   ballDebugGroup.visible = debug || elements.showTrajectoryToggle.checked || elements.showStringCenterToggle.checked;
   colliderDebug.visible = debug || elements.showStringCenterToggle.checked;
   predictedPathLine.visible = debug || elements.showTrajectoryToggle.checked;
@@ -2245,6 +2271,11 @@ function updateBallHelperVisibility(): void {
   outgoingConstrainedArrow.visible = debug && ballController.lastResponse !== null;
   outgoingNetMarker.visible = debug && ballController.lastResponse?.prediction.netCrossingPoint !== null;
   outgoingBounceMarker.visible = debug && ballController.lastResponse?.prediction.bouncePoint !== null;
+  if (!advanced) {
+    ballDebugGroup.visible = colliderDebug.visible = predictedPathLine.visible = false;
+    contactTargetGroup.visible = trajectoryCalibrationGroup.visible = false;
+    contactMarker.visible = false;
+  }
 }
 
 function updateBallVisualScale(): void {
@@ -2260,7 +2291,7 @@ function updateBallVisualScale(): void {
         );
   ballMesh.scale.setScalar(ballVisualScaleMultiplier / BALL_CONFIG.scale.visualScaleMultiplier);
   ballController.ball.visualRadius = ballController.ball.physicsRadius * ballVisualScaleMultiplier;
-  ballTrailMaterial.opacity = THREE.MathUtils.clamp(ballController.ball.visualRadius * 4.5, 0.18, 0.48);
+  ballTrailMaterial.opacity = 0.18;
 }
 
 function readDeliveryTuning(): void {
@@ -2289,6 +2320,7 @@ function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibra
   showBallAtContactPreview = false;
   elements.showBallAtContact.textContent = "Show Ball At Contact";
   activeLaunchPreset = preset;
+  document.getElementById("shotFeedback")!.hidden = true;
   activeCalibrationProfile = calibrationProfile ?? null;
   previewTrajectoryActive = preview;
   easySwingIntentDetector.reset();
@@ -2419,7 +2451,7 @@ function updatePhysicalContactFeedback(): void {
     : impact.outcome === "MISHIT" && impact.contactNormal.y < -0.25
       ? "Face Too Closed"
       : labels[impact.outcome];
-  elements.playerShotSpeed.textContent = `${impact.outgoingVelocity.length().toFixed(1)} m/s`;
+  elements.playerShotSpeed.textContent = `${Math.round(impact.outgoingVelocity.length() * 3.6)} km/h`;
   elements.playerSpinType.textContent = impact.spinType;
   elements.playerSpinAmount.textContent = `${impact.spinRateRadiansPerSecond.toFixed(1)} rad/s`;
   const featureSnapshot = featureSnapshotFromImpact(Date.now(), impact, {
@@ -2435,6 +2467,13 @@ function updatePhysicalContactFeedback(): void {
   elements.playerSpinType.textContent = `${featureSnapshot.shotShape} HIT`;
   captureArmedStrokeExample(featureSnapshot);
   elements.playerContactQuality.textContent = `${Math.round(impact.contactQuality * 100)}%`;
+  const shotNames = { FLAT: "Flat Drive", TOPSPIN: "Topspin", SLICE: "Slice", SIDE_SPIN: "Side Spin", MIXED: "Mixed" };
+  const contactLabel = impact.outcome === "FRAME_CONTACT" ? "Frame"
+    : impact.sweetSpotDistance > 0.85 ? "Edge" : impact.contactQuality < 0.8 ? "Off Center" : "Sweet Spot";
+  document.getElementById("shotFeedback")!.hidden = false;
+  document.getElementById("shotFeedbackType")!.textContent = `${shotNames[featureSnapshot.shotShape]} ${ballController.ball.expectedStrokeType}`.toUpperCase();
+  document.getElementById("shotFeedbackSpeed")!.textContent = elements.playerShotSpeed.textContent;
+  document.getElementById("shotFeedbackDetail")!.textContent = `${featureSnapshot.powerLevel} · ${contactLabel} · ${labels[impact.outcome]} · Spin ${Math.round(impact.spinRateRadiansPerSecond)} rad/s · Quality ${Math.round(impact.contactQuality * 100)}%`;
   elements.contactPhysicsDebug.textContent = JSON.stringify({
     outcome: impact.outcome,
     units: { position: "m", velocity: "m/s", angularVelocity: "rad/s", impulse: "m/s equivalent" },
@@ -2517,16 +2556,18 @@ function updateBallVisuals(deltaSeconds: number): void {
     ballController.lifecycleDebug.lastStateTransition = `${previousBallVisualState} -> ${ball.state}`;
     previousBallVisualState = ball.state;
   }
-  const previewTarget = getBallDeliveryTarget({
+  const previewTarget = showBallAtContactPreview && !ball.active ? getBallDeliveryTarget({
     preset: activeLaunchPreset,
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle(),
     heightOffset: contactHeightOffset,
     sideOffset: isBackhandPreset(activeLaunchPreset) ? backhandSideOffset : forehandSideOffset,
     depthOffset: contactDepthOffset
-  });
+  }) : null;
   ballMesh.visible = showBallAtContactPreview || ball.active || ball.state === "OUT";
-  ballMesh.position.copy(showBallAtContactPreview && !ball.active ? previewTarget : ball.position);
+  if (previewTarget) ballMesh.position.copy(previewTarget);
+  else if (ball.active && !previewTrajectoryActive) sampleBallVisualPosition(ball, ballController.physicsState, ballMesh.position);
+  else ballMesh.position.copy(ball.position);
   integrateBallRotation(ballMesh.quaternion, ball.angularVelocity, deltaSeconds);
   const height = Math.max(0, ballMesh.position.y - BALL_CONFIG.courtHeight);
   const shadowScale = THREE.MathUtils.clamp(1 + height * 0.45, 1, 2.8);
@@ -2535,13 +2576,13 @@ function updateBallVisuals(deltaSeconds: number): void {
   ballShadow.scale.set(ball.visualRadius * shadowScale, ball.visualRadius * shadowScale * 0.65, 1);
   (ballShadow.material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.clamp(0.42 - height * 0.07, 0.09, 0.38);
   if (ball.active) {
-    if (ballTrailPositions.length < 18) {
-      ballTrailPositions.push(new THREE.Vector3().copy(ball.position));
+    if (ballTrailPositions.length < 5) {
+      ballTrailPositions.push(new THREE.Vector3().copy(ballMesh.position));
     } else {
       for (let index = 1; index < ballTrailPositions.length; index += 1) {
         ballTrailPositions[index - 1].copy(ballTrailPositions[index]);
       }
-      ballTrailPositions[ballTrailPositions.length - 1].copy(ball.position);
+      ballTrailPositions[ballTrailPositions.length - 1].copy(ballMesh.position);
     }
     for (let index = 0; index < ballTrailPositions.length; index += 1) {
       const point = ballTrailPositions[index];
@@ -2549,11 +2590,11 @@ function updateBallVisuals(deltaSeconds: number): void {
     }
     ballTrailAttribute.needsUpdate = true;
     ballTrailGeometry.setDrawRange(0, ballTrailPositions.length);
-    ballTrail.visible = ball.velocity.length() > 4 && ballTrailPositions.length > 2;
+    ballTrail.visible = ball.velocity.length() > 12 && ballTrailPositions.length > 2;
   } else {
     ballTrail.visible = false;
   }
-  feedOriginMarker.visible = ball.active && performance.now() < feedOriginVisibleUntil;
+  feedOriginMarker.visible = elements.developerPanel.open && ball.active && performance.now() < feedOriginVisibleUntil;
   if (ball.bounceCount === 1 && ball.position.y > observedIncomingApex.y) observedIncomingApex.copy(ball.position);
   if (ball.bounceCount > lastBallBounceCount) {
     bounceMarker.position.set(ball.position.x, BALL_CONFIG.courtHeight + 0.006, ball.position.z);
@@ -2574,8 +2615,8 @@ function updateBallVisuals(deltaSeconds: number): void {
 }
 
 function updateContactTargetGuide(): void {
-  const show = elements.ballDebugToggle.checked || elements.showContactTargetToggle.checked ||
-    elements.showStringCenterToggle.checked;
+  const show = elements.developerPanel.open && (elements.ballDebugToggle.checked || elements.showContactTargetToggle.checked ||
+    elements.showStringCenterToggle.checked);
   contactTargetGroup.visible = show;
   if (!show) return;
   const ball = ballController.ball;
@@ -2897,7 +2938,7 @@ function resizeRendererToVisualizationPanel(): void {
   const bounds = visualizationPanel.getBoundingClientRect();
   const width = Math.max(1, Math.round(bounds.width));
   const height = Math.max(1, Math.round(bounds.height));
-  const nextPixelRatio = Math.min(window.devicePixelRatio, 1.5);
+  const nextPixelRatio = courtPixelRatio(width, height, window.devicePixelRatio);
   if (renderer.getPixelRatio() !== nextPixelRatio) renderer.setPixelRatio(nextPixelRatio);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();

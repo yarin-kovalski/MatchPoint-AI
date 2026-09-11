@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MatchPoint AI PC Visualization</title>
+    <title>MatchPoint | Tennis training</title>
     <link rel="stylesheet" href="/pc/styles.css" />
     <script type="importmap">
       {
@@ -19,8 +19,8 @@
       <section class="hud control-panel" aria-label="MatchPoint controls">
         <div class="sticky-status">
         <div class="hero">
-          <p class="eyebrow">Phase 1 Visualization</p>
-          <h1>MatchPoint AI Neon Racket</h1>
+          <p class="eyebrow">Intelligent tennis training</p>
+          <h1>MatchPoint<span class="brand-dot">.</span></h1>
           <p id="connectionStatus">Socket: disconnected</p>
         </div>
 
@@ -35,13 +35,21 @@
         </div>
 
         <section class="player-mode" aria-labelledby="playerModeTitle">
-          <h2 id="playerModeTitle">Player Mode</h2>
+          <h2 id="playerModeTitle">Your practice</h2>
           <div class="player-actions">
             <button id="playCalibratedForehand" type="button">Play Forehand</button>
             <button id="playCalibratedBackhand" type="button">Play Backhand</button>
             <button id="stopPractice" type="button">Stop</button>
           </div>
           <div class="player-options">
+            <label>Feed style
+              <select id="feedArchetype">
+                <option value="validated" selected>Validated</option>
+                <option value="neutral">Neutral</option><option value="deep">Deep</option>
+                <option value="looping">Looping</option><option value="fastFlat">Fast Flat</option>
+                <option value="heavyTopspin">Heavy Topspin</option><option value="softHigh">Soft High</option>
+              </select>
+            </label>
             <label class="check-label"><input id="calibratedPracticeLoopToggle" type="checkbox"> Practice Loop</label>
             <label>Loop mode
               <select id="practiceLoopMode">
@@ -343,6 +351,12 @@
 
       <section id="visualizationPanel" class="visualization-panel" aria-label="Tennis court visualization">
         <canvas id="sceneCanvas"></canvas>
+        <div class="scene-topbar"><span>COURT 01 <span class="scene-location">/ HARD COURT</span></span><span id="frameBudget">-- FPS</span></div>
+        <div class="shot-feedback" id="shotFeedback" aria-live="polite" hidden>
+          <span id="shotFeedbackType" class="shot-type"></span>
+          <strong id="shotFeedbackSpeed" class="shot-speed"></strong>
+          <span id="shotFeedbackDetail" class="shot-detail"></span>
+        </div>
         <section id="calibrationOverlay" class="calibration-overlay" aria-live="polite">
           <div class="calibration-message">
             <strong id="calibrationTitle">Calibrate start position</strong>

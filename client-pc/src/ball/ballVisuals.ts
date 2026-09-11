@@ -1,6 +1,8 @@
 import * as THREE from "three";
 
 let cachedTexture: THREE.CanvasTexture | null = null;
+const spinAxis = new THREE.Vector3();
+const spinDelta = new THREE.Quaternion();
 
 export function createProceduralTennisBallTexture(
   renderer?: THREE.WebGLRenderer,
@@ -49,11 +51,13 @@ export function integrateBallRotation(
 ): THREE.Quaternion {
   const angularSpeed = angularVelocityRadiansPerSecond.length();
   if (angularSpeed <= 1e-8 || deltaSeconds <= 0) return quaternion;
-  const delta = new THREE.Quaternion().setFromAxisAngle(
-    angularVelocityRadiansPerSecond.clone().multiplyScalar(1 / angularSpeed),
+  spinDelta.setFromAxisAngle(
+    spinAxis.copy(angularVelocityRadiansPerSecond).multiplyScalar(1 / angularSpeed),
     angularSpeed * deltaSeconds
   );
-  return quaternion.multiply(delta).normalize();
+  // Physical angular velocity is world-space. Post-multiplication would rotate
+  // around the already-spinning ball's local axes and change the visible spin.
+  return quaternion.premultiply(spinDelta).normalize();
 }
 
 export function resetTennisBallTextureCache(): void {

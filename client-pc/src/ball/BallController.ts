@@ -12,6 +12,7 @@ import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset,
 import { TrajectoryCalibrationProfile } from "./trajectoryCalibration.js";
 import { evaluatePlayableCalibratedHit, PlayableHitDecision } from "./playableCalibratedHit.js";
 import { ContactLifecycle, isSuccessfulTennisOutcome, PhysicalImpactResolution, resolvePhysicalImpact } from "./contactRealism.js";
+import { solveSpinFlight } from "./spinFlight.js";
 
 export function shouldEnterContactZone(ball: BallSnapshot, now: number, assistMode: AssistMode = "prototype"): boolean {
   const timeToContact = ball.contactDeadline - now;
@@ -98,7 +99,7 @@ export class BallController {
     this.ball.position.copy(launch.position);
     this.ball.previousPosition.copy(launch.position);
     this.ball.velocity.copy(launch.velocity);
-    this.ball.angularVelocity.set(launch.velocity.z, 0, -launch.velocity.x).normalize().multiplyScalar(18);
+    this.ball.angularVelocity.set(0, 0, 0);
     this.ball.spinVector.set(0, 0, 0);
     this.ball.spinType = "flat";
     this.ball.spinStrength = 0;
@@ -134,6 +135,7 @@ export class BallController {
     this.sweptDebug.sweptInsideEllipse = false;
     this.sweptDebug.sweptContactTimestamp = 0;
     this.physicsState.accumulatorSeconds = 0;
+    this.physicsState.previousStepPosition.copy(this.ball.position);
   }
 
   reset(reason = "scheduled lifecycle reset"): void {
@@ -177,7 +179,9 @@ export class BallController {
         return;
       } else {
         this.ball.state = "BOUNCED";
-        this.ball.velocity.copy(solveVelocity(
+        this.ball.velocity.copy(this.ball.spinVector.lengthSq() > 0 ? solveSpinFlight(
+          this.ball.position, this.ball.contactTarget, this.ball.contactTimeAfterBounce, this.ball.spinVector
+        ) : solveVelocity(
           this.ball.position,
           this.ball.contactTarget,
           this.ball.contactTimeAfterBounce
@@ -198,7 +202,12 @@ export class BallController {
         alreadyHit: this.ball.hit, expectedStrokeType: this.ball.expectedStrokeType,
         profile: playableProfile, motion: easyMotion ?? null
       });
-      if (this.lastPlayableDecision.accepted && playableProfile && easyMotion) {
+      const limits = BALL_CONFIG.playableCalibratedHit.maximumCorrection;
+      const reachable = Math.abs(this.ball.position.x - this.ball.contactTarget.x) <= limits.lateral + this.ball.physicsRadius &&
+        Math.abs(this.ball.position.y - this.ball.contactTarget.y) <= limits.vertical + this.ball.physicsRadius &&
+        Math.abs(this.ball.position.z - this.ball.contactTarget.z) <= limits.depth + this.ball.physicsRadius;
+      if (this.lastPlayableDecision.accepted && playableProfile && easyMotion &&
+          reachable) {
         this.acceptPlayableCalibratedHit(now, playableProfile, easyMotion, contact);
       }
     }
@@ -300,8 +309,12 @@ export class BallController {
     });
     this.lastPhysicalImpact = resolution;
     const incoming = this.ball.velocity.clone();
-    this.ball.position.copy(this.ball.previousPosition).lerp(this.ball.position, this.lastCollision.impactFraction)
-      .addScaledVector(resolution.contactNormal, this.ball.physicsRadius + 0.002);
+    const impactPosition = this.ball.previousPosition.clone().lerp(this.ball.position, this.lastCollision.impactFraction);
+    // Resolve at the swept time of impact, then consume the remainder of this
+    // frame along the outgoing path. Rewinding and leaving the ball at contact
+    // made fast contacts visibly stop for a frame.
+    this.ball.position.copy(impactPosition)
+      .addScaledVector(resolution.outgoingVelocity, Math.max(0, deltaSeconds) * (1 - this.lastCollision.impactFraction));
     this.ball.previousPosition.copy(this.ball.position);
     this.ball.velocity.copy(resolution.outgoingVelocity);
     this.ball.spinVector.copy(resolution.outgoingAngularVelocity);
@@ -324,7 +337,7 @@ export class BallController {
       resolvedHitStrokeType: this.ball.expectedStrokeType, strokeTypeMismatch: "NONE",
       handedness: effective.handedness, backhandStyle: effective.backhandStyle,
       confidence: effective.confidence, assisted: this.lastCollision.assisted,
-      contactPointWorld: this.ball.position.clone(), contactPointRacketLocal: this.lastCollision.contactPointLocal.clone(),
+      contactPointWorld: impactPosition, contactPointRacketLocal: this.lastCollision.contactPointLocal.clone(),
       racketQuaternion: currentQuaternion.clone(), racketFaceNormal: resolution.contactNormal.clone(),
       incomingVelocity: incoming, outgoingVelocity: resolution.outgoingVelocity.clone(),
       outgoingSpeed: resolution.outgoingVelocity.length(), spinType: this.ball.spinType,
@@ -344,7 +357,9 @@ export class BallController {
     strictContact: EstimatedRacketContact | null
   ): void {
     if (this.ball.hit) return;
-    const calibratedPoint = new THREE.Vector3().fromArray(profile.contactPointWorld);
+    // The profile gates reach/timing; impact takes place where the ball actually is.
+    // Moving it to the profile anchor created a visible jump at accepted contact.
+    const calibratedPoint = this.ball.position.clone();
     const incoming = this.ball.velocity.clone();
     const effectiveContact = this.createEasyContact(now, motion);
     const localContactPoint = new THREE.Vector3(0, 0, 0);

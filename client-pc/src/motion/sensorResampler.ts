@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ensureQuaternionContinuity, isFiniteQuaternion } from "./motionFiltering.js";
+import { ensureQuaternionContinuity, isFiniteQuaternion, isFiniteVector } from "./motionFiltering.js";
 
 export const SENSOR_INTERPOLATION_DELAY_MS = 40;
 export const MAXIMUM_SENSOR_EXTRAPOLATION_MS = 50;
@@ -29,6 +29,8 @@ export type SensorResamplerTelemetry = {
 export class SensorResampler {
   private readonly samples: OrientationSample[] = [];
   readonly output = new THREE.Quaternion();
+  private readonly predictionAxis = new THREE.Vector3();
+  private readonly predictionDelta = new THREE.Quaternion();
   readonly telemetry: SensorResamplerTelemetry = {
     acceptedPackets: 0, duplicatePackets: 0, outOfOrderPackets: 0, staleFrames: 0,
     packetRateHz: 0, averageIntervalMs: 0, packetJitterMs: 0,
@@ -36,7 +38,7 @@ export class SensorResampler {
   };
 
   add(sample: OrientationSample): boolean {
-    if (!Number.isFinite(sample.timestamp) || !isFiniteQuaternion(sample.quaternion) || sample.quaternion.lengthSq() < 1e-8) return false;
+    if (!Number.isFinite(sample.timestamp) || !isFiniteQuaternion(sample.quaternion) || sample.quaternion.lengthSq() < 1e-8 || !isFiniteVector(sample.angularVelocity)) return false;
     const previous = this.samples.at(-1);
     if (previous && sample.timestamp === previous.timestamp) {
       this.telemetry.duplicatePackets += 1;
@@ -70,7 +72,10 @@ export class SensorResampler {
     const target = renderTimestamp - SENSOR_INTERPOLATION_DELAY_MS;
     const first = this.samples[0];
     const latest = this.samples[this.samples.length - 1];
-    if (target <= first.timestamp) return this.output.copy(first.quaternion);
+    if (target <= first.timestamp) {
+      this.telemetry.extrapolationMs = 0;
+      return this.output.copy(first.quaternion);
+    }
     for (let index = 1; index < this.samples.length; index += 1) {
       const right = this.samples[index];
       if (right.timestamp < target) continue;
@@ -84,12 +89,17 @@ export class SensorResampler {
     this.telemetry.extrapolationMs = extrapolationMs;
     if (requestedExtrapolation > MAXIMUM_SENSOR_EXTRAPOLATION_MS) this.telemetry.staleFrames += 1;
     this.output.copy(latest.quaternion);
-    const speed = latest.angularVelocity.length();
+    const speed = Math.min(25, latest.angularVelocity.length());
     if (speed > 1e-5 && extrapolationMs > 0) {
-      const delta = new THREE.Quaternion().setFromAxisAngle(
-        latest.angularVelocity.clone().normalize(), speed * extrapolationMs / 1000
+      // Taper prediction to zero velocity at the horizon instead of abruptly
+      // stopping a full-speed rotation when packets are lost.
+      const seconds = extrapolationMs / 1000;
+      const horizon = MAXIMUM_SENSOR_EXTRAPOLATION_MS / 1000;
+      const predictedAngle = speed * (seconds - seconds * seconds / (2 * horizon));
+      this.predictionDelta.setFromAxisAngle(
+        this.predictionAxis.copy(latest.angularVelocity).normalize(), predictedAngle
       );
-      this.output.multiply(delta).normalize();
+      this.output.multiply(this.predictionDelta).normalize();
     }
     return this.output;
   }
@@ -109,12 +119,27 @@ export function adaptiveVisualSmoothingFactor(
   angularSpeed: number,
   accelerationMagnitude: number,
   jerk: number,
-  valid: boolean
+  valid: boolean,
+  deltaSeconds = 1 / 60
 ): number {
-  if (!valid) return 0.08;
+  if (!valid) return timeBasedSmoothing(0.08, deltaSeconds);
   const motion = THREE.MathUtils.clamp(
     angularSpeed / 10 + accelerationMagnitude / 35 + Math.min(jerk, 120) / 300,
     0, 1
   );
-  return THREE.MathUtils.lerp(0.12, 0.58, motion);
+  return timeBasedSmoothing(THREE.MathUtils.lerp(0.12, 0.82, motion), deltaSeconds);
+}
+
+export function timeBasedSmoothing(factorAt60Hz: number, deltaSeconds: number): number {
+  return 1 - Math.pow(1 - THREE.MathUtils.clamp(factorAt60Hz, 0, 1), Math.max(0, deltaSeconds) * 60);
+}
+
+/** Visual-only recovery guard; never alters the collider or calibrated baseline. */
+export function updateVisualRacketQuaternion(
+  output: THREE.Quaternion, target: THREE.Quaternion, factor: number, deltaSeconds: number
+): THREE.Quaternion {
+  const angle = output.angleTo(target);
+  const maxStep = 30 * Math.min(Math.max(deltaSeconds, 0), 1 / 30);
+  const amount = angle > 1e-6 ? Math.min(factor, maxStep / angle) : factor;
+  return output.slerp(target, amount).normalize();
 }

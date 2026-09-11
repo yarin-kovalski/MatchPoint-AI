@@ -2,8 +2,8 @@ import * as THREE from "three";
 import { BALL_CONFIG } from "./ballConfig.js";
 import { BallSnapshot } from "./ballTypes.js";
 
-export function calculateMagnusAcceleration(spin: THREE.Vector3, velocity: THREE.Vector3): THREE.Vector3 {
-  const acceleration = new THREE.Vector3().crossVectors(spin, velocity)
+export function calculateMagnusAcceleration(spin: THREE.Vector3, velocity: THREE.Vector3, output = new THREE.Vector3()): THREE.Vector3 {
+  const acceleration = output.crossVectors(spin, velocity)
     .multiplyScalar(BALL_CONFIG.spin.magnusCoefficient);
   const length = acceleration.length();
   if (length > BALL_CONFIG.spin.maximumAcceleration) acceleration.multiplyScalar(BALL_CONFIG.spin.maximumAcceleration / length);
@@ -16,7 +16,7 @@ export function stepBallPhysics(ball: BallSnapshot, deltaSeconds: number): boole
   ball.previousPosition.copy(ball.position);
   while (remaining > 0) {
     const dt = Math.min(remaining, BALL_CONFIG.maximumStepSeconds);
-    ball.magnusAcceleration.copy(calculateMagnusAcceleration(ball.spinVector, ball.velocity));
+    calculateMagnusAcceleration(ball.spinVector, ball.velocity, ball.magnusAcceleration);
     ball.velocity.y += (BALL_CONFIG.gravity + ball.magnusAcceleration.y) * dt;
     ball.velocity.x += ball.magnusAcceleration.x * dt;
     ball.velocity.z += ball.magnusAcceleration.z * dt;
