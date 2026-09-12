@@ -37,3 +37,19 @@ test("PC runtime binds and asserts every diagnostic control", async () => {
   assert.match(source, /mobileClientCount === 1/);
   assert.match(source, /DIAGNOSTIC_PACKET_FRESHNESS_MS/);
 });
+
+test("developer telemetry exposes racket stall diagnosis", async () => {
+  const [html, source] = await Promise.all([
+    readFile("client-pc/public/index.html", "utf8"),
+    readFile("client-pc/src/main.ts", "utf8")
+  ]);
+  assert.match(html, /id="performanceTelemetry"/);
+  assert.match(html, /id="racketStallTelemetry"/);
+  assert.match(source, /STALL_DETECTED/);
+  assert.match(source, /lastValidQuaternion/);
+  assert.match(source, /lastValidQuaternionAgeMs/);
+  assert.match(source, /lastPhysicsRacketUpdateAgeMs/);
+  assert.match(source, /lastVisualRacketUpdateAgeMs/);
+  assert.match(source, /resamplerState/);
+  assert.match(source, /unhandledrejection/);
+});

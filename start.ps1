@@ -5,20 +5,76 @@ $ExpoDir = Join-Path $RootDir "virtucourt-mobile"
 $MetroPort = 8081
 $BackendPort = 3000
 
+function Write-ProcessDiagnostics {
+  param(
+    [string]$Name,
+    [System.Diagnostics.Process]$Process,
+    [string]$StdoutPath,
+    [string]$StderrPath
+  )
+  $exitCode = "still running"
+  if ($Process) {
+    $Process.Refresh()
+    if ($Process.HasExited) {
+      try { $Process.WaitForExit(); $exitCode = $Process.ExitCode } catch { $exitCode = "unavailable" }
+    }
+  }
+  Write-Host "$Name process exit code: $exitCode" -ForegroundColor Red
+  foreach ($log in @(
+    @{ Label = "stdout"; Path = $StdoutPath },
+    @{ Label = "stderr"; Path = $StderrPath }
+  )) {
+    Write-Host "$Name $($log.Label) (last 100 lines):" -ForegroundColor Yellow
+    if ($log.Path -and (Test-Path -LiteralPath $log.Path)) {
+      Get-Content -LiteralPath $log.Path -Tail 100
+    } else {
+      Write-Host "<no output captured>"
+    }
+  }
+}
+
+function Get-HttpErrorBody {
+  param($Exception)
+  try {
+    $response = $Exception.Response
+    if (-not $response) { return $null }
+    $reader = New-Object System.IO.StreamReader($response.GetResponseStream())
+    try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+  } catch { return $null }
+}
+
 function Wait-ForHttp {
-  param([string]$Url, [int]$TimeoutSeconds = 90, [System.Diagnostics.Process]$RequiredProcess)
+  param(
+    [string]$Url,
+    [int]$TimeoutSeconds = 90,
+    [System.Diagnostics.Process]$RequiredProcess,
+    [string]$ProcessName = "Required",
+    [string]$StdoutPath,
+    [string]$StderrPath
+  )
   $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
   do {
     try {
       $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5
-      if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) { return $response }
+      if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) { return $response }
     } catch {
+      $statusCode = $null
+      if ($_.Exception.Response) { $statusCode = [int]$_.Exception.Response.StatusCode }
+      if ($statusCode -ge 400) {
+        $body = Get-HttpErrorBody -Exception $_.Exception
+        Write-Host "HTTP $statusCode returned by $Url" -ForegroundColor Red
+        if ($body) { Write-Host $body }
+        Write-ProcessDiagnostics -Name $ProcessName -Process $RequiredProcess -StdoutPath $StdoutPath -StderrPath $StderrPath
+        throw "HTTP $statusCode while waiting for $Url"
+      }
       if ($RequiredProcess -and $RequiredProcess.HasExited) {
-        throw "Process exited while waiting for $Url"
+        Write-ProcessDiagnostics -Name $ProcessName -Process $RequiredProcess -StdoutPath $StdoutPath -StderrPath $StderrPath
+        throw "$ProcessName exited while waiting for $Url (exit code $($RequiredProcess.ExitCode))"
       }
       Start-Sleep -Milliseconds 500
     }
   } while ([DateTime]::UtcNow -lt $deadline)
+  Write-ProcessDiagnostics -Name $ProcessName -Process $RequiredProcess -StdoutPath $StdoutPath -StderrPath $StderrPath
   throw "Timed out waiting for $Url"
 }
 
@@ -111,8 +167,11 @@ $MetroHttpUrl = "http://${LanAddress}:$MetroPort"
 $BundleUrl = "${MetroHttpUrl}/index.bundle?platform=ios&dev=true&hot=false"
 $ServerLog = Join-Path $env:TEMP "matchpoint-server.log"
 $ServerErrorLog = Join-Path $env:TEMP "matchpoint-server-error.log"
+$ExpoLog = Join-Path $env:TEMP "matchpoint-expo.log"
+$ExpoErrorLog = Join-Path $env:TEMP "matchpoint-expo-error.log"
 $ServerProcess = $null
 $ExpoProcess = $null
+$MetroProcess = $null
 $BrowserJob = $null
 $PreviousExpoServerUrl = $env:EXPO_PUBLIC_SERVER_URL
 $PreviousPackagerHostname = $env:REACT_NATIVE_PACKAGER_HOSTNAME
@@ -122,25 +181,27 @@ $env:REACT_NATIVE_PACKAGER_HOSTNAME = $LanAddress
 $env:EXPO_OFFLINE = "0"
 
 try {
+  Remove-Item -LiteralPath $ServerLog, $ServerErrorLog, $ExpoLog, $ExpoErrorLog -Force -ErrorAction SilentlyContinue
   Write-Host "Starting backend and PC client build..." -ForegroundColor Cyan
   $ServerProcess = Start-Process npm.cmd -ArgumentList @("run", "dev") -WorkingDirectory $RootDir -PassThru -WindowStyle Hidden -RedirectStandardOutput $ServerLog -RedirectStandardError $ServerErrorLog
-  Wait-ForHttp -Url $PcUrl -TimeoutSeconds 120 -RequiredProcess $ServerProcess | Out-Null
+  Wait-ForHttp -Url $PcUrl -TimeoutSeconds 120 -RequiredProcess $ServerProcess -ProcessName "Backend" -StdoutPath $ServerLog -StderrPath $ServerErrorLog | Out-Null
   Write-Host "Backend ready: $ServerUrl" -ForegroundColor Green
 
   Write-Host "Starting Expo from: $ExpoDir" -ForegroundColor Cyan
-  $ExpoProcess = Start-Process powershell.exe -PassThru -WorkingDirectory $ExpoDir -ArgumentList @(
-    "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-    "npx.cmd expo start --lan --go --port $MetroPort --clear"
-  )
-  Wait-ForHttp -Url $MetroHttpUrl -TimeoutSeconds 120 -RequiredProcess $ExpoProcess | Out-Null
+  Write-Host "Expo command: npx.cmd expo start --lan --go --port $MetroPort --clear"
+  $ExpoProcess = Start-Process cmd.exe -PassThru -WindowStyle Hidden -WorkingDirectory $ExpoDir -ArgumentList @(
+    "/d", "/s", "/c", "npx.cmd expo start --lan --go --port $MetroPort --clear"
+  ) -RedirectStandardOutput $ExpoLog -RedirectStandardError $ExpoErrorLog
+  Wait-ForHttp -Url $MetroHttpUrl -TimeoutSeconds 120 -RequiredProcess $ExpoProcess -ProcessName "Expo" -StdoutPath $ExpoLog -StderrPath $ExpoErrorLog | Out-Null
   $listener = Get-NetTCPConnection -State Listen -LocalPort $MetroPort -ErrorAction Stop | Select-Object -First 1
   if ($listener.LocalAddress -eq "127.0.0.1" -or $listener.LocalAddress -eq "::1") {
     throw "Metro is listening only on $($listener.LocalAddress), not the LAN interface."
   }
+  $MetroProcess = Get-Process -Id $listener.OwningProcess -ErrorAction Stop
   Write-Host "Metro listening: $($listener.LocalAddress):$MetroPort (PID $($listener.OwningProcess))" -ForegroundColor Green
 
   Write-Host "Building and fetching the iOS bundle..." -ForegroundColor Cyan
-  $bundle = Wait-ForHttp -Url $BundleUrl -TimeoutSeconds 180 -RequiredProcess $ExpoProcess
+  $bundle = Wait-ForHttp -Url $BundleUrl -TimeoutSeconds 180 -RequiredProcess $MetroProcess -ProcessName "Metro" -StdoutPath $ExpoLog -StderrPath $ExpoErrorLog
   if ($bundle.Content.Length -lt 1000) { throw "Metro returned an unexpectedly small iOS bundle ($($bundle.Content.Length) bytes)." }
 
   Write-Host ""
@@ -149,13 +210,19 @@ try {
   Write-Host "PC client: $PcUrl"
   Write-Host "Expo Go LAN URL: $ExpoUrl" -ForegroundColor Yellow
   Write-Host "Verified iOS bundle: $BundleUrl" -ForegroundColor Green
-  Write-Host "Scan only the QR shown in the Expo terminal; it must use $LanAddress."
+  $QrModule = Join-Path $ExpoDir "node_modules\toqr"
+  if (Test-Path -LiteralPath $QrModule) {
+    Write-Host "Scan this QR with the iPhone camera:" -ForegroundColor Yellow
+    & node -e "const{toQR}=require(process.argv[1]);const q=toQR(process.argv[2]);const n=Math.sqrt(q.length),b=2;for(let y=-b;y<n+b;y++){let s='';for(let x=-b;x<n+b;x++){const white=x<0||y<0||x>=n||y>=n||!q[y*n+x];s+=(white?'\x1b[47m  ':'\x1b[40m  ')}console.log(s+'\x1b[0m')}" $QrModule $ExpoUrl
+  }
+  Write-Host "The Expo Go address must use $LanAddress."
   Write-Host "Keep both terminals open. Press Ctrl+C here to stop the project."
   $BrowserJob = Start-Job -ScriptBlock { param($Url) Start-Process $Url } -ArgumentList $PcUrl
 
-  while (-not $ServerProcess.HasExited -and -not $ExpoProcess.HasExited) { Start-Sleep -Seconds 1 }
+  while (-not $ServerProcess.HasExited -and -not $MetroProcess.HasExited) { Start-Sleep -Seconds 1 }
   if ($ServerProcess.HasExited) { throw "Backend stopped unexpectedly. See $ServerErrorLog" }
-  throw "Expo stopped unexpectedly."
+  Write-ProcessDiagnostics -Name "Metro" -Process $MetroProcess -StdoutPath $ExpoLog -StderrPath $ExpoErrorLog
+  throw "Metro stopped unexpectedly (exit code $($MetroProcess.ExitCode))."
 }
 finally {
   $env:EXPO_PUBLIC_SERVER_URL = $PreviousExpoServerUrl

@@ -16,6 +16,7 @@ export type OrientationSample = {
 
 export type SensorResamplerTelemetry = {
   acceptedPackets: number;
+  rejectedPackets: number;
   duplicatePackets: number;
   outOfOrderPackets: number;
   staleFrames: number;
@@ -24,6 +25,8 @@ export type SensorResamplerTelemetry = {
   packetJitterMs: number;
   maximumAngularDeltaRadians: number;
   extrapolationMs: number;
+  state: "empty" | "interpolating" | "extrapolating" | "stale" | "held";
+  latestSampleTimestamp: number | null;
 };
 
 export class SensorResampler {
@@ -32,20 +35,25 @@ export class SensorResampler {
   private readonly predictionAxis = new THREE.Vector3();
   private readonly predictionDelta = new THREE.Quaternion();
   readonly telemetry: SensorResamplerTelemetry = {
-    acceptedPackets: 0, duplicatePackets: 0, outOfOrderPackets: 0, staleFrames: 0,
+    acceptedPackets: 0, rejectedPackets: 0, duplicatePackets: 0, outOfOrderPackets: 0, staleFrames: 0,
     packetRateHz: 0, averageIntervalMs: 0, packetJitterMs: 0,
-    maximumAngularDeltaRadians: 0, extrapolationMs: 0
+    maximumAngularDeltaRadians: 0, extrapolationMs: 0, state: "empty", latestSampleTimestamp: null
   };
 
   add(sample: OrientationSample): boolean {
-    if (!Number.isFinite(sample.timestamp) || !isFiniteQuaternion(sample.quaternion) || sample.quaternion.lengthSq() < 1e-8 || !isFiniteVector(sample.angularVelocity)) return false;
+    if (!Number.isFinite(sample.timestamp) || !isFiniteQuaternion(sample.quaternion) || sample.quaternion.lengthSq() < 1e-8 || !isFiniteVector(sample.angularVelocity)) {
+      this.telemetry.rejectedPackets += 1;
+      return false;
+    }
     const previous = this.samples.at(-1);
     if (previous && sample.timestamp === previous.timestamp) {
       this.telemetry.duplicatePackets += 1;
+      this.telemetry.rejectedPackets += 1;
       return false;
     }
     if (previous && sample.timestamp < previous.timestamp) {
       this.telemetry.outOfOrderPackets += 1;
+      this.telemetry.rejectedPackets += 1;
       return false;
     }
     const quaternion = sample.quaternion.clone().normalize();
@@ -64,16 +72,21 @@ export class SensorResampler {
     this.samples.push({ ...sample, quaternion, angularVelocity: sample.angularVelocity.clone() });
     if (this.samples.length > MAX_SAMPLES) this.samples.shift();
     this.telemetry.acceptedPackets += 1;
+    this.telemetry.latestSampleTimestamp = sample.timestamp;
     return true;
   }
 
   sample(renderTimestamp: number): THREE.Quaternion | null {
-    if (this.samples.length === 0) return null;
+    if (this.samples.length === 0) {
+      this.telemetry.state = "empty";
+      return null;
+    }
     const target = renderTimestamp - SENSOR_INTERPOLATION_DELAY_MS;
     const first = this.samples[0];
     const latest = this.samples[this.samples.length - 1];
     if (target <= first.timestamp) {
       this.telemetry.extrapolationMs = 0;
+      this.telemetry.state = "held";
       return this.output.copy(first.quaternion);
     }
     for (let index = 1; index < this.samples.length; index += 1) {
@@ -82,12 +95,18 @@ export class SensorResampler {
       const left = this.samples[index - 1];
       const amount = THREE.MathUtils.clamp((target - left.timestamp) / Math.max(1, right.timestamp - left.timestamp), 0, 1);
       this.telemetry.extrapolationMs = 0;
+      this.telemetry.state = "interpolating";
       return this.output.copy(left.quaternion).slerp(right.quaternion, amount).normalize();
     }
     const requestedExtrapolation = target - latest.timestamp;
     const extrapolationMs = THREE.MathUtils.clamp(requestedExtrapolation, 0, MAXIMUM_SENSOR_EXTRAPOLATION_MS);
     this.telemetry.extrapolationMs = extrapolationMs;
-    if (requestedExtrapolation > MAXIMUM_SENSOR_EXTRAPOLATION_MS) this.telemetry.staleFrames += 1;
+    if (requestedExtrapolation > MAXIMUM_SENSOR_EXTRAPOLATION_MS) {
+      this.telemetry.staleFrames += 1;
+      this.telemetry.state = "stale";
+    } else {
+      this.telemetry.state = extrapolationMs > 0 ? "extrapolating" : "held";
+    }
     this.output.copy(latest.quaternion);
     const speed = Math.min(25, latest.angularVelocity.length());
     if (speed > 1e-5 && extrapolationMs > 0) {
@@ -108,9 +127,9 @@ export class SensorResampler {
     this.samples.length = 0;
     this.output.identity();
     Object.assign(this.telemetry, {
-      acceptedPackets: 0, duplicatePackets: 0, outOfOrderPackets: 0, staleFrames: 0,
+      acceptedPackets: 0, rejectedPackets: 0, duplicatePackets: 0, outOfOrderPackets: 0, staleFrames: 0,
       packetRateHz: 0, averageIntervalMs: 0, packetJitterMs: 0,
-      maximumAngularDeltaRadians: 0, extrapolationMs: 0
+      maximumAngularDeltaRadians: 0, extrapolationMs: 0, state: "empty", latestSampleTimestamp: null
     });
   }
 }

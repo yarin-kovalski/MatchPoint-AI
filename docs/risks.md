@@ -74,6 +74,21 @@ Mitigation:
 - Use latest-state rendering instead of processing every old packet.
 - Later, use predictive motion and physics assistance.
 
+## Mobile JavaScript Thread Saturation
+
+Risk: Expo sensor callbacks, React UI rendering, and Socket.IO emission share the
+same JavaScript thread. Publishing several React state changes on every 16 ms
+sensor callback can delay outgoing motion packets for seconds even though the
+native sensors continue sampling.
+
+Mitigation:
+
+- Keep `continuous_orientation` emission at the native sensor callback cadence.
+- Update the phone's visible raw-value display at 10 Hz from refs.
+- Compare existing phone and server timestamps and display phone-to-server,
+  server-to-PC, resampler, render, physics, and racket-transform telemetry in Developer mode.
+- Preserve a three-second rolling trace when `STALL_DETECTED` fires.
+
 ## Orientation Drift
 
 Risk: Absolute device attitude can still shift when the operating system adjusts

@@ -30,11 +30,14 @@
     "court-positioning.test.ts",
     "ball-stability.test.ts",
     "sensor-resampler.test.ts",
+    "racket-stall-telemetry.test.ts",
+    "sensor-ui-throttle.test.ts",
     "stroke-fidelity.test.ts",
     "../client-pc/src/ball/validatedTrajectoryPreset.ts",
     "../client-pc/src/diagnostics/**/*.ts",
     "../client-pc/src/motion/**/*.ts",
     "../client-pc/src/strokeDetection/**/*.ts",
-    "../client-pc/src/ball/**/*.ts"
+    "../client-pc/src/ball/**/*.ts",
+    "../virtucourt-mobile/sensorUiThrottle.ts"
   ]
 }

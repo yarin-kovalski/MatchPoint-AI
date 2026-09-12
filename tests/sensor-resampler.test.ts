@@ -22,6 +22,7 @@ test("timestamp resampling ignores duplicate and out-of-order packets", () => {
   assert.equal(resampler.add(sample(999, 0.1)), false);
   assert.equal(resampler.telemetry.duplicatePackets, 1);
   assert.equal(resampler.telemetry.outOfOrderPackets, 1);
+  assert.equal(resampler.telemetry.rejectedPackets, 2);
 });
 
 test("quaternion sign flips interpolate without a visual jump", () => {
@@ -41,6 +42,7 @@ test("temporary packet gaps use strictly bounded extrapolation", () => {
   assert.ok(result.angleTo(new THREE.Quaternion()) <= maximumExpectedAngle + 1e-8);
   assert.equal(resampler.telemetry.extrapolationMs, MAXIMUM_SENSOR_EXTRAPOLATION_MS);
   assert.equal(resampler.telemetry.staleFrames, 1);
+  assert.equal(resampler.telemetry.state, "stale");
 });
 
 test("adaptive smoothing suppresses stationary jitter and responds faster during swings", () => {

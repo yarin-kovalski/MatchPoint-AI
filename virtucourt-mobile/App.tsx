@@ -9,6 +9,7 @@ import {
   View
 } from "react-native";
 import { io, Socket } from "socket.io-client";
+import { SensorUiThrottle } from "./sensorUiThrottle";
 
 type StrokeType = "forehand" | "backhand";
 
@@ -55,6 +56,8 @@ export default function App() {
   const accelerationRef = useRef<Vector3>({ x: 0, y: 0, z: 0 });
   const lastStrokeAtRef = useRef(0);
   const peakAccelerationRef = useRef(0);
+  const packetCountRef = useRef(0);
+  const sensorUiThrottleRef = useRef(new SensorUiThrottle());
 
   useEffect(() => {
     let active = true;
@@ -168,6 +171,7 @@ export default function App() {
 
       orientationRef.current = { x: 0, y: 0, z: 0 };
       peakAccelerationRef.current = 0;
+      sensorUiThrottleRef.current.reset();
       setCalibrated(false);
 
       const motionSubscription = DeviceMotion.addListener((sample) => {
@@ -178,7 +182,6 @@ export default function App() {
           z: sample.rotation.alpha
         };
 
-        setRotation(orientationRef.current);
         const quaternion = deviceRotationToQuaternion(sample.rotation);
 
         if (socketRef.current?.connected) {
@@ -213,14 +216,21 @@ export default function App() {
             screenOrientation: sample.orientation,
             intervalMs: sample.interval
           });
-          setPacketCount((count) => count + 1);
+          packetCountRef.current += 1;
+        }
+
+        // Sensor emission remains at the native callback cadence. React rendering is
+        // intentionally throttled because it shares this JS thread with Socket.IO.
+        if (sensorUiThrottleRef.current.shouldUpdate(now)) {
+          setRotation(orientationRef.current);
+          setAccel(accelerationRef.current);
+          setReadyPose(isTennisReadyPhonePose(accelerationRef.current));
+          setPacketCount(packetCountRef.current);
         }
       });
 
       const accelSubscription = Accelerometer.addListener((sample) => {
         accelerationRef.current = sample;
-        setAccel(sample);
-        setReadyPose(isTennisReadyPhonePose(sample));
         if (USE_LEGACY_STROKE_DETECTOR) {
           detectStroke(sample.x);
         }

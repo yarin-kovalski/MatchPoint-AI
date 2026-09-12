@@ -28,6 +28,7 @@ import { addPremiumEnvironment, courtPixelRatio, createMicroTexture, createSoftC
 import { analyzeGameplayDiagnostic, AttemptType, diagnosticMarkdown, GameplayDiagnosticFrame, GameplayDiagnosticRecorder } from "./diagnostics/gameplayDiagnostic.js";
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
 import { FrameTelemetry } from "./diagnostics/frameTelemetry.js";
+import { RacketStallTelemetry } from "./diagnostics/racketStallTelemetry.js";
 import { adaptiveVisualSmoothingFactor, SensorResampler, updateVisualRacketQuaternion } from "./motion/sensorResampler.js";
 import {
   NormalizedSensorFrame,
@@ -265,6 +266,7 @@ const elements = {
   contactPhysicsDebug: getElement("contactPhysicsDebug"),
   ballVisualInvariant: getElement("ballVisualInvariant"),
   performanceTelemetry: getElement("performanceTelemetry"),
+  racketStallTelemetry: getElement("racketStallTelemetry"),
   strokeExampleLabel: getElement<HTMLSelectElement>("strokeExampleLabel"),
   recordStrokeExample: getElement<HTMLButtonElement>("recordStrokeExample"),
   analyzeStrokeExamples: getElement<HTMLButtonElement>("analyzeStrokeExamples"),
@@ -354,6 +356,7 @@ const elements = {
 
 let packetCount = 0;
 const frameTelemetry = new FrameTelemetry();
+const racketStallTelemetry = new RacketStallTelemetry();
 let latestPacket: BrokeredMotionPacket | null = null;
 let previousPacket: BrokeredMotionPacket | null = null;
 let latestOrientationPacket: BrokeredContinuousOrientationPacket | null = null;
@@ -468,6 +471,37 @@ let telemetryRenderMs = 0;
 let telemetryPhysicsMs = 0;
 let telemetryLongFrames = 0;
 let telemetryPreviousPhysicsSteps = 0;
+let lastOrientationPcReceivedAt = 0;
+let lastOrientationServerTransportMs: number | null = null;
+let lastOrientationPhoneToServerMs: number | null = null;
+let lastOrientationPhoneTimestamp: number | null = null;
+let orientationTimestampDuplicates = 0;
+let orientationTimestampStale = 0;
+let normalizerRejectedPackets = 0;
+let lastValidQuaternionAt = 0;
+let lastPhysicsRacketUpdateAt = performance.now();
+let lastVisualRacketUpdateAt = performance.now();
+let lastVisualRacketChangeAt = performance.now();
+let latestStallReasons: string[] = [];
+const lastValidSensorQuaternion = new THREE.Quaternion();
+const previousVisualTelemetryQuaternion = new THREE.Quaternion();
+const incomingTelemetryQuaternion = new THREE.Quaternion();
+let hasIncomingTelemetryQuaternion = false;
+let runtimeErrorCount = 0;
+let unhandledRejectionCount = 0;
+let lastRuntimeErrorAt = 0;
+let lastRuntimeError = "none";
+
+window.addEventListener("error", event => {
+  runtimeErrorCount += 1;
+  lastRuntimeErrorAt = performance.now();
+  lastRuntimeError = event.message || "uncaught window error";
+});
+window.addEventListener("unhandledrejection", event => {
+  unhandledRejectionCount += 1;
+  lastRuntimeErrorAt = performance.now();
+  lastRuntimeError = event.reason instanceof Error ? event.reason.message : String(event.reason);
+});
 const STROKE_EXAMPLE_STORAGE_KEY = "matchpoint.stroke-examples.v1";
 let armedStrokeExampleLabel: string | null = null;
 
@@ -795,7 +829,26 @@ socket.on("controller:state", (payload: unknown) => {
 });
 
 socket.on("continuous_orientation", (payload: unknown) => {
+  const pcReceivedAt = performance.now();
+  const pcReceivedEpoch = Date.now();
   const orientationPacket = payload as BrokeredContinuousOrientationPacket;
+  lastOrientationPcReceivedAt = pcReceivedAt;
+  lastOrientationServerTransportMs = Math.max(0, pcReceivedEpoch - orientationPacket.serverReceivedAt);
+  lastOrientationPhoneToServerMs = Math.max(0, orientationPacket.serverReceivedAt - orientationPacket.t);
+  if (elements.developerPanel.open && pcReceivedAt - lastPhysicsRacketUpdateAt > 250) {
+    latestStallReasons = ["packets_arriving_physics_not_updated"];
+    elements.racketStallTelemetry.textContent =
+      `STALL_DETECTED packets_arriving_physics_not_updated\nphysics update age ${Math.round(pcReceivedAt - lastPhysicsRacketUpdateAt)} ms`;
+  }
+  if (Number.isFinite(orientationPacket.t)) {
+    if (lastOrientationPhoneTimestamp !== null) {
+      if (orientationPacket.t === lastOrientationPhoneTimestamp) orientationTimestampDuplicates += 1;
+      else if (orientationPacket.t < lastOrientationPhoneTimestamp) orientationTimestampStale += 1;
+    }
+    if (lastOrientationPhoneTimestamp === null || orientationPacket.t > lastOrientationPhoneTimestamp) {
+      lastOrientationPhoneTimestamp = orientationPacket.t;
+    }
+  }
   latestPacket = null;
   latestOrientationPacket = orientationPacket;
   packetCount += 1;
@@ -828,14 +881,24 @@ socket.on("continuous_orientation", (payload: unknown) => {
     )
   });
   if (processedFrame.valid) {
+    if (!hasIncomingTelemetryQuaternion || incomingTelemetryQuaternion.angleTo(processedFrame.relativePhoneQuaternion) > 1e-5) {
+      incomingTelemetryQuaternion.copy(processedFrame.relativePhoneQuaternion);
+      hasIncomingTelemetryQuaternion = true;
+    }
+    lastValidSensorQuaternion.copy(processedFrame.relativePhoneQuaternion);
+    lastValidQuaternionAt = pcReceivedAt;
     sensorResampler.add({
-      timestamp: orientationPacket.serverReceivedAt,
+      // Browser monotonic receipt time avoids wall-clock jumps and preserves
+      // sub-millisecond ordering when queued Socket.IO messages arrive together.
+      timestamp: pcReceivedAt,
       quaternion: processedFrame.relativePhoneQuaternion,
       angularVelocity: phoneVectorToThreeVector(processedFrame.angularVelocityLocal),
       angularSpeed: processedFrame.angularSpeed,
       accelerationMagnitude: processedFrame.accelerationMagnitude,
       jerk: processedFrame.jerk
     });
+  } else {
+    normalizerRejectedPackets += 1;
   }
 
   if (!replayActive) {
@@ -1072,13 +1135,14 @@ function animate(): void {
   const elapsed = clock.getElapsedTime();
   const now = performance.now();
   const nowEpoch = Date.now();
-  const ballDeltaSeconds = Math.min((now - lastBallFrameAt) / 1000, 0.1);
-  frameTelemetry.record(now - lastBallFrameAt);
+  const rawFrameDeltaMs = now - lastBallFrameAt;
+  const ballDeltaSeconds = Math.min(rawFrameDeltaMs / 1000, 0.1);
+  frameTelemetry.record(rawFrameDeltaMs);
   if (ballDeltaSeconds > 1 / 30) telemetryLongFrames += 1;
   lastBallFrameAt = now;
 
   if (latestOrientationPacket) {
-    const resampledOrientation = sensorResampler.sample(nowEpoch);
+    const resampledOrientation = sensorResampler.sample(now);
     if (resampledOrientation) relativeOrientationQuaternion.copy(resampledOrientation);
   } else {
     gyroEuler.set(targetRotationX, targetRotationY, targetRotationZ);
@@ -1096,6 +1160,11 @@ function animate(): void {
     ballDeltaSeconds
   );
   updateVisualRacketQuaternion(visualOrientationPivot.quaternion, targetRacketQuaternion, visualSmoothing, ballDeltaSeconds);
+  lastVisualRacketUpdateAt = now;
+  if (previousVisualTelemetryQuaternion.angleTo(visualOrientationPivot.quaternion) > 1e-5) {
+    lastVisualRacketChangeAt = now;
+    previousVisualTelemetryQuaternion.copy(visualOrientationPivot.quaternion);
+  }
   displayedRelativeQuaternion.copy(visualOrientationPivot.quaternion);
   racketRoot.position.copy(neutralRacketPosition);
   updateProceduralPosition();
@@ -1103,9 +1172,11 @@ function animate(): void {
     racketRoot.position.add(getStrokePositionOffset());
   }
   racketRoot.updateMatrixWorld(true);
+  lastPhysicsRacketUpdateAt = now;
   applyPlayableContactMagnet(nowEpoch);
   const detectorSnapshot = latestStrokeSnapshot ?? strokeStateMachine.getSnapshot(nowEpoch);
   const physicsStartedAt = performance.now();
+  const physicsStepsBeforeFrame = ballController.physicsState.totalSteps;
   const previewAtContact = previewTrajectoryActive && ballController.ball.bounceCount === 1 &&
     ballController.ball.contactDeadline > 0 && nowEpoch >= ballController.ball.contactDeadline - 25;
   if (previewAtContact) {
@@ -1124,6 +1195,7 @@ function animate(): void {
     );
   }
   telemetryPhysicsMs += performance.now() - physicsStartedAt;
+  const physicsStepsThisFrame = ballController.physicsState.totalSteps - physicsStepsBeforeFrame;
   updateBallVisuals(ballDeltaSeconds);
   impactLight.intensity = 0;
   targetSwingSpeedKmh *= 0.94;
@@ -1159,16 +1231,41 @@ function animate(): void {
   renderer.render(scene, camera);
   telemetryRenderMs += performance.now() - renderStartedAt;
   telemetryFrames += 1;
+  const packetAgeMs = lastOrientationPcReceivedAt > 0 ? now - lastOrientationPcReceivedAt : null;
+  const posePending = hasIncomingTelemetryQuaternion &&
+    incomingTelemetryQuaternion.angleTo(visualOrientationPivot.quaternion) > 1e-3;
+  latestStallReasons = racketStallTelemetry.record({
+    at: now,
+    packetAgeMs,
+    packetRateHz: sensorResampler.telemetry.packetRateHz,
+    packetJitterMs: sensorResampler.telemetry.packetJitterMs,
+    duplicatePackets: orientationTimestampDuplicates + sensorResampler.telemetry.duplicatePackets,
+    stalePackets: orientationTimestampStale + sensorResampler.telemetry.outOfOrderPackets,
+    rejectedPackets: normalizerRejectedPackets + sensorResampler.telemetry.rejectedPackets,
+    physicsUpdateAgeMs: now - lastPhysicsRacketUpdateAt,
+    visualUpdateAgeMs: now - lastVisualRacketUpdateAt,
+    visualChangeAgeMs: now - lastVisualRacketChangeAt,
+    frameDeltaMs: rawFrameDeltaMs,
+    physicsSteps: physicsStepsThisFrame,
+    extrapolationMs: sensorResampler.telemetry.extrapolationMs,
+    resamplerState: sensorResampler.telemetry.state,
+    posePending,
+    quaternionX: lastValidSensorQuaternion.x,
+    quaternionY: lastValidSensorQuaternion.y,
+    quaternionZ: lastValidSensorQuaternion.z,
+    quaternionW: lastValidSensorQuaternion.w,
+    quaternionAgeMs: lastValidQuaternionAt > 0 ? now - lastValidQuaternionAt : null,
+    runtimeErrors: runtimeErrorCount + unhandledRejectionCount
+  });
   updatePerformanceTelemetry(now, nowEpoch);
 }
 
-function updatePerformanceTelemetry(now: number, nowEpoch: number): void {
+function updatePerformanceTelemetry(now: number, _nowEpoch: number): void {
   const elapsedMs = now - telemetryWindowStartedAt;
   if (elapsedMs < 1000) return;
   const frameStats = frameTelemetry.snapshot();
   document.getElementById("frameBudget")!.textContent = `${Math.round(frameStats.fps)} FPS`;
   const physicsSteps = ballController.physicsState.totalSteps - telemetryPreviousPhysicsSteps;
-  const latestPacketTime = latestOrientationPacket?.serverReceivedAt;
   if (elements.developerPanel.open) elements.performanceTelemetry.textContent = JSON.stringify({
     ...frameStats,
     renderFps: Number((telemetryFrames * 1000 / elapsedMs).toFixed(1)),
@@ -1177,16 +1274,51 @@ function updatePerformanceTelemetry(now: number, nowEpoch: number): void {
     averagePhysicsMs: Number((telemetryPhysicsMs / Math.max(1, telemetryFrames)).toFixed(3)),
     longFrames: telemetryLongFrames,
     sensorPacketRateHz: Number(sensorResampler.telemetry.packetRateHz.toFixed(1)),
-    averagePacketAgeMs: latestPacketTime ? Math.max(0, nowEpoch - latestPacketTime) : null,
+    packetAgeMs: lastOrientationPcReceivedAt > 0 ? Math.round(now - lastOrientationPcReceivedAt) : null,
+    serverToPcMs: lastOrientationServerTransportMs,
+    phoneToServerMs: lastOrientationPhoneToServerMs,
     packetJitterMs: Number(sensorResampler.telemetry.packetJitterMs.toFixed(1)),
     duplicatePackets: sensorResampler.telemetry.duplicatePackets,
     outOfOrderPackets: sensorResampler.telemetry.outOfOrderPackets,
+    rejectedPackets: sensorResampler.telemetry.rejectedPackets + normalizerRejectedPackets,
+    timestampDuplicates: orientationTimestampDuplicates,
+    timestampStale: orientationTimestampStale,
     staleFrames: sensorResampler.telemetry.staleFrames,
     maximumAngularDeltaRadians: Number(sensorResampler.telemetry.maximumAngularDeltaRadians.toFixed(3)),
     interpolationDelayMs: 40,
     currentExtrapolationMs: sensorResampler.telemetry.extrapolationMs,
+    resamplerState: sensorResampler.telemetry.state,
+    lastValidQuaternion: formatQuaternion(lastValidSensorQuaternion),
+    lastValidQuaternionAgeMs: lastValidQuaternionAt > 0 ? Math.round(now - lastValidQuaternionAt) : null,
+    lastPhysicsRacketUpdateAgeMs: Math.round(now - lastPhysicsRacketUpdateAt),
+    lastVisualRacketUpdateAgeMs: Math.round(now - lastVisualRacketUpdateAt),
+    lastVisualRacketChangeAgeMs: Math.round(now - lastVisualRacketChangeAt),
+    runtimeErrorCount,
+    unhandledRejectionCount,
+    lastRuntimeError,
+    lastRuntimeErrorAgeMs: lastRuntimeErrorAt > 0 ? Math.round(now - lastRuntimeErrorAt) : null,
     droppedPhysicsMs: Math.round(ballController.physicsState.droppedSeconds * 1000)
   }, null, 2);
+  if (elements.developerPanel.open) {
+    const lastStall = racketStallTelemetry.getLastStall();
+    const trace = lastStall?.trace.filter((_, index, values) =>
+      index === values.length - 1 || index % 10 === 0
+    ).map(sample => ({
+      t: Number((sample.at / 1000).toFixed(2)), packetAge: sample.packetAgeMs === null ? null : Math.round(sample.packetAgeMs),
+      rate: Number(sample.packetRateHz.toFixed(1)), jitter: Number(sample.packetJitterMs.toFixed(1)),
+      duplicates: sample.duplicatePackets, stale: sample.stalePackets, rejected: sample.rejectedPackets,
+      frame: Number(sample.frameDeltaMs.toFixed(1)), physicsAge: Math.round(sample.physicsUpdateAgeMs),
+      visualAge: Math.round(sample.visualUpdateAgeMs), visualChangeAge: Math.round(sample.visualChangeAgeMs),
+      steps: sample.physicsSteps, extrapolation: Math.round(sample.extrapolationMs), state: sample.resamplerState,
+      q: [sample.quaternionX, sample.quaternionY, sample.quaternionZ, sample.quaternionW].map(value => Number(value.toFixed(3))),
+      qAge: sample.quaternionAgeMs === null ? null : Math.round(sample.quaternionAgeMs), errors: sample.runtimeErrors
+    })) ?? [];
+    elements.racketStallTelemetry.textContent = racketStallTelemetry.isStallActive()
+      ? `STALL_DETECTED ${latestStallReasons.join(", ")}\n${JSON.stringify({ trace }, null, 2)}`
+      : lastStall
+        ? `STALL_DETECTED recovered; last=${lastStall.reasons.join(", ")} at ${(lastStall.detectedAt / 1000).toFixed(2)}s\n${JSON.stringify({ trace }, null, 2)}`
+        : `STALL_CLEAR\n${JSON.stringify({ rollingSamples: racketStallTelemetry.snapshot().length }, null, 2)}`;
+  }
   telemetryWindowStartedAt = now;
   telemetryPreviousPhysicsSteps = ballController.physicsState.totalSteps;
   telemetryFrames = 0;
