@@ -134,7 +134,36 @@ export function calculateOutgoingVelocity(
   return { velocity, spinVector, speed: velocity.length(), direction, prediction: predictReturnTrajectory(contactPointWorld, velocity) };
 }
 
-export function predictReturnTrajectory(position: THREE.Vector3, velocity: THREE.Vector3): ReturnTrajectoryPrediction {
+export function predictReturnTrajectory(
+  position: THREE.Vector3,
+  velocity: THREE.Vector3,
+  spin = new THREE.Vector3()
+): ReturnTrajectoryPrediction {
+  if (spin.lengthSq() > 1e-8) {
+    const p = position.clone();
+    const v = velocity.clone();
+    const acceleration = new THREE.Vector3();
+    const floor = BALL_CONFIG.courtHeight + BALL_CONFIG.scale.physicalRadiusMeters;
+    let netCrossingPoint: THREE.Vector3 | null = null;
+    for (let elapsed = 0; elapsed < 4; elapsed += BALL_CONFIG.physicsStepSeconds) {
+      const previousZ = p.z;
+      acceleration.crossVectors(spin, v).multiplyScalar(BALL_CONFIG.spin.magnusCoefficient)
+        .clampLength(0, BALL_CONFIG.spin.maximumAcceleration);
+      v.x += acceleration.x * BALL_CONFIG.physicsStepSeconds;
+      v.y += (BALL_CONFIG.gravity + acceleration.y) * BALL_CONFIG.physicsStepSeconds;
+      v.z += acceleration.z * BALL_CONFIG.physicsStepSeconds;
+      v.multiplyScalar(1 - BALL_CONFIG.airDrag * BALL_CONFIG.physicsStepSeconds);
+      p.addScaledVector(v, BALL_CONFIG.physicsStepSeconds);
+      if (!netCrossingPoint && previousZ > BALL_CONFIG.launch.netDepth && p.z <= BALL_CONFIG.launch.netDepth) {
+        netCrossingPoint = p.clone();
+      }
+      if (p.y <= floor && v.y < 0) {
+        p.y = floor;
+        return { netCrossingPoint, bouncePoint: p.clone() };
+      }
+    }
+    return { netCrossingPoint, bouncePoint: null };
+  }
   const netTime = velocity.z < 0 ? (BALL_CONFIG.launch.netDepth - position.z) / velocity.z : -1;
   const netCrossingPoint = netTime > 0 ? position.clone().addScaledVector(velocity, netTime) : null;
   if (netCrossingPoint) netCrossingPoint.y += 0.5 * BALL_CONFIG.gravity * netTime ** 2;

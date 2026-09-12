@@ -5,6 +5,8 @@ import { BallController } from "../client-pc/src/ball/BallController.js";
 import { resolvePhysicalImpact } from "../client-pc/src/ball/contactRealism.js";
 import { sweepBallAgainstMovingRacket, sweepBallAgainstRacket } from "../client-pc/src/ball/racketCollider.js";
 import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
+import { calculateMagnusAcceleration, stepBallPhysics } from "../client-pc/src/ball/ballPhysics.js";
+import { BallSnapshot } from "../client-pc/src/ball/ballTypes.js";
 import { StrokeDetectorSnapshot } from "../client-pc/src/strokeDetection/strokeTypes.js";
 
 function impact(overrides: Partial<Parameters<typeof resolvePhysicalImpact>[0]> = {}) {
@@ -15,7 +17,7 @@ function impact(overrides: Partial<Parameters<typeof resolvePhysicalImpact>[0]> 
     racketPosition: new THREE.Vector3(), previousRacketPosition: new THREE.Vector3(),
     racketQuaternion: new THREE.Quaternion(), previousRacketQuaternion: new THREE.Quaternion(),
     frameSeconds: 1 / 60, swingIntent: true, swingConfidence: 0.9,
-    sensorAngularSpeed: 4, angularVelocityWorld: new THREE.Vector3(4, 0, 0),
+    sensorAngularSpeed: 4, angularVelocityWorld: new THREE.Vector3(-4, 0, 0),
     sensorAcceleration: 8, forwardScore: 0.8, upwardScore: 0,
     frameContact: false, ...overrides
   });
@@ -47,10 +49,17 @@ test("weak medium and strong racket motion produce continuous increasing speed",
   assert.ok(strong.outgoingVelocity.length() <= BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
 });
 
+test("very strong motion remains visibly faster than medium motion", () => {
+  const medium = impact({ sensorAngularSpeed: 3.5, angularVelocityWorld: new THREE.Vector3(-3.5, 0, 0) });
+  const veryStrong = impact({ sensorAngularSpeed: 10, angularVelocityWorld: new THREE.Vector3(-10, 0, 0) });
+  assert.ok(veryStrong.powerScore > medium.powerScore + 0.35);
+  assert.ok(veryStrong.outgoingVelocity.length() > medium.outgoingVelocity.length() + 3);
+});
+
 test("upward brush creates topspin, downward brush creates slice, and flat remains low-spin", () => {
   const topspin = impact({ upwardScore: 0.9 });
   const slice = impact({ upwardScore: -0.9 });
-  const flat = impact({ upwardScore: 0, angularVelocityWorld: new THREE.Vector3(0, 0, 0) });
+  const flat = impact({ upwardScore: 0 });
   assert.equal(topspin.spinType, "TOPSPIN");
   assert.equal(slice.spinType, "SLICE");
   assert.equal(flat.spinType, "FLAT");
@@ -58,6 +67,9 @@ test("upward brush creates topspin, downward brush creates slice, and flat remai
   assert.equal(slice.outcome, "SLICE_HIT");
   assert.equal(flat.outcome, "FLAT_HIT");
   assert.ok(topspin.spinRateRadiansPerSecond > flat.spinRateRadiansPerSecond);
+  assert.ok(slice.spinRateRadiansPerSecond > flat.spinRateRadiansPerSecond);
+  assert.ok(topspin.outgoingVelocity.y > flat.outgoingVelocity.y + 1);
+  assert.ok(flat.outgoingVelocity.length() > slice.outgoingVelocity.length());
 });
 
 test("open and closed racket faces change launch height", () => {
@@ -76,6 +88,58 @@ test("sweet spot retains more energy than edge and frame contact", () => {
   assert.ok(sweet.outgoingVelocity.length() > edge.outgoingVelocity.length());
   assert.equal(frame.outcome, "FRAME_CONTACT");
   assert.ok(frame.outgoingVelocity.length() < sweet.outgoingVelocity.length());
+});
+
+test("strong flat, topspin, and slice swings produce distinct valid trajectories", () => {
+  const contactPoint = new THREE.Vector3(0, 1.1, 4);
+  const pivot = contactPoint.clone().add(new THREE.Vector3(0, -0.68, 0));
+  const common = {
+    contactPointWorld: contactPoint,
+    racketPosition: pivot,
+    previousRacketPosition: pivot,
+    sensorAngularSpeed: 7,
+    angularVelocityWorld: new THREE.Vector3(-7, 0, 0)
+  };
+  const flat = impact({ ...common, upwardScore: 0 });
+  const topspin = impact({ ...common, upwardScore: 0.9 });
+  const slice = impact({ ...common, upwardScore: -0.9 });
+  assert.ok((flat.predictedNetClearance ?? -1) > 0);
+  assert.ok((topspin.predictedNetClearance ?? -1) > 0);
+  assert.ok((slice.predictedNetClearance ?? -1) > 0);
+  assert.ok(topspin.launchAngleRadians > flat.launchAngleRadians);
+  assert.ok(flat.outgoingVelocity.y > slice.outgoingVelocity.y);
+  assert.ok(topspin.predictedNetClearance! > flat.predictedNetClearance!);
+  assert.ok(slice.outgoingVelocity.length() < flat.outgoingVelocity.length());
+  assert.notDeepEqual(topspin.outgoingVelocity.toArray(), flat.outgoingVelocity.toArray());
+  assert.notDeepEqual(slice.outgoingVelocity.toArray(), flat.outgoingVelocity.toArray());
+});
+
+test("topspin dips more in flight and rebounds higher than slice", () => {
+  const velocity = new THREE.Vector3(0, 3, -14);
+  const topAcceleration = calculateMagnusAcceleration(new THREE.Vector3(-35, 0, 0), velocity);
+  const flatAcceleration = calculateMagnusAcceleration(new THREE.Vector3(), velocity);
+  const sliceAcceleration = calculateMagnusAcceleration(new THREE.Vector3(22, 0, 0), velocity);
+  assert.ok(topAcceleration.y < flatAcceleration.y);
+  assert.ok(sliceAcceleration.y > flatAcceleration.y);
+
+  const ball = (spinType: "topspin" | "slice", spinX: number): BallSnapshot => ({
+    id: spinType, state: "RETURNED", position: new THREE.Vector3(0, 0.13, 0),
+    previousPosition: new THREE.Vector3(), velocity: new THREE.Vector3(0, -3, -10),
+    spinVector: new THREE.Vector3(spinX, 0, 0), angularVelocity: new THREE.Vector3(spinX, 0, 0),
+    spinType, spinStrength: Math.abs(spinX), magnusAcceleration: new THREE.Vector3(),
+    physicsRadius: BALL_CONFIG.scale.physicalRadiusMeters, visualRadius: 0.15,
+    bounceCount: 0, hit: true, active: true, launchTimestamp: 0, launchPreset: null,
+    contactTarget: new THREE.Vector3(), lockedContactTarget: new THREE.Vector3(),
+    lockedContactQuaternion: new THREE.Quaternion(), lockedStrokeType: "forehand",
+    expectedStrokeType: "forehand", bouncePoint: new THREE.Vector3(),
+    contactTimeAfterBounce: 0, contactDeadline: 0, secondBounceDeadline: 0
+  });
+  const topBall = ball("topspin", -35);
+  const sliceBall = ball("slice", 22);
+  stepBallPhysics(topBall, 1 / 60);
+  stepBallPhysics(sliceBall, 1 / 60);
+  assert.ok(topBall.velocity.y > sliceBall.velocity.y);
+  assert.ok(Math.abs(topBall.velocity.z) > Math.abs(sliceBall.velocity.z));
 });
 
 test("continuous collision catches a high-speed ball and moving-racket midpoint impact", () => {

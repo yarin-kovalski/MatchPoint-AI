@@ -2605,13 +2605,18 @@ function updatePhysicalContactFeedback(): void {
   document.getElementById("shotFeedback")!.hidden = false;
   document.getElementById("shotFeedbackType")!.textContent = `${shotNames[featureSnapshot.shotShape]} ${ballController.ball.expectedStrokeType}`.toUpperCase();
   document.getElementById("shotFeedbackSpeed")!.textContent = elements.playerShotSpeed.textContent;
-  document.getElementById("shotFeedbackDetail")!.textContent = `${featureSnapshot.powerLevel} · ${contactLabel} · ${labels[impact.outcome]} · Spin ${Math.round(impact.spinRateRadiansPerSecond)} rad/s · Quality ${Math.round(impact.contactQuality * 100)}%`;
+  document.getElementById("shotFeedbackDetail")!.textContent = `${featureSnapshot.powerLevel} · ${featureSnapshot.launchTendency} · ${contactLabel} · Spin ${Math.round(impact.spinRateRadiansPerSecond)} rad/s`;
   elements.contactPhysicsDebug.textContent = JSON.stringify({
     outcome: impact.outcome,
     units: { position: "m", velocity: "m/s", angularVelocity: "rad/s", impulse: "m/s equivalent" },
     contactPointWorld: ballController.lastCollision?.contactPointWorld,
     contactPointLocal: ballController.lastCollision?.contactPointLocal,
     sweetSpotDistance: impact.sweetSpotDistance,
+    peakRacketHeadSpeed: impact.racketHeadSpeed,
+    forwardRacketHeadSpeed: impact.forwardRacketHeadSpeed,
+    upwardBrushVelocity: impact.upwardBrushVelocity,
+    downwardBrushVelocity: impact.downwardBrushVelocity,
+    powerScore: impact.powerScore,
     racketContactPointVelocity: impact.racketContactPointVelocity,
     relativeVelocity: impact.relativeVelocity,
     incomingNormalVelocity: impact.incomingNormalVelocity,
@@ -2622,6 +2627,7 @@ function updatePhysicalContactFeedback(): void {
     assistedOutgoingVelocity: impact.assistedOutgoingVelocity,
     outgoingAngularVelocity: impact.outgoingAngularVelocity,
     faceAngleRadians: impact.faceAngleRadians,
+    launchAngleRadians: impact.launchAngleRadians,
     swingPathAngleRadians: impact.swingPathAngleRadians,
     contactQuality: impact.contactQuality,
     forwardDirectionQuality: impact.forwardDirectionQuality,
@@ -2629,6 +2635,7 @@ function updatePhysicalContactFeedback(): void {
     safetyCorrection: impact.safetyCorrection,
     lifecycle: ballController.contactLifecycle,
     predictedNetCrossing: impact.prediction.netCrossingPoint,
+    predictedNetClearance: impact.predictedNetClearance,
     predictedLanding: impact.prediction.bouncePoint
   }, null, 2);
 }

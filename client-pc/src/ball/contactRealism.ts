@@ -51,6 +51,13 @@ export type PhysicalImpactResolution = {
   swingPathAngleRadians: number;
   spinType: PhysicalSpinType;
   spinRateRadiansPerSecond: number;
+  racketHeadSpeed: number;
+  forwardRacketHeadSpeed: number;
+  upwardBrushVelocity: number;
+  downwardBrushVelocity: number;
+  powerScore: number;
+  launchAngleRadians: number;
+  predictedNetClearance: number | null;
   prediction: ReturnTrajectoryPrediction;
   forwardDirectionQuality: number;
 };
@@ -114,11 +121,28 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
     : intentional ? BALL_CONFIG.contactRealism.stringRestitution : BALL_CONFIG.contactRealism.blockRestitution;
   const closingSpeed = Math.max(0, -incomingNormal);
   const racketNormalSpeed = Math.max(0, racketVelocity.dot(normal));
+  const racketHeadSpeed = racketVelocity.length();
+  const forwardRacketHeadSpeed = Math.max(0, racketVelocity.dot(COURT_FORWARD));
+  const powerScore = THREE.MathUtils.clamp(
+    (forwardRacketHeadSpeed * 0.78 + racketHeadSpeed * 0.22 - 0.65) / 6.4,
+    0,
+    1
+  );
   const normalImpulse = closingSpeed * (1 + restitution) + racketNormalSpeed * BALL_CONFIG.contactRealism.racketEnergyTransfer * motionScore;
   const raw = input.incomingVelocity.clone().addScaledVector(normal, normalImpulse);
   if (intentional) {
-    raw.addScaledVector(normal, BALL_CONFIG.contactRealism.maximumAddedSpeed * motionScore * quality * directionQuality);
-    raw.addScaledVector(up, input.upwardScore * BALL_CONFIG.contactRealism.swingLiftInfluence * motionScore);
+    const energyTransfer = BALL_CONFIG.contactRealism.maximumAddedSpeed *
+      (0.12 * motionScore + 0.88 * powerScore) * quality * directionQuality;
+    raw.addScaledVector(normal, energyTransfer);
+    // A forward tennis stroke has a small natural launch even with a neutral
+    // face. Face pitch and the measured vertical path then shape it continuously.
+    raw.y += 1.7 + forwardRacketHeadSpeed * 0.12;
+    const signedFaceLift = THREE.MathUtils.clamp(normal.y, -0.5, 0.5) * Math.max(3, forwardRacketHeadSpeed * 0.7);
+    const verticalPath = THREE.MathUtils.clamp(input.upwardScore, -1, 1);
+    const brushLiftScale = verticalPath >= 0 ? 2.2 : 0.55;
+    const brushLift = verticalPath * BALL_CONFIG.contactRealism.swingLiftInfluence *
+      brushLiftScale * (0.35 + 0.65 * powerScore);
+    raw.y += signedFaceLift + brushLift;
   }
   if (outcome === "STRING_BLOCK" || outcome === "FRAME_CONTACT") raw.multiplyScalar(BALL_CONFIG.contactRealism.passiveDamping);
   raw.clampLength(BALL_CONFIG.contactRealism.minimumSeparationSpeed, BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
@@ -137,6 +161,11 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
   const spinAxis = side.clone().multiplyScalar(-brushUp).addScaledVector(up, brushSide).normalize();
   const outgoingSpin = spinAxis.multiplyScalar(spinRate).add(input.incomingSpin.clone().multiplyScalar(0.2));
   const spinType = classifyPhysicalSpin(brushUp, brushSide, spinRate);
+  if (spinType === "SLICE") {
+    outgoingSpin.multiplyScalar(0.5);
+    raw.x *= 0.78;
+    raw.z *= 0.78;
+  }
   const swingPathAngle = Math.atan2(racketVelocity.dot(up), Math.max(0.001, -racketVelocity.dot(COURT_FORWARD)));
   const assisted = raw.clone();
   const safety = new THREE.Vector3();
@@ -160,10 +189,25 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
     if (assisted.y < BALL_CONFIG.contactRealism.easySafetyMinimumLift) {
       safety.y = BALL_CONFIG.contactRealism.easySafetyMinimumLift - assisted.y;
     }
+    const timeToNet = assisted.z < -0.01
+      ? (BALL_CONFIG.launch.netDepth - input.contactPointWorld.z) / assisted.z
+      : -1;
+    if (timeToNet > 0) {
+      const shapeMargin = spinType === "TOPSPIN" ? 0.3 : spinType === "SLICE" ? 0.2 : 0.12;
+      const requiredHeight = BALL_CONFIG.launch.netHeight + BALL_CONFIG.scale.physicalRadiusMeters + shapeMargin;
+      const requiredLift = (requiredHeight - input.contactPointWorld.y -
+        0.5 * BALL_CONFIG.gravity * timeToNet * timeToNet) / timeToNet;
+      safety.y = Math.max(safety.y, requiredLift - assisted.y);
+    }
     safety.clampLength(0, BALL_CONFIG.contactRealism.maximumSafetyCorrection);
     assisted.copy(raw).add(safety);
   }
   assisted.clampLength(BALL_CONFIG.contactRealism.minimumSeparationSpeed, BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
+  const prediction = predictReturnTrajectory(input.contactPointWorld, assisted, outgoingSpin);
+  const netClearance = prediction.netCrossingPoint
+    ? prediction.netCrossingPoint.y - BALL_CONFIG.launch.netHeight - BALL_CONFIG.scale.physicalRadiusMeters
+    : null;
+  const horizontalSpeed = Math.hypot(assisted.x, assisted.z);
   return {
     outcome, outgoingVelocity: assisted.clone(), outgoingAngularVelocity: outgoingSpin,
     rawOutgoingVelocity: raw, assistedOutgoingVelocity: assisted, safetyCorrection: safety,
@@ -173,7 +217,10 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
     normalImpulse, tangentialImpulse: outgoingSpin.clone().multiplyScalar(BALL_CONFIG.scale.physicalRadiusMeters),
     sweetSpotDistance: normalizedRadius, contactQuality: quality, faceAngleRadians: faceAngle,
     swingPathAngleRadians: swingPathAngle, spinType, spinRateRadiansPerSecond: outgoingSpin.length(),
-    prediction: predictReturnTrajectory(input.contactPointWorld, assisted),
+    racketHeadSpeed, forwardRacketHeadSpeed,
+    upwardBrushVelocity: Math.max(0, brushUp), downwardBrushVelocity: Math.max(0, -brushUp),
+    powerScore, launchAngleRadians: Math.atan2(assisted.y, Math.max(0.001, horizontalSpeed)),
+    predictedNetClearance: netClearance, prediction,
     forwardDirectionQuality
   };
 }

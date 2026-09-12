@@ -12,7 +12,8 @@ test("weak medium and strong contact speeds map continuously in order", () => {
   assert.ok(weak < medium && medium < strong);
   assert.equal(powerLevel(weak), "Weak");
   assert.equal(powerLevel(medium), "Medium");
-  assert.equal(powerLevel(strong), "Strong");
+  assert.equal(powerLevel(strong), "Very Strong");
+  assert.equal(powerLevel(0.7), "Strong");
 });
 
 test("spin shape and launch tendency remain independent", () => {

@@ -25,8 +25,12 @@ export function stepBallPhysics(ball: BallSnapshot, deltaSeconds: number): boole
     const floor = BALL_CONFIG.courtHeight + ball.physicsRadius;
     if (ball.position.y < floor && ball.velocity.y < 0) {
       ball.position.y = floor;
-      ball.velocity.y *= -(ball.state === "RETURNED" ? BALL_CONFIG.returnedBounceRestitution : BALL_CONFIG.bounceRestitution);
-      const spinFriction = ball.spinType === "topspin" ? 1.04 : ball.spinType === "slice" ? 0.88 : 1;
+      const returned = ball.state === "RETURNED";
+      const verticalSpinResponse = returned && ball.spinType === "topspin" ? 1.13
+        : returned && ball.spinType === "slice" ? 0.78 : 1;
+      ball.velocity.y *= -(returned ? BALL_CONFIG.returnedBounceRestitution : BALL_CONFIG.bounceRestitution) * verticalSpinResponse;
+      const spinFriction = returned && ball.spinType === "topspin" ? 1.08
+        : returned && ball.spinType === "slice" ? 0.82 : 1;
       ball.velocity.x *= BALL_CONFIG.groundFriction;
       ball.velocity.z *= BALL_CONFIG.groundFriction * spinFriction;
       ball.bounceCount += 1;

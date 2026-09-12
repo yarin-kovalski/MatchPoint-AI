@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { PhysicalImpactResolution, PhysicalSpinType } from "../ball/contactRealism.js";
 
-export type PowerLevel = "Weak" | "Medium" | "Strong";
+export type PowerLevel = "Weak" | "Medium" | "Strong" | "Very Strong";
 export type LaunchTendency = "Low" | "Neutral" | "High";
 export type ShotShape = "FLAT" | "TOPSPIN" | "SLICE" | "SIDE_SPIN" | "MIXED";
 
@@ -34,7 +34,7 @@ export function continuousPowerScore(contactPointSpeed: number): number {
 }
 
 export function powerLevel(score: number): PowerLevel {
-  return score < 0.34 ? "Weak" : score < 0.7 ? "Medium" : "Strong";
+  return score < 0.25 ? "Weak" : score < 0.55 ? "Medium" : score < 0.82 ? "Strong" : "Very Strong";
 }
 
 export function shotShape(spinType: PhysicalSpinType): ShotShape {
@@ -63,7 +63,7 @@ export function featureSnapshotFromImpact(
     postContactFollowThrough?: THREE.Vector3;
   }
 ): ContactFeatureSnapshot {
-  const score = continuousPowerScore(impact.racketContactPointVelocity.length());
+  const score = impact.powerScore;
   return Object.freeze({
     timestamp,
     peakAngularSpeed: sensor.peakAngularSpeed,
