@@ -58,6 +58,9 @@ export type PhysicalImpactResolution = {
   powerScore: number;
   launchAngleRadians: number;
   predictedNetClearance: number | null;
+  rawLaunchAngleRadians: number;
+  rawSpin: THREE.Vector3;
+  rawPrediction: ReturnTrajectoryPrediction;
   prediction: ReturnTrajectoryPrediction;
   forwardDirectionQuality: number;
 };
@@ -133,10 +136,11 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
   if (intentional) {
     const energyTransfer = BALL_CONFIG.contactRealism.maximumAddedSpeed *
       (0.12 * motionScore + 0.88 * powerScore) * quality * directionQuality;
-    raw.addScaledVector(normal, energyTransfer);
+    const lowSpeedForwardTransfer = 1.4 * (1 - powerScore) * directionQuality;
+    raw.addScaledVector(normal, energyTransfer + lowSpeedForwardTransfer);
     // A forward tennis stroke has a small natural launch even with a neutral
     // face. Face pitch and the measured vertical path then shape it continuously.
-    raw.y += 1.7 + forwardRacketHeadSpeed * 0.12;
+    raw.y += 3.3 + forwardRacketHeadSpeed * 0.06;
     const signedFaceLift = THREE.MathUtils.clamp(normal.y, -0.5, 0.5) * Math.max(3, forwardRacketHeadSpeed * 0.7);
     const verticalPath = THREE.MathUtils.clamp(input.upwardScore, -1, 1);
     const brushLiftScale = verticalPath >= 0 ? 2.2 : 0.55;
@@ -162,10 +166,14 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
   const outgoingSpin = spinAxis.multiplyScalar(spinRate).add(input.incomingSpin.clone().multiplyScalar(0.2));
   const spinType = classifyPhysicalSpin(brushUp, brushSide, spinRate);
   if (spinType === "SLICE") {
-    outgoingSpin.multiplyScalar(0.5);
-    raw.x *= 0.78;
-    raw.z *= 0.78;
+    outgoingSpin.multiplyScalar(0.25);
+    raw.x *= 0.65;
+    raw.z *= 0.65;
   }
+  const rawSpin = outgoingSpin.clone();
+  const rawHorizontalSpeed = Math.hypot(raw.x, raw.z);
+  const rawLaunchAngle = Math.atan2(raw.y, Math.max(0.001, rawHorizontalSpeed));
+  const rawPrediction = predictReturnTrajectory(input.contactPointWorld, raw, rawSpin);
   const swingPathAngle = Math.atan2(racketVelocity.dot(up), Math.max(0.001, -racketVelocity.dot(COURT_FORWARD)));
   const assisted = raw.clone();
   const safety = new THREE.Vector3();
@@ -220,13 +228,15 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
     racketHeadSpeed, forwardRacketHeadSpeed,
     upwardBrushVelocity: Math.max(0, brushUp), downwardBrushVelocity: Math.max(0, -brushUp),
     powerScore, launchAngleRadians: Math.atan2(assisted.y, Math.max(0.001, horizontalSpeed)),
-    predictedNetClearance: netClearance, prediction,
+    predictedNetClearance: netClearance, rawLaunchAngleRadians: rawLaunchAngle,
+    rawSpin, rawPrediction, prediction,
     forwardDirectionQuality
   };
 }
 
 export function isSuccessfulTennisOutcome(outcome: ContactOutcome): boolean {
-  return outcome === "VALID_HIT" || outcome === "TOPSPIN_HIT" || outcome === "FLAT_HIT" || outcome === "SLICE_HIT";
+  return outcome === "VALID_HIT" || outcome === "TOPSPIN_HIT" || outcome === "FLAT_HIT" ||
+    outcome === "SLICE_HIT" || outcome === "OFF_CENTER_HIT";
 }
 
 export function classifyPhysicalSpin(upBrush: number, sideBrush: number, rate: number): PhysicalSpinType {

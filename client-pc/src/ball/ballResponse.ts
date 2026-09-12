@@ -32,6 +32,8 @@ export type ReturnDirectionResolution = {
 export type ReturnTrajectoryPrediction = {
   netCrossingPoint: THREE.Vector3 | null;
   bouncePoint: THREE.Vector3 | null;
+  apexPoint: THREE.Vector3;
+  bounceTimeSeconds: number | null;
 };
 
 export function resolveReturnDirection(input: ReturnDirectionInput): ReturnDirectionResolution {
@@ -131,7 +133,8 @@ export function calculateOutgoingVelocity(
       : 1.5;
   const spinSign = contact.spinType === "slice" ? 1 : -1;
   const spinVector = contact.racketSideVector.clone().normalize().multiplyScalar(spinStrength * spinSign);
-  return { velocity, spinVector, speed: velocity.length(), direction, prediction: predictReturnTrajectory(contactPointWorld, velocity) };
+  return { velocity, spinVector, speed: velocity.length(), direction,
+    prediction: predictReturnTrajectory(contactPointWorld, velocity, spinVector) };
 }
 
 export function predictReturnTrajectory(
@@ -145,6 +148,7 @@ export function predictReturnTrajectory(
     const acceleration = new THREE.Vector3();
     const floor = BALL_CONFIG.courtHeight + BALL_CONFIG.scale.physicalRadiusMeters;
     let netCrossingPoint: THREE.Vector3 | null = null;
+    let apexPoint = p.clone();
     for (let elapsed = 0; elapsed < 4; elapsed += BALL_CONFIG.physicsStepSeconds) {
       const previousZ = p.z;
       acceleration.crossVectors(spin, v).multiplyScalar(BALL_CONFIG.spin.magnusCoefficient)
@@ -154,15 +158,17 @@ export function predictReturnTrajectory(
       v.z += acceleration.z * BALL_CONFIG.physicsStepSeconds;
       v.multiplyScalar(1 - BALL_CONFIG.airDrag * BALL_CONFIG.physicsStepSeconds);
       p.addScaledVector(v, BALL_CONFIG.physicsStepSeconds);
+      if (p.y > apexPoint.y) apexPoint = p.clone();
       if (!netCrossingPoint && previousZ > BALL_CONFIG.launch.netDepth && p.z <= BALL_CONFIG.launch.netDepth) {
         netCrossingPoint = p.clone();
       }
       if (p.y <= floor && v.y < 0) {
         p.y = floor;
-        return { netCrossingPoint, bouncePoint: p.clone() };
+        return { netCrossingPoint, bouncePoint: p.clone(), apexPoint,
+          bounceTimeSeconds: elapsed + BALL_CONFIG.physicsStepSeconds };
       }
     }
-    return { netCrossingPoint, bouncePoint: null };
+    return { netCrossingPoint, bouncePoint: null, apexPoint, bounceTimeSeconds: null };
   }
   const netTime = velocity.z < 0 ? (BALL_CONFIG.launch.netDepth - position.z) / velocity.z : -1;
   const netCrossingPoint = netTime > 0 ? position.clone().addScaledVector(velocity, netTime) : null;
@@ -172,5 +178,8 @@ export function predictReturnTrajectory(
   const bounceTime = discriminant >= 0 ? (-velocity.y - Math.sqrt(discriminant)) / BALL_CONFIG.gravity : -1;
   const bouncePoint = bounceTime > 0 ? position.clone().addScaledVector(velocity, bounceTime) : null;
   if (bouncePoint) bouncePoint.y = floor;
-  return { netCrossingPoint, bouncePoint };
+  const apexTime = Math.max(0, -velocity.y / BALL_CONFIG.gravity);
+  const apexPoint = position.clone().addScaledVector(velocity, apexTime);
+  apexPoint.y += 0.5 * BALL_CONFIG.gravity * apexTime ** 2;
+  return { netCrossingPoint, bouncePoint, apexPoint, bounceTimeSeconds: bounceTime > 0 ? bounceTime : null };
 }

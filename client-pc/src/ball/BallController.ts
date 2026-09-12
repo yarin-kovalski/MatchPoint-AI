@@ -452,12 +452,37 @@ export class BallController {
       this.lastCollision.contactPointWorld,
       incoming
     );
-    this.lastResponse = response;
-    this.ball.velocity.copy(response.velocity);
-    this.ball.spinVector.copy(response.spinVector);
-    this.ball.angularVelocity.copy(response.spinVector);
-    this.ball.spinType = effectiveContact.spinType;
-    this.ball.spinStrength = response.spinVector.length();
+    const physicalRacketUp = new THREE.Vector3(0, 1, 0).applyQuaternion(effectiveContact.racketQuaternion).normalize();
+    const pivot = this.lastCollision.contactPointWorld.clone().addScaledVector(
+      physicalRacketUp,
+      -BALL_CONFIG.contactRealism.pivotToSweetSpotMeters
+    );
+    const physical = resolvePhysicalImpact({
+      incomingVelocity: incoming, incomingSpin: this.ball.spinVector.clone(),
+      contactPointWorld: this.lastCollision.contactPointWorld.clone(),
+      contactPointLocal: this.lastCollision.contactPointLocal.clone(),
+      racketPosition: pivot, previousRacketPosition: pivot,
+      racketQuaternion: effectiveContact.racketQuaternion,
+      previousRacketQuaternion: effectiveContact.racketQuaternion,
+      frameSeconds: 1 / 60, swingIntent: true, swingConfidence: effectiveContact.confidence,
+      sensorAngularSpeed: easyMotion?.swingIntent?.peakAngularSpeed ?? easyMotion?.angularSpeed ?? effectiveContact.peakAngularVelocity,
+      angularVelocityWorld: easyMotion?.angularVelocityWorld ?? effectiveContact.racketSideVector.clone()
+        .multiplyScalar(-effectiveContact.peakAngularVelocity),
+      sensorAcceleration: easyMotion?.accelerationMagnitude ?? effectiveContact.peakAcceleration,
+      forwardScore: easyMotion?.motionForwardScore ?? effectiveContact.forwardScore,
+      upwardScore: easyMotion?.motionUpwardScore ?? effectiveContact.upwardScore,
+      frameContact: this.lastCollision.frameContact
+    });
+    this.lastPhysicalImpact = physical;
+    if (!isSuccessfulTennisOutcome(physical.outcome)) return;
+    this.lastResponse = { ...response, velocity: physical.outgoingVelocity.clone(),
+      spinVector: physical.outgoingAngularVelocity.clone(), speed: physical.outgoingVelocity.length(),
+      prediction: physical.prediction };
+    this.ball.velocity.copy(physical.outgoingVelocity);
+    this.ball.spinVector.copy(physical.outgoingAngularVelocity);
+    this.ball.angularVelocity.copy(physical.outgoingAngularVelocity);
+    this.ball.spinType = physical.spinType === "TOPSPIN" ? "topspin" : physical.spinType === "SLICE" ? "slice" : "flat";
+    this.ball.spinStrength = physical.spinRateRadiansPerSecond;
     this.ball.hit = true;
     this.ball.state = "RETURNED";
     const detectedStrokeType = contact?.strokeType ?? "unknown";
@@ -478,8 +503,8 @@ export class BallController {
       contactPointWorld: this.lastCollision.contactPointWorld.clone(),
       contactPointRacketLocal: this.lastCollision.contactPointLocal.clone(),
       racketQuaternion: effectiveContact.racketQuaternion.clone(), racketFaceNormal: effectiveContact.racketFaceNormal.clone(),
-      incomingVelocity: incoming, outgoingVelocity: response.velocity.clone(), outgoingSpeed: response.speed,
-      spinType: effectiveContact.spinType, spinVector: response.spinVector.clone(), topspinScore: effectiveContact.topspinScore,
+      incomingVelocity: incoming, outgoingVelocity: physical.outgoingVelocity.clone(), outgoingSpeed: physical.outgoingVelocity.length(),
+      spinType: this.ball.spinType, spinVector: physical.outgoingAngularVelocity.clone(), topspinScore: effectiveContact.topspinScore,
       sliceScore: effectiveContact.sliceScore, racketFaceAngle: effectiveContact.racketFaceAngle
     };
     this.lastHit = event;

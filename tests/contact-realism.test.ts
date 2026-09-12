@@ -112,6 +112,32 @@ test("strong flat, topspin, and slice swings produce distinct valid trajectories
   assert.ok(slice.outgoingVelocity.length() < flat.outgoingVelocity.length());
   assert.notDeepEqual(topspin.outgoingVelocity.toArray(), flat.outgoingVelocity.toArray());
   assert.notDeepEqual(slice.outgoingVelocity.toArray(), flat.outgoingVelocity.toArray());
+  assert.ok(topspin.prediction.apexPoint.y > flat.prediction.apexPoint.y + 0.5);
+  assert.ok(slice.prediction.bounceTimeSeconds! > flat.prediction.bounceTimeSeconds! + 0.15);
+  assert.ok(Math.abs(slice.prediction.bouncePoint!.z - flat.prediction.bouncePoint!.z) > 1);
+});
+
+test("power controls landing depth without a common target or dominant safety correction", () => {
+  const contactPoint = new THREE.Vector3(0, 1.1, 4);
+  const pivot = contactPoint.clone().add(new THREE.Vector3(0, -0.68, 0));
+  const powered = (angularSpeed: number) => impact({
+    contactPointWorld: contactPoint, racketPosition: pivot, previousRacketPosition: pivot,
+    sensorAngularSpeed: angularSpeed,
+    angularVelocityWorld: new THREE.Vector3(-angularSpeed, 0, 0), upwardScore: 0
+  });
+  const weak = powered(1.25);
+  const medium = powered(3.5);
+  const strong = powered(7);
+  const veryStrong = powered(10);
+  const depths = [weak, medium, strong, veryStrong].map(value => value.prediction.bouncePoint!.z);
+  assert.ok(depths[0] > depths[1] && depths[1] > depths[2] && depths[2] > depths[3]);
+  assert.ok(new Set(depths.map(depth => depth.toFixed(2))).size === 4);
+  for (const result of [weak, medium, strong, veryStrong]) {
+    assert.ok(result.safetyCorrection.length() <= BALL_CONFIG.contactRealism.maximumSafetyCorrection + 1e-9);
+    assert.ok(result.safetyCorrection.length() < result.outgoingVelocity.length() * 0.1);
+    assert.ok(result.rawPrediction.bouncePoint);
+    assert.ok(result.outgoingVelocity.clone().sub(result.rawOutgoingVelocity).distanceTo(result.safetyCorrection) < 1e-8);
+  }
 });
 
 test("topspin dips more in flight and rebounds higher than slice", () => {
