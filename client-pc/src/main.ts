@@ -30,6 +30,7 @@ import { MOTION_CONFIG } from "./motion/motionConfig.js";
 import { FrameTelemetry } from "./diagnostics/frameTelemetry.js";
 import { RacketStallTelemetry } from "./diagnostics/racketStallTelemetry.js";
 import { adaptiveVisualSmoothingFactor, SensorResampler, updateVisualRacketQuaternion } from "./motion/sensorResampler.js";
+import { ForwardSwingFusion } from "./motion/forwardSwingFusion.js";
 import {
   NormalizedSensorFrame,
   SensorNormalizer, phoneVectorToThreeVector
@@ -450,6 +451,7 @@ const ghostFarColor = new THREE.Color(0xff3048);
 const ghostAlignedColor = new THREE.Color(0x8dff75);
 const ghostCurrentColor = new THREE.Color();
 const sensorNormalizer = new SensorNormalizer();
+const forwardSwingFusion = new ForwardSwingFusion();
 const sensorResampler = new SensorResampler();
 const motionRecorder = new MotionRecorder();
 const gameplayDiagnosticRecorder = new GameplayDiagnosticRecorder();
@@ -880,6 +882,7 @@ socket.on("continuous_orientation", (payload: unknown) => {
       orientationPacket.accelerationIncludingGravity
     )
   });
+  forwardSwingFusion.add(processedFrame);
   if (processedFrame.valid) {
     if (!hasIncomingTelemetryQuaternion || incomingTelemetryQuaternion.angleTo(processedFrame.relativePhoneQuaternion) > 1e-5) {
       incomingTelemetryQuaternion.copy(processedFrame.relativePhoneQuaternion);
@@ -1381,6 +1384,7 @@ function beginCalibration(currentPhoneQuaternion: THREE.Quaternion): void {
   neutralPhoneQuaternion.copy(currentPhoneQuaternion).normalize();
   calibrationBaselineInverse.copy(neutralPhoneQuaternion).invert();
   sensorNormalizer.reset();
+  forwardSwingFusion.reset();
   sensorResampler.reset();
   latestSensorFrame = null;
   hasCalibrationBaseline = true;
@@ -1570,6 +1574,9 @@ function createEasyHitMotion(): EasyHitMotion | null {
     latestSensorFrame.timestamp,
     expectedStroke
   );
+  const playerBasis = (activeCalibrationProfile ?? trajectoryProfiles[expectedStroke] ??
+    createDefaultTrajectoryProfile(expectedStroke, strokeStateMachine.getHandedness())).playerBasisAtCalibration;
+  const forwardSwing = forwardSwingFusion.snapshot(latestSensorFrame.timestamp, playerBasis) ?? undefined;
   return {
     valid: latestSensorFrame.valid,
     angularSpeed: latestSensorFrame.angularSpeed,
@@ -1586,7 +1593,8 @@ function createEasyHitMotion(): EasyHitMotion | null {
     motionSidewaysScore: latestSensorFrame.motionSidewaysScore,
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle(),
-    swingIntent
+    swingIntent,
+    forwardSwing
   };
 }
 
@@ -2640,6 +2648,14 @@ function updatePhysicalContactFeedback(): void {
     swingPathAngleRadians: impact.swingPathAngleRadians,
     contactQuality: impact.contactQuality,
     forwardDirectionQuality: impact.forwardDirectionQuality,
+    forwardAcceleration: impact.forwardAcceleration,
+    upwardAcceleration: impact.upwardAcceleration,
+    lateralAcceleration: impact.lateralAcceleration,
+    forwardRacketHeadVelocity: impact.forwardRacketHeadSpeed,
+    upwardRacketHeadVelocity: impact.upwardRacketHeadSpeed,
+    lateralRacketHeadVelocity: impact.lateralRacketHeadSpeed,
+    forwardDriveScore: impact.forwardDriveScore,
+    invalidDirectionReason: impact.invalidDirectionReason,
     alignmentAssistance: appliedContactCorrection,
     safetyCorrection: impact.safetyCorrection,
     safetyCorrectionMagnitude: impact.safetyCorrection.length(),

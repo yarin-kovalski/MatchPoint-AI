@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { BackhandStyle, Handedness, SpinType, StrokeType } from "../strokeDetection/strokeTypes.js";
 import type { EasySwingIntentSnapshot } from "../strokeDetection/easySwingIntent.js";
+import type { ForwardSwingSnapshot } from "../motion/forwardSwingFusion.js";
 
 export type BallState = "IDLE" | "IN_FLIGHT_TO_PLAYER" | "BOUNCED" | "CONTACT_ZONE" | "RETURNED" | "MISSED" | "OUT" | "RESETTING";
 export type LaunchPreset = "easyForehand" | "easyBackhand" | "guaranteedForehand" | "guaranteedBackhand" | "centerPractice";
@@ -27,6 +28,7 @@ export type EasyHitMotion = {
   handedness: Handedness;
   backhandStyle: BackhandStyle;
   swingIntent?: EasySwingIntentSnapshot;
+  forwardSwing?: ForwardSwingSnapshot;
 };
 
 export type HitDebugSnapshot = {

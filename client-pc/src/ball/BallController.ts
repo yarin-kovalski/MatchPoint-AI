@@ -305,7 +305,8 @@ export class BallController {
       sensorAcceleration: motion?.accelerationMagnitude ?? contact?.peakAcceleration ?? 0,
       forwardScore: motion?.motionForwardScore ?? contact?.forwardScore ?? 0,
       upwardScore: contact?.upwardScore ?? motion?.motionUpwardScore ?? 0,
-      frameContact: this.lastCollision.frameContact
+      frameContact: this.lastCollision.frameContact,
+      forwardSwing: motion?.forwardSwing
     });
     this.lastPhysicalImpact = resolution;
     const incoming = this.ball.velocity.clone();
@@ -378,7 +379,8 @@ export class BallController {
       sensorAngularSpeed: motion.swingIntent?.peakAngularSpeed ?? motion.angularSpeed,
       angularVelocityWorld: motion.angularVelocityWorld,
       sensorAcceleration: motion.accelerationMagnitude, forwardScore: motion.motionForwardScore,
-      upwardScore: effectiveContact.upwardScore, frameContact: false
+      upwardScore: effectiveContact.upwardScore, frameContact: false,
+      forwardSwing: motion.forwardSwing
     });
     this.ball.position.copy(calibratedPoint);
     this.ball.previousPosition.copy(calibratedPoint);
@@ -471,7 +473,8 @@ export class BallController {
       sensorAcceleration: easyMotion?.accelerationMagnitude ?? effectiveContact.peakAcceleration,
       forwardScore: easyMotion?.motionForwardScore ?? effectiveContact.forwardScore,
       upwardScore: easyMotion?.motionUpwardScore ?? effectiveContact.upwardScore,
-      frameContact: this.lastCollision.frameContact
+      frameContact: this.lastCollision.frameContact,
+      forwardSwing: easyMotion?.forwardSwing
     });
     this.lastPhysicalImpact = physical;
     if (!isSuccessfulTennisOutcome(physical.outcome)) return;

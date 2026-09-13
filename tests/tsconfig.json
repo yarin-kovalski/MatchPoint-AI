@@ -33,6 +33,7 @@
     "racket-stall-telemetry.test.ts",
     "sensor-ui-throttle.test.ts",
     "stroke-fidelity.test.ts",
+    "forward-swing-fusion.test.ts",
     "../client-pc/src/ball/validatedTrajectoryPreset.ts",
     "../client-pc/src/diagnostics/**/*.ts",
     "../client-pc/src/motion/**/*.ts",

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { BALL_CONFIG } from "./ballConfig.js";
 import { predictReturnTrajectory, ReturnTrajectoryPrediction } from "./ballResponse.js";
+import type { ForwardSwingSnapshot, InvalidDirectionReason } from "../motion/forwardSwingFusion.js";
 
 export type ContactOutcome =
   | "NO_CONTACT" | "FRAME_CONTACT" | "STRING_BLOCK" | "WEAK_CONTACT"
@@ -27,6 +28,7 @@ export type PhysicalImpactInput = {
   forwardScore: number;
   upwardScore: number;
   frameContact: boolean;
+  forwardSwing?: ForwardSwingSnapshot;
 };
 
 export type PhysicalImpactResolution = {
@@ -63,6 +65,13 @@ export type PhysicalImpactResolution = {
   rawPrediction: ReturnTrajectoryPrediction;
   prediction: ReturnTrajectoryPrediction;
   forwardDirectionQuality: number;
+  forwardDriveScore: number;
+  forwardAcceleration: number;
+  upwardAcceleration: number;
+  lateralAcceleration: number;
+  upwardRacketHeadSpeed: number;
+  lateralRacketHeadSpeed: number;
+  invalidDirectionReason: InvalidDirectionReason;
 };
 
 const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1);
@@ -94,6 +103,7 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
   const up = LOCAL_UP.clone().applyQuaternion(input.racketQuaternion).normalize();
   const side = LOCAL_SIDE.clone().applyQuaternion(input.racketQuaternion).normalize();
   const racketVelocity = estimateRacketContactPointVelocity(input);
+  if (input.forwardSwing) racketVelocity.lerp(input.forwardSwing.racketHeadVelocityWorld, 0.55);
   racketVelocity.addScaledVector(
     up,
     THREE.MathUtils.clamp(input.upwardScore, -1, 1) * BALL_CONFIG.contactRealism.maximumInferredSwingTranslation
@@ -110,7 +120,8 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
     (input.sensorAngularSpeed - BALL_CONFIG.contactRealism.blockAngularSpeed) /
       (BALL_CONFIG.contactRealism.strongAngularSpeed - BALL_CONFIG.contactRealism.blockAngularSpeed), 0, 1
   );
-  const directionQuality = THREE.MathUtils.clamp((input.forwardScore + 0.15) / 0.75, 0, 1);
+  const fusedForwardScore = input.forwardSwing?.forwardDriveScore ?? input.forwardScore;
+  const directionQuality = THREE.MathUtils.clamp((fusedForwardScore + 0.15) / 0.75, 0, 1);
   const faceAngle = Math.acos(THREE.MathUtils.clamp(normal.dot(COURT_FORWARD), -1, 1));
   const severeFace = faceAngle > BALL_CONFIG.contactRealism.mishitFaceAngle;
   const intentional = input.swingIntent && motionScore > 0 && input.swingConfidence >= BALL_CONFIG.contactRealism.minimumIntentConfidence;
@@ -147,6 +158,31 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
     const brushLift = verticalPath * BALL_CONFIG.contactRealism.swingLiftInfluence *
       brushLiftScale * (0.35 + 0.65 * powerScore);
     raw.y += signedFaceLift + brushLift;
+    if (input.forwardSwing && input.forwardSwing.invalidDirectionReason === "NONE") {
+      const horizontalSpeed = Math.hypot(raw.x, raw.z);
+      if (horizontalSpeed > 0.001) {
+        const contactSpread = THREE.MathUtils.clamp(
+          input.contactPointLocal.x / Math.max(BALL_CONFIG.collision.halfWidthLocal, 0.001), -1, 1
+        );
+        const lateralMotion = THREE.MathUtils.clamp(
+          input.forwardSwing.lateralRacketHeadVelocity / 8 + input.forwardSwing.lateralAcceleration / 20,
+          -1, 1
+        );
+        const maximumSideRatio = THREE.MathUtils.lerp(0.08, 0.3, 1 - quality);
+        const sideRatio = THREE.MathUtils.clamp(
+          lateralMotion * 0.16 + contactSpread * (1 - quality) * 0.18,
+          -maximumSideRatio, maximumSideRatio
+        );
+        const desired = new THREE.Vector3(sideRatio, 0, -1).normalize();
+        const measured = new THREE.Vector3(raw.x, 0, raw.z).normalize();
+        const forwardBlend = THREE.MathUtils.clamp(0.35 + input.forwardSwing.forwardDriveScore * 0.45, 0.35, 0.78);
+        measured.lerp(desired, forwardBlend * quality).normalize().multiplyScalar(horizontalSpeed);
+        raw.x = measured.x;
+        raw.z = measured.z;
+      }
+      raw.y += THREE.MathUtils.clamp(input.forwardSwing.upwardAcceleration / 12, -0.35, 0.65) *
+        (0.5 + powerScore);
+    }
   }
   if (outcome === "STRING_BLOCK" || outcome === "FRAME_CONTACT") raw.multiplyScalar(BALL_CONFIG.contactRealism.passiveDamping);
   raw.clampLength(BALL_CONFIG.contactRealism.minimumSeparationSpeed, BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
@@ -178,7 +214,16 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
   const assisted = raw.clone();
   const safety = new THREE.Vector3();
   const forwardDirectionQuality = raw.lengthSq() > 1e-8 ? raw.clone().normalize().dot(COURT_FORWARD) : -1;
-  if ((outcome === "VALID_HIT" || outcome === "OFF_CENTER_HIT") &&
+  let invalidDirectionReason: InvalidDirectionReason = input.forwardSwing?.invalidDirectionReason ?? "NONE";
+  if (invalidDirectionReason === "NONE" && quality < BALL_CONFIG.contactRealism.offCenterQuality &&
+      forwardDirectionQuality < BALL_CONFIG.contactRealism.minimumForwardDirectionQuality) {
+    invalidDirectionReason = "OFF_CENTER_DIRECTION_LOSS";
+  }
+  if (intentional && !input.frameContact && input.forwardSwing &&
+      invalidDirectionReason !== "NONE") {
+    outcome = "INVALID_SHOT_DIRECTION";
+    assisted.multiplyScalar(BALL_CONFIG.contactRealism.invalidDirectionDamping);
+  } else if ((outcome === "VALID_HIT" || outcome === "OFF_CENTER_HIT") &&
       forwardDirectionQuality < BALL_CONFIG.contactRealism.minimumForwardDirectionQuality) {
     outcome = "INVALID_SHOT_DIRECTION";
     assisted.multiplyScalar(BALL_CONFIG.contactRealism.invalidDirectionDamping);
@@ -230,7 +275,14 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
     powerScore, launchAngleRadians: Math.atan2(assisted.y, Math.max(0.001, horizontalSpeed)),
     predictedNetClearance: netClearance, rawLaunchAngleRadians: rawLaunchAngle,
     rawSpin, rawPrediction, prediction,
-    forwardDirectionQuality
+    forwardDirectionQuality,
+    forwardDriveScore: fusedForwardScore,
+    forwardAcceleration: input.forwardSwing?.forwardAcceleration ?? 0,
+    upwardAcceleration: input.forwardSwing?.upwardAcceleration ?? 0,
+    lateralAcceleration: input.forwardSwing?.lateralAcceleration ?? 0,
+    upwardRacketHeadSpeed: input.forwardSwing?.upwardRacketHeadVelocity ?? racketVelocity.y,
+    lateralRacketHeadSpeed: input.forwardSwing?.lateralRacketHeadVelocity ?? racketVelocity.x,
+    invalidDirectionReason
   };
 }
 

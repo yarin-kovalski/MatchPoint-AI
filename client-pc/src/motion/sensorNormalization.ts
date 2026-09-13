@@ -85,9 +85,15 @@ export class SensorNormalizer {
     }
 
     const rawAcceleration = phoneVectorToThreeVector(input.accelerationMps2);
+    // Expo's `acceleration` has gravity removed, but remains in phone-local
+    // coordinates. Rotate it by the calibrated relative phone pose before any
+    // tennis-direction scoring. The racket model correction is deliberately not
+    // used here: it aligns mesh axes and is not part of the accelerometer frame.
+    const worldLinearAcceleration = rawAcceleration.clone()
+      .applyQuaternion(input.relativePhoneQuaternion);
     const accelerationIncludingGravity = phoneVectorToThreeVector(
       input.accelerationIncludingGravityMps2
-    );
+    ).applyQuaternion(input.relativePhoneQuaternion);
     const accelerationInvalid =
       !isFiniteVector(rawAcceleration) ||
       rawAcceleration.length() > MOTION_CONFIG.validation.maximumAccelerationMps2;
@@ -133,12 +139,12 @@ export class SensorNormalizer {
     this.previousSmoothedAcceleration.copy(this.smoothedAcceleration);
     smoothVector(
       this.smoothedAcceleration,
-      rawAcceleration,
+      worldLinearAcceleration,
       this.hasAccelerationHistory ? MOTION_CONFIG.smoothing.acceleration : 1
     );
     smoothVector(
       this.fastAcceleration,
-      rawAcceleration,
+      worldLinearAcceleration,
       this.hasAccelerationHistory ? MOTION_CONFIG.smoothing.fastAcceleration : 1
     );
     const jerk = this.hasAccelerationHistory
@@ -164,7 +170,7 @@ export class SensorNormalizer {
       angularSpeed,
       rawAcceleration,
       accelerationIncludingGravity,
-      gravityCompensatedAcceleration: rawAcceleration.clone(),
+      gravityCompensatedAcceleration: worldLinearAcceleration.clone(),
       smoothedAcceleration: this.smoothedAcceleration.clone(),
       fastAcceleration: this.fastAcceleration.clone(),
       accelerationMagnitude: this.fastAcceleration.length(),

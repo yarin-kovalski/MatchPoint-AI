@@ -8,6 +8,17 @@ import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
 import { calculateMagnusAcceleration, stepBallPhysics } from "../client-pc/src/ball/ballPhysics.js";
 import { BallSnapshot } from "../client-pc/src/ball/ballTypes.js";
 import { StrokeDetectorSnapshot } from "../client-pc/src/strokeDetection/strokeTypes.js";
+import { ForwardSwingSnapshot } from "../client-pc/src/motion/forwardSwingFusion.js";
+
+function fusedSwing(overrides: Partial<ForwardSwingSnapshot> = {}): ForwardSwingSnapshot {
+  return {
+    windowDurationMs: 160, sampleCount: 9, forwardAcceleration: 8,
+    upwardAcceleration: 0, lateralAcceleration: 0, peakForwardAcceleration: 11,
+    racketHeadVelocityWorld: new THREE.Vector3(0, 0, -7), forwardRacketHeadVelocity: 7,
+    upwardRacketHeadVelocity: 0, lateralRacketHeadVelocity: 0, angularSpeed: 8,
+    faceAngleRadians: 0.1, forwardDriveScore: 0.8, invalidDirectionReason: "NONE", ...overrides
+  };
+}
 
 function impact(overrides: Partial<Parameters<typeof resolvePhysicalImpact>[0]> = {}) {
   const contact = new THREE.Vector3(0, 0.68, 0);
@@ -88,6 +99,42 @@ test("sweet spot retains more energy than edge and frame contact", () => {
   assert.ok(sweet.outgoingVelocity.length() > edge.outgoingVelocity.length());
   assert.equal(frame.outcome, "FRAME_CONTACT");
   assert.ok(frame.outgoingVelocity.length() < sweet.outgoingVelocity.length());
+});
+
+test("fused forehand and backhand intent both travel forward with bounded physical spread", () => {
+  const forehand = impact({ forwardSwing: fusedSwing({ lateralRacketHeadVelocity: 2 }) });
+  const backhand = impact({ forwardSwing: fusedSwing({ lateralRacketHeadVelocity: -2 }) });
+  assert.ok(forehand.outgoingVelocity.z < 0);
+  assert.ok(backhand.outgoingVelocity.z < 0);
+  assert.ok(Math.abs(forehand.outgoingVelocity.x / forehand.outgoingVelocity.z) < 0.3);
+  assert.ok(Math.abs(backhand.outgoingVelocity.x / backhand.outgoingVelocity.z) < 0.3);
+  assert.ok(Math.sign(forehand.outgoingVelocity.x) !== Math.sign(backhand.outgoingVelocity.x));
+});
+
+test("fused direction rejects backward intent and off-center contact increases spread", () => {
+  const backward = impact({ forwardSwing: fusedSwing({
+    forwardAcceleration: -6, forwardRacketHeadVelocity: -3, forwardDriveScore: -0.4,
+    racketHeadVelocityWorld: new THREE.Vector3(0, 0, 3), invalidDirectionReason: "BACKWARD_SWING"
+  }) });
+  const sweet = impact({ forwardSwing: fusedSwing({ lateralRacketHeadVelocity: 1 }) });
+  const offCenter = impact({
+    contactPointLocal: new THREE.Vector3(BALL_CONFIG.collision.halfWidthLocal * 0.75, 0, 0),
+    forwardSwing: fusedSwing({ lateralRacketHeadVelocity: 1 })
+  });
+  assert.equal(backward.outcome, "INVALID_SHOT_DIRECTION");
+  assert.ok(Math.abs(sweet.outgoingVelocity.x / sweet.outgoingVelocity.z) <
+    Math.abs(offCenter.outgoingVelocity.x / offCenter.outgoingVelocity.z));
+});
+
+test("upward fused acceleration raises launch while forward strength preserves depth ordering", () => {
+  const weak = impact({ forwardSwing: fusedSwing({
+    forwardDriveScore: 0.3, forwardAcceleration: 2, peakForwardAcceleration: 3,
+    forwardRacketHeadVelocity: 2.5, racketHeadVelocityWorld: new THREE.Vector3(0, 0, -2.5)
+  }) });
+  const strong = impact({ forwardSwing: fusedSwing() });
+  const upward = impact({ forwardSwing: fusedSwing({ upwardAcceleration: 8 }) });
+  assert.ok(strong.prediction.bouncePoint!.z < weak.prediction.bouncePoint!.z);
+  assert.ok(upward.launchAngleRadians > strong.launchAngleRadians);
 });
 
 test("strong flat, topspin, and slice swings produce distinct valid trajectories", () => {
