@@ -35,6 +35,8 @@
     "stroke-fidelity.test.ts",
     "forward-swing-fusion.test.ts",
     "feed-comfort-camera.test.ts",
+    "racket-origin-stability.test.ts",
+    "training-miss-diagnostics.test.ts",
     "../client-pc/src/ball/validatedTrajectoryPreset.ts",
     "../client-pc/src/diagnostics/**/*.ts",
     "../client-pc/src/motion/**/*.ts",

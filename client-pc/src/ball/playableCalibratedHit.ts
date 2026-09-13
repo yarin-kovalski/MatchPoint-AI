@@ -62,13 +62,21 @@ export function evaluatePlayableCalibratedHit(input: {
   const localContact = worldToPlayerLocal(new THREE.Vector3().fromArray(input.profile.contactPointWorld), input.profile.playerBasisAtCalibration);
   const correctSide = input.expectedStrokeType === "forehand" ? localContact.x > 0 : localContact.x < 0;
   if (input.profile.strokeType !== input.expectedStrokeType || !correctSide) return { ...base, accepted: false, reason: "WRONG_STROKE_SIDE" };
-  const forwardDriveScore = input.motion?.forwardSwing?.forwardDriveScore ?? input.motion?.motionForwardScore ?? 0;
+  const fusedForwardScore = input.motion?.forwardSwing?.forwardDriveScore ?? 0;
+  const measuredForwardScore = input.motion?.motionForwardScore ?? 0;
+  const forwardDriveScore = (input.assistLevel ?? "training") === "training"
+    ? Math.max(fusedForwardScore, measuredForwardScore)
+    : input.motion?.forwardSwing?.forwardDriveScore ?? measuredForwardScore;
+  const fusedDirectionReason = input.motion?.forwardSwing?.invalidDirectionReason ?? "NONE";
+  const fusedDirectionRejected = (input.assistLevel ?? "training") === "training"
+    ? fusedDirectionReason === "BACKWARD_SWING"
+    : fusedDirectionReason !== "NONE";
   if (!input.motion?.valid || !input.motion.swingIntent?.active ||
       input.now - input.motion.swingIntent.startedAt < BALL_CONFIG.playableCalibratedHit.minimumActiveSwingMs ||
       input.motion.angularSpeed < assist.minimumAngularSpeed ||
       input.motion.accelerationMagnitude < assist.minimumAcceleration ||
       forwardDriveScore < assist.minimumForwardDriveScore ||
-      (input.motion.forwardSwing && input.motion.forwardSwing.invalidDirectionReason !== "NONE")) {
+      fusedDirectionRejected) {
     return { ...base, accepted: false, reason: "NO_REAL_SWING" };
   }
   if (input.motion.swingIntent.strokeType !== input.expectedStrokeType) return { ...base, accepted: false, reason: "WRONG_STROKE_SIDE" };

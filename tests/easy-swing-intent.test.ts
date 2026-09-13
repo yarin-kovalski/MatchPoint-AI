@@ -4,12 +4,14 @@ import test from "node:test";
 import { EasySwingIntentDetector } from "../client-pc/src/strokeDetection/easySwingIntent.js";
 import { getRecordedReachEnvelope } from "../client-pc/src/ball/recordedReachEnvelope.js";
 import { getLaunchParameters } from "../client-pc/src/ball/ballLauncher.js";
+import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
 
 type MotionFrame = {
   timestamp: number;
   angularSpeed: number;
   accelerationMagnitude: number;
   forwardScore: number;
+  preparationScore?: number;
   racketFaceAngle: number;
   sensorValid: boolean;
 };
@@ -18,6 +20,7 @@ type Attempt = {
   createdAt: number;
   attemptType: "forehand" | "backhand";
   motionFrames: MotionFrame[];
+  frames: Array<{ timestamp: number; bounceCount: number }>;
 };
 
 const attempts = [
@@ -36,7 +39,7 @@ function replayIntent(attempt: Attempt): { activated: boolean; peak: number } {
       angularSpeed: frame.angularSpeed,
       accelerationMagnitude: frame.accelerationMagnitude,
       forwardScore: frame.forwardScore,
-      preparationScore: 0.7,
+      preparationScore: frame.preparationScore ?? 0,
       racketFaceAngle: frame.racketFaceAngle
     }, attempt.attemptType);
     activated ||= snapshot.active;
@@ -51,6 +54,34 @@ test("both downloaded human swings activate Easy swing intent", () => {
     assert.equal(replay.activated, true, attempt.attemptType);
     assert.ok(replay.peak > 7, `${attempt.attemptType}: ${replay.peak}`);
   }
+});
+
+test("recorded Forehand and Backhand swings overlap the current Training gate", () => {
+  let accepted = 0;
+  for (const attempt of attempts) {
+    const detector = new EasySwingIntentDetector();
+    const firstBounceAt = attempt.frames.find(frame => frame.bounceCount === 1)?.timestamp;
+    assert.ok(firstBounceAt !== undefined, attempt.attemptType);
+    const contactAt = firstBounceAt! + 820;
+    let hit = false;
+    for (const frame of attempt.motionFrames) {
+      const intent = detector.update({
+        timestamp: frame.timestamp, valid: frame.sensorValid,
+        angularSpeed: frame.angularSpeed, accelerationMagnitude: frame.accelerationMagnitude,
+        forwardScore: frame.forwardScore, preparationScore: frame.preparationScore ?? 0,
+        racketFaceAngle: frame.racketFaceAngle
+      }, attempt.attemptType);
+      hit ||= frame.timestamp >= contactAt - BALL_CONFIG.playerAssist.training.windowBeforeMs &&
+        frame.timestamp <= contactAt + BALL_CONFIG.playerAssist.training.windowAfterMs &&
+        intent.active && frame.timestamp - intent.startedAt >= BALL_CONFIG.playableCalibratedHit.minimumActiveSwingMs &&
+        frame.angularSpeed >= BALL_CONFIG.playerAssist.training.minimumAngularSpeed &&
+        frame.accelerationMagnitude >= BALL_CONFIG.playerAssist.training.minimumAcceleration &&
+        frame.forwardScore >= BALL_CONFIG.playerAssist.training.minimumForwardDriveScore;
+    }
+    assert.equal(hit, true, attempt.attemptType);
+    accepted += Number(hit);
+  }
+  assert.equal(accepted / attempts.length, 1);
 });
 
 test("stationary noise never activates Easy swing intent", () => {

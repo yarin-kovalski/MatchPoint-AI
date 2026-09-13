@@ -97,6 +97,38 @@ test("backward fused intent cannot receive playability assistance", () => {
   assert.equal(decision.reason, "NO_REAL_SWING");
 });
 
+test("Training accepts recorded face-angle variation while Realistic keeps strict fused geometry", () => {
+  const profile = createDefaultTrajectoryProfile("backhand", "right");
+  const realBackhand = motion("backhand");
+  realBackhand.motionForwardScore = 0.53;
+  realBackhand.racketFaceAngle = 1.52;
+  realBackhand.forwardSwing = {
+    windowDurationMs: 160, sampleCount: 8,
+    forwardAcceleration: 3, upwardAcceleration: 1, lateralAcceleration: 2,
+    peakForwardAcceleration: 8, racketHeadVelocityWorld: new THREE.Vector3(2, 1, -5),
+    forwardRacketHeadVelocity: 5, upwardRacketHeadVelocity: 1,
+    lateralRacketHeadVelocity: 2, angularSpeed: 4.8, faceAngleRadians: 1.3,
+    forwardDriveScore: 0.08, invalidDirectionReason: "FACE_TOO_SIDEWAYS"
+  };
+  const input = { now: 1000, contactTime: 1000, bounceCount: 1, alreadyHit: false,
+    expectedStrokeType: "backhand" as const, profile, motion: realBackhand };
+  assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "training" }).accepted, true);
+  assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "realistic" }).reason, "NO_REAL_SWING");
+});
+
+test("Training intent age and contact window use one PC clock domain", () => {
+  const profile = createDefaultTrajectoryProfile("forehand", "right");
+  const realSwing = motion("forehand");
+  const pcContactTime = 1_800_000_000_000;
+  realSwing.swingIntent!.startedAt = pcContactTime - 90;
+  realSwing.swingIntent!.peakAt = pcContactTime - 20;
+  realSwing.swingIntent!.expiresAt = pcContactTime + 230;
+  assert.equal(evaluatePlayableCalibratedHit({
+    now: pcContactTime, contactTime: pcContactTime, bounceCount: 1, alreadyHit: false,
+    expectedStrokeType: "forehand", profile, motion: realSwing, assistLevel: "training"
+  }).accepted, true);
+});
+
 test("Training strike-zone contact resolves without string-plane intersection or snapping", () => {
   const hits: unknown[] = [];
   const controller = new BallController(event => hits.push(event));

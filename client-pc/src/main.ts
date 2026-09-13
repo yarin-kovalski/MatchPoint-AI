@@ -11,6 +11,7 @@ import {
 } from "./ball/trajectoryCalibration.js";
 import { createProceduralTennisBallTexture, integrateBallRotation } from "./ball/ballVisuals.js";
 import { createPlayableStrokePlan } from "./ball/playableCalibratedHit.js";
+import type { PlayableFailureReason } from "./ball/playableCalibratedHit.js";
 import {
   loadTrajectoryProfileWithPriority, markTrajectoryProfileAsUser,
   restoreValidatedTrajectoryPreset, TrajectoryProfileSource, VALIDATED_TRAJECTORY_PRESET
@@ -34,8 +35,12 @@ import { analyzeGameplayDiagnostic, AttemptType, diagnosticMarkdown, GameplayDia
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
 import { FrameTelemetry } from "./diagnostics/frameTelemetry.js";
 import { RacketStallTelemetry } from "./diagnostics/racketStallTelemetry.js";
+import {
+  classifyTrainingMiss, emptyTrainingMissBreakdown, TrainingMissReason
+} from "./diagnostics/trainingMissDiagnostics.js";
 import { adaptiveVisualSmoothingFactor, SensorResampler, updateVisualRacketQuaternion } from "./motion/sensorResampler.js";
 import { ForwardSwingFusion } from "./motion/forwardSwingFusion.js";
+import { stabilizeTrainingRacketOrigin } from "./motion/racketOriginStability.js";
 import {
   NormalizedSensorFrame,
   SensorNormalizer, phoneVectorToThreeVector
@@ -421,6 +426,17 @@ let contactDistanceAfterCorrection = 0;
 let trainingClosestStringBedDistance = Number.POSITIVE_INFINITY;
 let trainingStrikeZoneEntryAt: number | null = null;
 const trainingStringBedCenter = new THREE.Vector3();
+let trainingClosestStrikeZoneMetric = Number.POSITIVE_INFINITY;
+const trainingClosestStrikeZoneOffset = new THREE.Vector3();
+const trainingStrikeZoneOffsetScratch = new THREE.Vector3();
+let trainingMaximumNeutralOriginDriftMeters = 0;
+let trainingSawActiveIntentBeforeWindow = false;
+let trainingSawActiveIntentInWindow = false;
+let trainingSawActiveIntentAfterWindow = false;
+let trainingSawForwardIntentInWindow = false;
+let trainingRejectedInWindow: PlayableFailureReason | null = null;
+const trainingMissBreakdown = emptyTrainingMissBreakdown();
+let lastTrainingMissReasons: TrainingMissReason[] = [];
 let currentFeedVariation: FeedVariationResult | null = null;
 let activeCalibrationProfile: TrajectoryCalibrationProfile | null = null;
 let geometryMissStreak = 0;
@@ -929,7 +945,9 @@ socket.on("continuous_orientation", (payload: unknown) => {
       processStrokeFrame(processedFrame);
       const expectedStroke = ballController.ball.lockedStrokeType;
       latestEasySwingIntent = easySwingIntentDetector.update({
-        timestamp: processedFrame.timestamp,
+        // The hit window uses PC epoch time. Keep intent age in the same clock
+        // domain instead of comparing the phone sensor clock with Date.now().
+        timestamp: pcReceivedEpoch,
         valid: processedFrame.valid,
         angularSpeed: processedFrame.angularSpeed,
         accelerationMagnitude: processedFrame.accelerationMagnitude,
@@ -1331,6 +1349,11 @@ function updatePerformanceTelemetry(now: number, _nowEpoch: number): void {
     trainingClosestBallToStringBedMeters: Number.isFinite(trainingClosestStringBedDistance)
       ? Number(trainingClosestStringBedDistance.toFixed(3)) : null,
     trainingStrikeZoneEntryAt,
+    trainingClosestStrikeZoneOffset: Number.isFinite(trainingClosestStrikeZoneMetric)
+      ? formatVector(trainingClosestStrikeZoneOffset) : null,
+    trainingMaximumNeutralOriginDriftMeters: Number(trainingMaximumNeutralOriginDriftMeters.toFixed(4)),
+    trainingLastMissReasons: lastTrainingMissReasons,
+    trainingMissBreakdown,
     trainingBouncePosition: ballController.ball.bounceCount > 0 ? formatVector(observedBouncePoint) : null,
     trainingBounceToContactMs: activeCalibrationProfile?.bounceToContactMs ?? null,
     trainingContactHeight: activeCalibrationProfile?.contactPointWorld[1] ?? null,
@@ -1546,6 +1569,12 @@ function updateProceduralPosition(): void {
     latestSensorFrame.angularSpeed >= BALL_CONFIG.easyAssist.minimumAngularSpeed &&
     ballController.ball.position.distanceTo(ballController.ball.contactTarget) <= 0.75;
 
+  if (!easyMotionContact && stabilizeTrainingRacketOrigin(
+    proceduralPositionPivot.position,
+    snapshot?.currentState ?? null,
+    playerAssistLevel
+  )) return;
+
   if (easyMotionContact) {
     target = [
       Math.abs(BALL_CONFIG.launch.easyForehand.contactSideOffset),
@@ -1607,7 +1636,7 @@ function createEasyHitMotion(): EasyHitMotion | null {
   if (!latestSensorFrame) return null;
   const expectedStroke = ballController.ball.lockedStrokeType;
   const swingIntent = latestEasySwingIntent ?? easySwingIntentDetector.getSnapshot(
-    latestSensorFrame.timestamp,
+    Date.now(),
     expectedStroke
   );
   const playerBasis = (activeCalibrationProfile ?? trajectoryProfiles[expectedStroke] ??
@@ -1645,6 +1674,35 @@ function updateTrainingFeedMetrics(now: number): void {
   );
   if (trainingStrikeZoneEntryAt === null && isInsideTrainingStrikeZone(ball.position, ball.contactTarget)) {
     trainingStrikeZoneEntryAt = now;
+  }
+  trainingStrikeZoneOffsetScratch.copy(ball.position).sub(ball.contactTarget);
+  const normalizedZoneMetric =
+    trainingStrikeZoneOffsetScratch.x ** 2 / TRAINING_STRIKE_ZONE_RADII.lateral ** 2 +
+    trainingStrikeZoneOffsetScratch.y ** 2 / TRAINING_STRIKE_ZONE_RADII.vertical ** 2 +
+    trainingStrikeZoneOffsetScratch.z ** 2 / TRAINING_STRIKE_ZONE_RADII.depth ** 2;
+  if (normalizedZoneMetric < trainingClosestStrikeZoneMetric) {
+    trainingClosestStrikeZoneMetric = normalizedZoneMetric;
+    trainingClosestStrikeZoneOffset.copy(trainingStrikeZoneOffsetScratch);
+  }
+
+  const intentActive = latestEasySwingIntent?.active === true;
+  if (latestStrokeSnapshot?.currentState === "READY" && !intentActive) {
+    trainingMaximumNeutralOriginDriftMeters = Math.max(
+      trainingMaximumNeutralOriginDriftMeters,
+      proceduralPositionPivot.position.length() * 0.01
+    );
+  }
+  const decision = ballController.lastPlayableDecision;
+  if (!intentActive || !decision) return;
+  if (decision.timing === "TOO EARLY") trainingSawActiveIntentBeforeWindow = true;
+  else if (decision.timing === "TOO LATE") trainingSawActiveIntentAfterWindow = true;
+  else {
+    trainingSawActiveIntentInWindow = true;
+    const measuredForward = latestSensorFrame?.motionForwardScore ?? 0;
+    if (measuredForward >= BALL_CONFIG.playerAssist.training.minimumForwardDriveScore) {
+      trainingSawForwardIntentInWindow = true;
+    }
+    if (decision.reason !== null) trainingRejectedInWindow = decision.reason;
   }
 }
 
@@ -1830,7 +1888,7 @@ function captureGameplayDiagnostic(timestamp: number, deltaTime: number): void {
   const localBall = ball.position.clone().applyMatrix4(racketStringCollider.matrixWorld.clone().invert());
   const snapshot = latestStrokeSnapshot ?? strokeStateMachine.getSnapshot(Date.now());
   const intentType = ball.lockedStrokeType === "backhand" ? "backhand" : "forehand";
-  const intent = easySwingIntentDetector.getSnapshot(timestamp, intentType);
+  const intent = easySwingIntentDetector.getSnapshot(Date.now(), intentType);
   const swept = ballController.sweptDebug;
   const calibrationProfile = trajectoryProfiles[ball.expectedStrokeType];
   const expectedContact = calibrationProfile ? new THREE.Vector3().fromArray(calibrationProfile.contactPointWorld) : ball.contactTarget;
@@ -2500,6 +2558,14 @@ function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibra
   latestEasySwingIntent = null;
   trainingClosestStringBedDistance = Number.POSITIVE_INFINITY;
   trainingStrikeZoneEntryAt = null;
+  trainingClosestStrikeZoneMetric = Number.POSITIVE_INFINITY;
+  trainingClosestStrikeZoneOffset.set(0, 0, 0);
+  trainingMaximumNeutralOriginDriftMeters = 0;
+  trainingSawActiveIntentBeforeWindow = false;
+  trainingSawActiveIntentInWindow = false;
+  trainingSawActiveIntentAfterWindow = false;
+  trainingSawForwardIntentInWindow = false;
+  trainingRejectedInWindow = null;
   const guaranteed = preset === "guaranteedForehand" || preset === "guaranteedBackhand";
   const sideOffset = isBackhandPreset(preset)
     ? backhandSideOffset
@@ -2600,10 +2666,30 @@ function onBallMiss(event: BallMissEvent): void {
       elements.practiceStatus.textContent = "Stability fallback: validated base feed";
     }
   }
+  if (playerAssistLevel === "training") {
+    lastTrainingMissReasons = classifyTrainingMiss({
+      closestOffset: Number.isFinite(trainingClosestStrikeZoneMetric)
+        ? trainingClosestStrikeZoneOffset : null,
+      closestBallToStringBedMeters: Number.isFinite(trainingClosestStringBedDistance)
+        ? trainingClosestStringBedDistance : null,
+      maximumStringBedReachMeters: 0.75,
+      strikeZoneRadii: TRAINING_STRIKE_ZONE_RADII,
+      enteredStrikeZone: trainingStrikeZoneEntryAt !== null,
+      maximumNeutralOriginDriftMeters: trainingMaximumNeutralOriginDriftMeters,
+      sawActiveIntentBeforeWindow: trainingSawActiveIntentBeforeWindow,
+      sawActiveIntentInWindow: trainingSawActiveIntentInWindow,
+      sawActiveIntentAfterWindow: trainingSawActiveIntentAfterWindow,
+      sawForwardIntentInWindow: trainingSawForwardIntentInWindow,
+      rejectedInWindow: trainingRejectedInWindow
+    });
+    for (const reason of lastTrainingMissReasons) trainingMissBreakdown[reason] += 1;
+    elements.diagnosticResult.textContent = `MISS | ${lastTrainingMissReasons.join(" | ")}`;
+  }
   if (currentFeedVariation) {
     elements.feedVariationDebug.textContent +=
       `\nOutcome: MISS | ${event.reason} | contact gap ${contactDistanceBeforeCorrection.toFixed(3)} -> ` +
-      `${contactDistanceAfterCorrection.toFixed(3)} m | magnet ${appliedContactCorrection.toFixed(3)} m`;
+      `${contactDistanceAfterCorrection.toFixed(3)} m | magnet ${appliedContactCorrection.toFixed(3)} m` +
+      (playerAssistLevel === "training" ? ` | reasons ${lastTrainingMissReasons.join(",")}` : "");
   }
   motionRecorder.recordBallResult({ type: "miss", event });
   window.setTimeout(() => finishRealHitAttempt("MISS", event.reason), 0);
@@ -2987,7 +3073,9 @@ function updateBallDebug(): void {
     `closest physical ${ballController.lastCollision?.closestDistance.toFixed(3) ?? "--"} m, ` +
     `Training closest ball/string center ${Number.isFinite(trainingClosestStringBedDistance)
       ? trainingClosestStringBedDistance.toFixed(3) : "--"} m, ` +
-    `zone entry ${trainingStrikeZoneEntryAt ?? "--"}`;
+    `zone entry ${trainingStrikeZoneEntryAt ?? "--"}, ` +
+    `neutral drift ${(trainingMaximumNeutralOriginDriftMeters * 100).toFixed(1)} cm, ` +
+    `last miss ${lastTrainingMissReasons.join(",") || "--"}`;
 }
 
 function completeCalibration(): void {
