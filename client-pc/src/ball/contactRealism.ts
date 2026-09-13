@@ -29,6 +29,7 @@ export type PhysicalImpactInput = {
   upwardScore: number;
   frameContact: boolean;
   forwardSwing?: ForwardSwingSnapshot;
+  playabilityAssistStrength?: number;
 };
 
 export type PhysicalImpactResolution = {
@@ -168,15 +169,18 @@ export function resolvePhysicalImpact(input: PhysicalImpactInput): PhysicalImpac
           input.forwardSwing.lateralRacketHeadVelocity / 8 + input.forwardSwing.lateralAcceleration / 20,
           -1, 1
         );
-        const maximumSideRatio = THREE.MathUtils.lerp(0.08, 0.3, 1 - quality);
+        const maximumSideRatio = THREE.MathUtils.lerp(0.05, 0.18, 1 - quality);
         const sideRatio = THREE.MathUtils.clamp(
-          lateralMotion * 0.16 + contactSpread * (1 - quality) * 0.18,
+          lateralMotion * 0.08 + contactSpread * (1 - quality) * 0.1,
           -maximumSideRatio, maximumSideRatio
         );
-        const desired = new THREE.Vector3(sideRatio, 0, -1).normalize();
+        const desired = COURT_FORWARD.clone();
         const measured = new THREE.Vector3(raw.x, 0, raw.z).normalize();
-        const forwardBlend = THREE.MathUtils.clamp(0.35 + input.forwardSwing.forwardDriveScore * 0.45, 0.35, 0.78);
-        measured.lerp(desired, forwardBlend * quality).normalize().multiplyScalar(horizontalSpeed);
+        const configuredAssist = THREE.MathUtils.clamp(input.playabilityAssistStrength ?? 0.35, 0, 0.85);
+        const contactAssist = THREE.MathUtils.lerp(configuredAssist * 0.45, configuredAssist, 1 - quality);
+        measured.lerp(desired, contactAssist);
+        measured.x += sideRatio * (1 - configuredAssist * 0.5);
+        measured.normalize().multiplyScalar(horizontalSpeed);
         raw.x = measured.x;
         raw.z = measured.z;
       }

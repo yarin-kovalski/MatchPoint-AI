@@ -9,6 +9,7 @@ export function isBackhandPreset(preset: LaunchPreset | null): boolean {
   return preset === "easyBackhand" || preset === "guaranteedBackhand";
 }
 export type AssistMode = "off" | "prototype" | "easy";
+export type PlayerAssistLevel = "realistic" | "training";
 export type BallSpeedPreset = "slow" | "normal" | "fast";
 
 export type EasyHitMotion = {
@@ -29,6 +30,7 @@ export type EasyHitMotion = {
   backhandStyle: BackhandStyle;
   swingIntent?: EasySwingIntentSnapshot;
   forwardSwing?: ForwardSwingSnapshot;
+  playabilityAssistStrength?: number;
 };
 
 export type HitDebugSnapshot = {

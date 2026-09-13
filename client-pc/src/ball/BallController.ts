@@ -8,9 +8,9 @@ import { calculateOutgoingVelocity } from "./ballResponse.js";
 import { estimateSecondBounceDelay, solveVelocity } from "./ballDelivery.js";
 import { interpolateRacketMatrix, sweepBallAgainstMovingRacket } from "./racketCollider.js";
 import { applyEasyTrajectoryAssist, EasyTrajectoryAssistResult } from "./easyTrajectoryAssist.js";
-import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset, EasyHitMotion, HitDebugSnapshot, LaunchPreset, RacketCollisionResult } from "./ballTypes.js";
+import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset, EasyHitMotion, HitDebugSnapshot, LaunchPreset, PlayerAssistLevel, RacketCollisionResult } from "./ballTypes.js";
 import { TrajectoryCalibrationProfile } from "./trajectoryCalibration.js";
-import { evaluatePlayableCalibratedHit, PlayableHitDecision } from "./playableCalibratedHit.js";
+import { evaluatePlayableCalibratedHit, isWithinAssistedContactEnvelope, PlayableHitDecision } from "./playableCalibratedHit.js";
 import { ContactLifecycle, isSuccessfulTennisOutcome, PhysicalImpactResolution, resolvePhysicalImpact } from "./contactRealism.js";
 import { solveSpinFlight } from "./spinFlight.js";
 
@@ -162,7 +162,8 @@ export class BallController {
     easyMotion?: EasyHitMotion | null,
     allowHit = true,
     playableProfile: TrajectoryCalibrationProfile | null = null,
-    playableEnabled = false
+    playableEnabled = false,
+    playerAssistLevel: PlayerAssistLevel = "training"
   ): void {
     if (!this.ball.active) {
       if (this.ball.state === "MISSED" && now >= this.resetAt) this.reset();
@@ -200,15 +201,15 @@ export class BallController {
       this.lastPlayableDecision = evaluatePlayableCalibratedHit({
         now, contactTime: this.ball.contactDeadline, bounceCount: this.ball.bounceCount,
         alreadyHit: this.ball.hit, expectedStrokeType: this.ball.expectedStrokeType,
-        profile: playableProfile, motion: easyMotion ?? null
+        profile: playableProfile, motion: easyMotion ?? null, assistLevel: playerAssistLevel
       });
-      const limits = BALL_CONFIG.playableCalibratedHit.maximumCorrection;
-      const reachable = Math.abs(this.ball.position.x - this.ball.contactTarget.x) <= limits.lateral + this.ball.physicsRadius &&
-        Math.abs(this.ball.position.y - this.ball.contactTarget.y) <= limits.vertical + this.ball.physicsRadius &&
-        Math.abs(this.ball.position.z - this.ball.contactTarget.z) <= limits.depth + this.ball.physicsRadius;
+      const stringBedCenter = new THREE.Vector3().setFromMatrixPosition(colliderWorldMatrix);
+      const reachable = isWithinAssistedContactEnvelope(
+        this.ball.position, stringBedCenter, playerAssistLevel, this.ball.physicsRadius
+      );
       if (this.lastPlayableDecision.accepted && playableProfile && easyMotion &&
           reachable) {
-        this.acceptPlayableCalibratedHit(now, playableProfile, easyMotion, contact);
+        this.acceptPlayableCalibratedHit(now, playableProfile, easyMotion, contact, playerAssistLevel);
       }
     }
     if (!this.ball.hit && this.ball.velocity.z > 0 && allowHit) {
@@ -306,7 +307,8 @@ export class BallController {
       forwardScore: motion?.motionForwardScore ?? contact?.forwardScore ?? 0,
       upwardScore: contact?.upwardScore ?? motion?.motionUpwardScore ?? 0,
       frameContact: this.lastCollision.frameContact,
-      forwardSwing: motion?.forwardSwing
+      forwardSwing: motion?.forwardSwing,
+      playabilityAssistStrength: motion?.playabilityAssistStrength
     });
     this.lastPhysicalImpact = resolution;
     const incoming = this.ball.velocity.clone();
@@ -355,7 +357,8 @@ export class BallController {
     now: number,
     profile: TrajectoryCalibrationProfile,
     motion: EasyHitMotion,
-    strictContact: EstimatedRacketContact | null
+    strictContact: EstimatedRacketContact | null,
+    playerAssistLevel: PlayerAssistLevel
   ): void {
     if (this.ball.hit) return;
     // The profile gates reach/timing; impact takes place where the ball actually is.
@@ -380,7 +383,8 @@ export class BallController {
       angularVelocityWorld: motion.angularVelocityWorld,
       sensorAcceleration: motion.accelerationMagnitude, forwardScore: motion.motionForwardScore,
       upwardScore: effectiveContact.upwardScore, frameContact: false,
-      forwardSwing: motion.forwardSwing
+      forwardSwing: motion.forwardSwing,
+      playabilityAssistStrength: BALL_CONFIG.playerAssist[playerAssistLevel].directionAnchorStrength
     });
     this.ball.position.copy(calibratedPoint);
     this.ball.previousPosition.copy(calibratedPoint);
@@ -474,7 +478,8 @@ export class BallController {
       forwardScore: easyMotion?.motionForwardScore ?? effectiveContact.forwardScore,
       upwardScore: easyMotion?.motionUpwardScore ?? effectiveContact.upwardScore,
       frameContact: this.lastCollision.frameContact,
-      forwardSwing: easyMotion?.forwardSwing
+      forwardSwing: easyMotion?.forwardSwing,
+      playabilityAssistStrength: easyMotion?.playabilityAssistStrength
     });
     this.lastPhysicalImpact = physical;
     if (!isSuccessfulTennisOutcome(physical.outcome)) return;

@@ -114,6 +114,20 @@ export const BALL_CONFIG = {
     maximumCorrection: { lateral: 0.22, vertical: 0.20, depth: 0.24 },
     practiceResetMs: 1700
   },
+  playerAssist: {
+    training: {
+      windowBeforeMs: 270, windowAfterMs: 230,
+      maximumCorrection: { lateral: 0.32, vertical: 0.28, depth: 0.34 },
+      directionAnchorStrength: 0.68,
+      minimumAngularSpeed: 0.9, minimumAcceleration: 1.8, minimumForwardDriveScore: 0.12
+    },
+    realistic: {
+      windowBeforeMs: 150, windowAfterMs: 130,
+      maximumCorrection: { lateral: 0.14, vertical: 0.13, depth: 0.16 },
+      directionAnchorStrength: 0.28,
+      minimumAngularSpeed: 1.2, minimumAcceleration: 2.5, minimumForwardDriveScore: 0.18
+    }
+  },
   sweptContact: {
     historyMs: 140,
     samplesPerFrame: 5,

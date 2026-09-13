@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { BALL_CONFIG } from "./ballConfig.js";
-import { EasyHitMotion } from "./ballTypes.js";
+import { EasyHitMotion, PlayerAssistLevel } from "./ballTypes.js";
 import { TrajectoryCalibrationProfile, worldToPlayerLocal } from "./trajectoryCalibration.js";
 
 export type PlayableTimingState = "TOO EARLY" | "HIT WINDOW" | "TOO LATE";
@@ -14,6 +14,7 @@ export type PlayableHitDecision = {
   resolvedPlayableStrokeType: "forehand" | "backhand";
   opportunityStart: number;
   opportunityEnd: number;
+  timingOffsetMs: number;
 };
 
 export type PlayableStrokePlan = {
@@ -45,12 +46,15 @@ export function evaluatePlayableCalibratedHit(input: {
   expectedStrokeType: "forehand" | "backhand";
   profile: TrajectoryCalibrationProfile | null;
   motion: EasyHitMotion | null;
+  assistLevel?: PlayerAssistLevel;
 }): PlayableHitDecision {
-  const opportunityStart = input.contactTime - BALL_CONFIG.playableCalibratedHit.windowBeforeMs;
-  const opportunityEnd = input.contactTime + BALL_CONFIG.playableCalibratedHit.windowAfterMs;
+  const assist = BALL_CONFIG.playerAssist[input.assistLevel ?? "training"];
+  const opportunityStart = input.contactTime - assist.windowBeforeMs;
+  const opportunityEnd = input.contactTime + assist.windowAfterMs;
   const timing: PlayableTimingState = input.now < opportunityStart ? "TOO EARLY" : input.now <= opportunityEnd ? "HIT WINDOW" : "TOO LATE";
   const base: Omit<PlayableHitDecision, "accepted" | "reason"> = {
-    timing, resolvedPlayableStrokeType: input.expectedStrokeType, opportunityStart, opportunityEnd
+    timing, resolvedPlayableStrokeType: input.expectedStrokeType, opportunityStart, opportunityEnd,
+    timingOffsetMs: input.now - input.contactTime
   };
   if (!input.profile) return { ...base, accepted: false, reason: "NO_SAVED_PROFILE" };
   if (input.alreadyHit) return { ...base, accepted: false, reason: "CONTACT_ALREADY_USED" };
@@ -59,11 +63,13 @@ export function evaluatePlayableCalibratedHit(input: {
   const localContact = worldToPlayerLocal(new THREE.Vector3().fromArray(input.profile.contactPointWorld), input.profile.playerBasisAtCalibration);
   const correctSide = input.expectedStrokeType === "forehand" ? localContact.x > 0 : localContact.x < 0;
   if (input.profile.strokeType !== input.expectedStrokeType || !correctSide) return { ...base, accepted: false, reason: "WRONG_STROKE_SIDE" };
+  const forwardDriveScore = input.motion?.forwardSwing?.forwardDriveScore ?? input.motion?.motionForwardScore ?? 0;
   if (!input.motion?.valid || !input.motion.swingIntent?.active ||
       input.now - input.motion.swingIntent.startedAt < BALL_CONFIG.playableCalibratedHit.minimumActiveSwingMs ||
-      input.motion.angularSpeed < BALL_CONFIG.playableCalibratedHit.minimumAngularSpeed ||
-      input.motion.accelerationMagnitude < BALL_CONFIG.playableCalibratedHit.minimumAcceleration ||
-      input.motion.motionForwardScore < BALL_CONFIG.playableCalibratedHit.minimumForwardScore) {
+      input.motion.angularSpeed < assist.minimumAngularSpeed ||
+      input.motion.accelerationMagnitude < assist.minimumAcceleration ||
+      forwardDriveScore < assist.minimumForwardDriveScore ||
+      (input.motion.forwardSwing && input.motion.forwardSwing.invalidDirectionReason !== "NONE")) {
     return { ...base, accepted: false, reason: "NO_REAL_SWING" };
   }
   if (input.motion.swingIntent.strokeType !== input.expectedStrokeType) return { ...base, accepted: false, reason: "WRONG_STROKE_SIDE" };
@@ -74,11 +80,27 @@ export function evaluatePlayableCalibratedHit(input: {
 }
 
 export function boundedContactCorrection(current: THREE.Vector3, calibrated: THREE.Vector3): THREE.Vector3 {
-  const limits = BALL_CONFIG.playableCalibratedHit.maximumCorrection;
+  return boundedContactCorrectionForLevel(current, calibrated, "training");
+}
+
+export function boundedContactCorrectionForLevel(
+  current: THREE.Vector3, calibrated: THREE.Vector3, level: PlayerAssistLevel
+): THREE.Vector3 {
+  const limits = BALL_CONFIG.playerAssist[level].maximumCorrection;
   const delta = calibrated.clone().sub(current);
   return new THREE.Vector3(
     THREE.MathUtils.clamp(delta.x, -limits.lateral, limits.lateral),
     THREE.MathUtils.clamp(delta.y, -limits.vertical, limits.vertical),
     THREE.MathUtils.clamp(delta.z, -limits.depth, limits.depth)
   );
+}
+
+export function isWithinAssistedContactEnvelope(
+  ball: THREE.Vector3, stringBedCenter: THREE.Vector3, level: PlayerAssistLevel, ballRadius = 0
+): boolean {
+  const limits = BALL_CONFIG.playerAssist[level].maximumCorrection;
+  const delta = ball.clone().sub(stringBedCenter);
+  return Math.abs(delta.x) <= limits.lateral + ballRadius &&
+    Math.abs(delta.y) <= limits.vertical + ballRadius &&
+    Math.abs(delta.z) <= limits.depth + ballRadius;
 }

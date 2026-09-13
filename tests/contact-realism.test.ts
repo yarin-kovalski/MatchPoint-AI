@@ -111,6 +111,15 @@ test("fused forehand and backhand intent both travel forward with bounded physic
   assert.ok(Math.sign(forehand.outgoingVelocity.x) !== Math.sign(backhand.outgoingVelocity.x));
 });
 
+test("Training stabilizes direction more than Realistic without fixing one landing point", () => {
+  const swing = fusedSwing({ lateralRacketHeadVelocity: 3.5, lateralAcceleration: 5 });
+  const realistic = impact({ forwardSwing: swing, playabilityAssistStrength: BALL_CONFIG.playerAssist.realistic.directionAnchorStrength });
+  const training = impact({ forwardSwing: swing, playabilityAssistStrength: BALL_CONFIG.playerAssist.training.directionAnchorStrength });
+  assert.ok(Math.abs(training.outgoingVelocity.x / training.outgoingVelocity.z) <
+    Math.abs(realistic.outgoingVelocity.x / realistic.outgoingVelocity.z));
+  assert.notDeepEqual(training.prediction.bouncePoint?.toArray(), realistic.prediction.bouncePoint?.toArray());
+});
+
 test("fused direction rejects backward intent and off-center contact increases spread", () => {
   const backward = impact({ forwardSwing: fusedSwing({
     forwardAcceleration: -6, forwardRacketHeadVelocity: -3, forwardDriveScore: -0.4,

@@ -47,6 +47,9 @@ test("player mode exposes simple play controls and keeps advanced tools collapse
   for (const label of ["Play Forehand", "Play Backhand", "Stop"]) assert.match(html, new RegExp(`>${label}<`));
   assert.match(html, /id="calibratedPracticeLoopToggle"[^>]*> Practice Loop/);
   assert.match(html, /id="feedVariationLevel"/);
+  assert.match(html, /id="playerAssistLevel"/);
+  assert.match(html, /<option value="training" selected>Training<\/option>/);
+  assert.match(html, /<option value="realistic">Realistic<\/option>/);
   assert.match(html, /<option value="low" selected>Low<\/option>/);
   assert.match(html, /<details class="developer-panel">/);
   assert.doesNotMatch(html, /<details class="developer-panel" open>/);

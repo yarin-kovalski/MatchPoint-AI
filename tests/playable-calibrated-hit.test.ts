@@ -3,7 +3,7 @@ import test from "node:test";
 import * as THREE from "three";
 import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
 import { BallController } from "../client-pc/src/ball/BallController.js";
-import { boundedContactCorrection, createPlayableStrokePlan, evaluatePlayableCalibratedHit } from "../client-pc/src/ball/playableCalibratedHit.js";
+import { boundedContactCorrection, createPlayableStrokePlan, evaluatePlayableCalibratedHit, isWithinAssistedContactEnvelope } from "../client-pc/src/ball/playableCalibratedHit.js";
 import { createDefaultTrajectoryProfile, worldToPlayerLocal } from "../client-pc/src/ball/trajectoryCalibration.js";
 import { EasyHitMotion } from "../client-pc/src/ball/ballTypes.js";
 import { StrokeDetectorSnapshot } from "../client-pc/src/strokeDetection/strokeTypes.js";
@@ -63,17 +63,54 @@ test("shared stroke plan never swaps profile keys and supports consecutive sides
 test("calibrated opportunity rejects early, late, wrong-side, and duplicate contacts", () => {
   const profile = createDefaultTrajectoryProfile("forehand", "right");
   const base = { contactTime: 1000, bounceCount: 1, alreadyHit: false, expectedStrokeType: "forehand" as const, profile, motion: motion("forehand") };
-  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 779 }).reason, "SWING_TOO_EARLY");
-  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1181 }).reason, "SWING_TOO_LATE");
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 779, assistLevel: "realistic" }).reason, "SWING_TOO_EARLY");
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1181, assistLevel: "realistic" }).reason, "SWING_TOO_LATE");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, motion: motion("backhand") }).reason, "WRONG_STROKE_SIDE");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, alreadyHit: true }).reason, "CONTACT_ALREADY_USED");
 });
 
 test("contact magnet stays inside every configured axis bound", () => {
   const correction = boundedContactCorrection(new THREE.Vector3(), new THREE.Vector3(5, -5, 5));
-  assert.equal(correction.x, BALL_CONFIG.playableCalibratedHit.maximumCorrection.lateral);
-  assert.equal(correction.y, -BALL_CONFIG.playableCalibratedHit.maximumCorrection.vertical);
-  assert.equal(correction.z, BALL_CONFIG.playableCalibratedHit.maximumCorrection.depth);
+  assert.equal(correction.x, BALL_CONFIG.playerAssist.training.maximumCorrection.lateral);
+  assert.equal(correction.y, -BALL_CONFIG.playerAssist.training.maximumCorrection.vertical);
+  assert.equal(correction.z, BALL_CONFIG.playerAssist.training.maximumCorrection.depth);
+});
+
+test("Training contact envelope is forgiving while Realistic remains tighter", () => {
+  const strings = new THREE.Vector3(0, 1, 0);
+  const near = new THREE.Vector3(0.22, 1.18, 0.2);
+  const outside = new THREE.Vector3(0.5, 1, 0);
+  assert.equal(isWithinAssistedContactEnvelope(near, strings, "training"), true);
+  assert.equal(isWithinAssistedContactEnvelope(near, strings, "realistic"), false);
+  assert.equal(isWithinAssistedContactEnvelope(outside, strings, "training"), false);
+});
+
+test("Training accepts a reasonable swing that Realistic keeps below threshold", () => {
+  const profile = createDefaultTrajectoryProfile("forehand", "right");
+  const reasonable = motion("forehand");
+  reasonable.angularSpeed = 1.05;
+  reasonable.accelerationMagnitude = 2.1;
+  reasonable.motionForwardScore = 0.15;
+  const input = { now: 1000, contactTime: 1000, bounceCount: 1, alreadyHit: false,
+    expectedStrokeType: "forehand" as const, profile, motion: reasonable };
+  assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "training" }).accepted, true);
+  assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "realistic" }).reason, "NO_REAL_SWING");
+});
+
+test("backward fused intent cannot receive playability assistance", () => {
+  const profile = createDefaultTrajectoryProfile("forehand", "right");
+  const backward = motion("forehand");
+  backward.forwardSwing = {
+    windowDurationMs: 160, sampleCount: 9, forwardAcceleration: -6, upwardAcceleration: 0,
+    lateralAcceleration: 0, peakForwardAcceleration: 0,
+    racketHeadVelocityWorld: new THREE.Vector3(0, 0, 3), forwardRacketHeadVelocity: -3,
+    upwardRacketHeadVelocity: 0, lateralRacketHeadVelocity: 0, angularSpeed: 4.5,
+    faceAngleRadians: 0.4, forwardDriveScore: -0.3, invalidDirectionReason: "BACKWARD_SWING"
+  };
+  const decision = evaluatePlayableCalibratedHit({ now: 1000, contactTime: 1000, bounceCount: 1,
+    alreadyHit: false, expectedStrokeType: "forehand", profile, motion: backward, assistLevel: "training" });
+  assert.equal(decision.accepted, false);
+  assert.equal(decision.reason, "NO_REAL_SWING");
 });
 
 test("playable contact resolves once at the actual ball position without snapping", () => {
@@ -89,8 +126,11 @@ test("playable contact resolves once at the actual ball position without snappin
   const actualContact = controller.ball.position.toArray();
   controller.ball.previousPosition.copy(controller.ball.position);
   controller.ball.velocity.set(0, 1, 4);
-  controller.update(0, now, new THREE.Matrix4(), snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true);
-  controller.update(0, now + 1, new THREE.Matrix4(), snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true);
+  const racket = new THREE.Matrix4().compose(
+    controller.ball.position.clone(), new THREE.Quaternion(), new THREE.Vector3(0.01, 0.01, 0.01)
+  );
+  controller.update(0, now, racket, snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true, "training");
+  controller.update(0, now + 1, racket, snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true, "training");
   assert.equal(hits.length, 1);
   assert.deepEqual(controller.lastHit?.contactPointWorld.toArray(), actualContact);
   assert.deepEqual(controller.ball.position.toArray(), actualContact);

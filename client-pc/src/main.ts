@@ -3,14 +3,14 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BallController } from "./ball/BallController.js";
 import { BALL_CONFIG } from "./ball/ballConfig.js";
 import { getBallDeliveryTarget, getExpectedRacketContactTransform, projectPixelDiameter } from "./ball/ballDelivery.js";
-import { AssistMode, BallHitEvent, BallMissEvent, BallSpeedPreset, EasyHitMotion, isBackhandPreset, LaunchPreset } from "./ball/ballTypes.js";
+import { AssistMode, BallHitEvent, BallMissEvent, BallSpeedPreset, EasyHitMotion, isBackhandPreset, LaunchPreset, PlayerAssistLevel } from "./ball/ballTypes.js";
 import {
   CalibrationStrokeType, createDefaultTrajectoryProfile, loadTrajectoryProfile,
   resetTrajectoryProfile, saveTrajectoryProfile, setProfileArcHeight, solveTrajectoryProfile,
   synchronizeProfileApexFromTiming, TrajectoryCalibrationProfile, worldToPlayerLocal
 } from "./ball/trajectoryCalibration.js";
 import { createProceduralTennisBallTexture, integrateBallRotation } from "./ball/ballVisuals.js";
-import { boundedContactCorrection, createPlayableStrokePlan } from "./ball/playableCalibratedHit.js";
+import { boundedContactCorrectionForLevel, createPlayableStrokePlan } from "./ball/playableCalibratedHit.js";
 import {
   loadTrajectoryProfileWithPriority, markTrajectoryProfileAsUser,
   restoreValidatedTrajectoryPreset, TrajectoryProfileSource, VALIDATED_TRAJECTORY_PRESET
@@ -256,6 +256,7 @@ const elements = {
   stopPractice: getElement<HTMLButtonElement>("stopPractice"),
   practiceLoopMode: getElement<HTMLSelectElement>("practiceLoopMode"),
   feedVariationLevel: getElement<HTMLSelectElement>("feedVariationLevel"),
+  playerAssistLevel: getElement<HTMLSelectElement>("playerAssistLevel"),
   feedSeed: getElement<HTMLInputElement>("feedSeed"),
   feedVariationDebug: getElement("feedVariationDebug"),
   playerShotSpeed: getElement("playerShotSpeed"),
@@ -392,6 +393,7 @@ let replayActive = false;
 let replayTimer: number | null = null;
 let contactFlashUntil = 0;
 let assistMode: AssistMode = "easy";
+let playerAssistLevel: PlayerAssistLevel = "training";
 let ballSpeedPreset: BallSpeedPreset = "normal";
 let activeLaunchPreset: LaunchPreset = "easyForehand";
 let lastBallFrameAt = performance.now();
@@ -1194,7 +1196,7 @@ function animate(): void {
       ballDeltaSeconds, nowEpoch, racketStringCollider.matrixWorld, detectorSnapshot,
       lastContactEvent, assistMode, createEasyHitMotion(), !previewTrajectoryActive,
       activeCalibrationProfile ?? trajectoryProfiles[ballController.ball.expectedStrokeType],
-      isPlayableCalibratedHitEnabled()
+      isPlayableCalibratedHitEnabled(), playerAssistLevel
     );
   }
   telemetryPhysicsMs += performance.now() - physicsStartedAt;
@@ -1594,7 +1596,8 @@ function createEasyHitMotion(): EasyHitMotion | null {
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle(),
     swingIntent,
-    forwardSwing
+    forwardSwing,
+    playabilityAssistStrength: BALL_CONFIG.playerAssist[playerAssistLevel].directionAnchorStrength
   };
 }
 
@@ -2251,11 +2254,12 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
     ? "Stability fallback: validated base feed"
     : `${premium?.label ?? "Validated"} · ${strokeType} · ${level} variation`;
   console.info("Feed variation", variationSummary);
-  const limits = BALL_CONFIG.playableCalibratedHit.maximumCorrection;
+  const assist = BALL_CONFIG.playerAssist[playerAssistLevel];
+  const limits = assist.maximumCorrection;
   elements.playableProfileDetails.textContent =
     `Loaded profile ${plan.strokeType} | Expected side ${plan.expectedSide} | ` +
     `Contact local X ${plan.contactLocalX.toFixed(2)} m | Contact world ${formatVector(plan.contactWorld)} | ` +
-    `Window -${BALL_CONFIG.playableCalibratedHit.windowBeforeMs}/+${BALL_CONFIG.playableCalibratedHit.windowAfterMs} ms | ` +
+    `Window -${assist.windowBeforeMs}/+${assist.windowAfterMs} ms | ` +
     `Magnet ${limits.lateral.toFixed(2)}/${limits.vertical.toFixed(2)}/${limits.depth.toFixed(2)} m`;
   practiceAttempts += 1;
   practiceRelaunchAt = 0;
@@ -2276,8 +2280,9 @@ function applyPlayableContactMagnet(now: number): void {
     contactMagnetOffset.set(0, 0, 0);
     return;
   }
-  const start = ballController.ball.contactDeadline - BALL_CONFIG.playableCalibratedHit.windowBeforeMs;
-  const end = ballController.ball.contactDeadline + BALL_CONFIG.playableCalibratedHit.windowAfterMs;
+  const assist = BALL_CONFIG.playerAssist[playerAssistLevel];
+  const start = ballController.ball.contactDeadline - assist.windowBeforeMs;
+  const end = ballController.ball.contactDeadline + assist.windowAfterMs;
   const motion = createEasyHitMotion();
   if (now < start || now > end || !motion?.swingIntent?.active) {
     contactMagnetOffset.set(0, 0, 0);
@@ -2287,7 +2292,9 @@ function applyPlayableContactMagnet(now: number): void {
   if (!profile) return;
   const currentStringCenter = new THREE.Vector3();
   racketStringCollider.getWorldPosition(currentStringCenter);
-  const correction = boundedContactCorrection(currentStringCenter, new THREE.Vector3().fromArray(profile.contactPointWorld));
+  const correction = boundedContactCorrectionForLevel(
+    currentStringCenter, new THREE.Vector3().fromArray(profile.contactPointWorld), playerAssistLevel
+  );
   contactDistanceBeforeCorrection = currentStringCenter.distanceTo(new THREE.Vector3().fromArray(profile.contactPointWorld));
   const frameFactor = Math.min(1, 16.7 / BALL_CONFIG.playableCalibratedHit.snapDurationMs);
   contactMagnetOffset.lerp(correction, frameFactor);
@@ -2374,6 +2381,9 @@ function wireBallControls(): void {
   elements.assistModeSelect.addEventListener("change", () => {
     assistMode = elements.assistModeSelect.value as AssistMode;
     elements.playableCalibratedHitToggle.checked = assistMode === "easy";
+  });
+  elements.playerAssistLevel.addEventListener("change", () => {
+    playerAssistLevel = elements.playerAssistLevel.value as PlayerAssistLevel;
   });
   elements.ballSpeedSelect.addEventListener("change", () => {
     ballSpeedPreset = elements.ballSpeedSelect.value as BallSpeedPreset;
@@ -2610,10 +2620,19 @@ function updatePhysicalContactFeedback(): void {
   const shotNames = { FLAT: "Flat Drive", TOPSPIN: "Topspin", SLICE: "Slice", SIDE_SPIN: "Side Spin", MIXED: "Mixed" };
   const contactLabel = impact.outcome === "FRAME_CONTACT" ? "Frame"
     : impact.sweetSpotDistance > 0.85 ? "Edge" : impact.contactQuality < 0.8 ? "Off Center" : "Sweet Spot";
+  const timingOffset = ballController.lastPlayableDecision?.timingOffsetMs ?? 0;
+  const timingLabel = Math.abs(timingOffset) <= 70 ? "Good Timing"
+    : timingOffset < 0 ? "Slightly Early" : "Slightly Late";
+  const profile = trajectoryProfiles[ballController.ball.expectedStrokeType];
+  const landingDepth = impact.prediction.bouncePoint && profile
+    ? worldToPlayerLocal(impact.prediction.bouncePoint, profile.playerBasisAtCalibration).z
+    : 0;
+  const depthLabel = landingDepth >= 7 ? "Deep" : landingDepth >= 4.5 ? "Mid Depth" : "Short";
   document.getElementById("shotFeedback")!.hidden = false;
   document.getElementById("shotFeedbackType")!.textContent = `${shotNames[featureSnapshot.shotShape]} ${ballController.ball.expectedStrokeType}`.toUpperCase();
   document.getElementById("shotFeedbackSpeed")!.textContent = elements.playerShotSpeed.textContent;
-  document.getElementById("shotFeedbackDetail")!.textContent = `${featureSnapshot.powerLevel} · ${featureSnapshot.launchTendency} · ${contactLabel} · Spin ${Math.round(impact.spinRateRadiansPerSecond)} rad/s`;
+  document.getElementById("shotFeedbackDetail")!.textContent =
+    `${featureSnapshot.powerLevel} · ${timingLabel} · ${depthLabel} · ${contactLabel}`;
   elements.contactPhysicsDebug.textContent = JSON.stringify({
     outcome: impact.outcome,
     units: { position: "m", velocity: "m/s", angularVelocity: "rad/s", impulse: "m/s equivalent" },
@@ -2656,6 +2675,8 @@ function updatePhysicalContactFeedback(): void {
     lateralRacketHeadVelocity: impact.lateralRacketHeadSpeed,
     forwardDriveScore: impact.forwardDriveScore,
     invalidDirectionReason: impact.invalidDirectionReason,
+    playerAssistLevel,
+    directionalAssistStrength: BALL_CONFIG.playerAssist[playerAssistLevel].directionAnchorStrength,
     alignmentAssistance: appliedContactCorrection,
     safetyCorrection: impact.safetyCorrection,
     safetyCorrectionMagnitude: impact.safetyCorrection.length(),
