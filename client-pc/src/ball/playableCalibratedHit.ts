@@ -37,7 +37,6 @@ export function createPlayableStrokePlan(
   if (!validSide) return null;
   return { strokeType, profile, expectedSide: strokeType === "forehand" ? "right" : "left", contactLocalX, contactWorld };
 }
-
 export function evaluatePlayableCalibratedHit(input: {
   now: number;
   contactTime: number;
@@ -77,30 +76,4 @@ export function evaluatePlayableCalibratedHit(input: {
     return { ...base, accepted: false, reason: "RACKET_FACE_IMPLAUSIBLE" };
   }
   return { ...base, accepted: true, reason: null };
-}
-
-export function boundedContactCorrection(current: THREE.Vector3, calibrated: THREE.Vector3): THREE.Vector3 {
-  return boundedContactCorrectionForLevel(current, calibrated, "training");
-}
-
-export function boundedContactCorrectionForLevel(
-  current: THREE.Vector3, calibrated: THREE.Vector3, level: PlayerAssistLevel
-): THREE.Vector3 {
-  const limits = BALL_CONFIG.playerAssist[level].maximumCorrection;
-  const delta = calibrated.clone().sub(current);
-  return new THREE.Vector3(
-    THREE.MathUtils.clamp(delta.x, -limits.lateral, limits.lateral),
-    THREE.MathUtils.clamp(delta.y, -limits.vertical, limits.vertical),
-    THREE.MathUtils.clamp(delta.z, -limits.depth, limits.depth)
-  );
-}
-
-export function isWithinAssistedContactEnvelope(
-  ball: THREE.Vector3, stringBedCenter: THREE.Vector3, level: PlayerAssistLevel, ballRadius = 0
-): boolean {
-  const limits = BALL_CONFIG.playerAssist[level].maximumCorrection;
-  const delta = ball.clone().sub(stringBedCenter);
-  return Math.abs(delta.x) <= limits.lateral + ballRadius &&
-    Math.abs(delta.y) <= limits.vertical + ballRadius &&
-    Math.abs(delta.z) <= limits.depth + ballRadius;
 }

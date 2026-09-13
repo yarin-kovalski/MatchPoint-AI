@@ -7,10 +7,10 @@ import { advanceBallFixedStep, createFixedStepPhysicsState } from "./fixedStepBa
 import { calculateOutgoingVelocity } from "./ballResponse.js";
 import { estimateSecondBounceDelay, solveVelocity } from "./ballDelivery.js";
 import { interpolateRacketMatrix, sweepBallAgainstMovingRacket } from "./racketCollider.js";
-import { applyEasyTrajectoryAssist, EasyTrajectoryAssistResult } from "./easyTrajectoryAssist.js";
+import { EasyTrajectoryAssistResult } from "./easyTrajectoryAssist.js";
 import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset, EasyHitMotion, HitDebugSnapshot, LaunchPreset, PlayerAssistLevel, RacketCollisionResult } from "./ballTypes.js";
 import { TrajectoryCalibrationProfile } from "./trajectoryCalibration.js";
-import { evaluatePlayableCalibratedHit, isWithinAssistedContactEnvelope, PlayableHitDecision } from "./playableCalibratedHit.js";
+import { evaluatePlayableCalibratedHit, PlayableHitDecision } from "./playableCalibratedHit.js";
 import { ContactLifecycle, isSuccessfulTennisOutcome, PhysicalImpactResolution, resolvePhysicalImpact } from "./contactRealism.js";
 import { solveSpinFlight } from "./spinFlight.js";
 
@@ -191,9 +191,9 @@ export class BallController {
         this.ball.secondBounceDeadline = now + estimateSecondBounceDelay(this.ball.velocity.y) * 1000;
       }
     }
-    this.lastTrajectoryAssist = assistMode === "easy"
-      ? applyEasyTrajectoryAssist(this.ball, deltaSeconds, now)
-      : null;
+    // Training feeds are completely pre-solved. Never attract or steer the
+    // incoming ball after launch or after its physical bounce.
+    this.lastTrajectoryAssist = null;
     if (shouldEnterContactZone(this.ball, now, assistMode)) {
       this.ball.state = "CONTACT_ZONE";
     }
@@ -203,16 +203,13 @@ export class BallController {
         alreadyHit: this.ball.hit, expectedStrokeType: this.ball.expectedStrokeType,
         profile: playableProfile, motion: easyMotion ?? null, assistLevel: playerAssistLevel
       });
-      const stringBedCenter = new THREE.Vector3().setFromMatrixPosition(colliderWorldMatrix);
-      const reachable = isWithinAssistedContactEnvelope(
-        this.ball.position, stringBedCenter, playerAssistLevel, this.ball.physicsRadius
-      );
       if (this.lastPlayableDecision.accepted && playableProfile && easyMotion &&
-          reachable) {
+          playerAssistLevel === "training") {
         this.acceptPlayableCalibratedHit(now, playableProfile, easyMotion, contact, playerAssistLevel);
       }
     }
-    if (!this.ball.hit && this.ball.velocity.z > 0 && allowHit) {
+    const trainingStrikeZoneOwnsContact = assistMode === "easy" && playableEnabled && playerAssistLevel === "training";
+    if (!trainingStrikeZoneOwnsContact && !this.ball.hit && this.ball.velocity.z > 0 && allowHit) {
       this.lastCollision = sweepBallAgainstMovingRacket(
         this.ball.previousPosition,
         this.ball.position,

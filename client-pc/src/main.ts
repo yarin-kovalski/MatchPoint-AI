@@ -10,7 +10,7 @@ import {
   synchronizeProfileApexFromTiming, TrajectoryCalibrationProfile, worldToPlayerLocal
 } from "./ball/trajectoryCalibration.js";
 import { createProceduralTennisBallTexture, integrateBallRotation } from "./ball/ballVisuals.js";
-import { boundedContactCorrectionForLevel, createPlayableStrokePlan } from "./ball/playableCalibratedHit.js";
+import { createPlayableStrokePlan } from "./ball/playableCalibratedHit.js";
 import {
   loadTrajectoryProfileWithPriority, markTrajectoryProfileAsUser,
   restoreValidatedTrajectoryPreset, TrajectoryProfileSource, VALIDATED_TRAJECTORY_PRESET
@@ -413,7 +413,6 @@ let practiceAttempts = 0;
 let practiceHits = 0;
 let practiceMisses = 0;
 let appliedContactCorrection = 0;
-const contactMagnetOffset = new THREE.Vector3();
 let contactDistanceBeforeCorrection = 0;
 let contactDistanceAfterCorrection = 0;
 let currentFeedVariation: FeedVariationResult | null = null;
@@ -1183,7 +1182,7 @@ function animate(): void {
   }
   racketRoot.updateMatrixWorld(true);
   lastPhysicsRacketUpdateAt = now;
-  applyPlayableContactMagnet(nowEpoch);
+  appliedContactCorrection = 0;
   const detectorSnapshot = latestStrokeSnapshot ?? strokeStateMachine.getSnapshot(nowEpoch);
   const physicsStartedAt = performance.now();
   const physicsStepsBeforeFrame = ballController.physicsState.totalSteps;
@@ -2212,13 +2211,13 @@ function setTrajectoryCamera(view: "side" | "top" | "player"): void {
 
 function isPlayableCalibratedHitEnabled(): boolean {
   const strokeType = ballController.ball.expectedStrokeType;
-  return assistMode === "easy" && elements.playableCalibratedHitToggle.checked &&
-    trajectoryProfiles[strokeType] !== null;
+  return playerAssistLevel === "training" && assistMode === "easy" && elements.playableCalibratedHitToggle.checked &&
+    (activeCalibrationProfile ?? trajectoryProfiles[strokeType]) !== null;
 }
 
 function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   const selectedLevel = elements.feedVariationLevel.value as FeedVariationLevel;
-  const level = forceValidatedBaseNext ? "off" : selectedLevel;
+  const level = playerAssistLevel === "training" || forceValidatedBaseNext ? "off" : selectedLevel;
   forceValidatedBaseNext = false;
   const enteredSeed = Number(elements.feedSeed.value);
   const seed = elements.feedSeed.value.trim() && Number.isFinite(enteredSeed)
@@ -2226,7 +2225,8 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
     : crypto.getRandomValues(new Uint32Array(1))[0];
   const baseVariation = generateSafeFeedVariation(strokeType, level, seed);
   const style = (document.getElementById("feedArchetype") as HTMLSelectElement).value;
-  const premium = style === "validated" || level === "off" ? null : createArchetypeFeed(baseVariation, style as FeedArchetype);
+  const premium = playerAssistLevel === "training" || style === "validated" || level === "off"
+    ? null : createArchetypeFeed(baseVariation, style as FeedArchetype);
   const generatedVariation = premium?.variation ?? baseVariation;
   currentFeedVariation = {
     ...generatedVariation,
@@ -2240,12 +2240,12 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   };
   const plan = createPlayableStrokePlan(strokeType, launchProfiles);
   selectedPracticeStroke = strokeType;
-  assistMode = "easy";
+  assistMode = playerAssistLevel === "training" ? "easy" : "prototype";
   ballSpeedPreset = "normal";
-  elements.assistModeSelect.value = "easy";
+  elements.assistModeSelect.value = assistMode;
   elements.ballSpeedSelect.value = "normal";
   elements.useCalibratedFeeds.checked = true;
-  elements.playableCalibratedHitToggle.checked = true;
+  elements.playableCalibratedHitToggle.checked = playerAssistLevel === "training";
   elements.playableExpectedStroke.textContent = strokeType;
   elements.playableResolvedStroke.textContent = strokeType;
   lastContactEvent = null;
@@ -2274,12 +2274,12 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
     : `${premium?.label ?? "Validated"} · ${strokeType} · ${level} variation`;
   console.info("Feed variation", variationSummary);
   const assist = BALL_CONFIG.playerAssist[playerAssistLevel];
-  const limits = assist.maximumCorrection;
   elements.playableProfileDetails.textContent =
     `Loaded profile ${plan.strokeType} | Expected side ${plan.expectedSide} | ` +
     `Contact local X ${plan.contactLocalX.toFixed(2)} m | Contact world ${formatVector(plan.contactWorld)} | ` +
     `Window -${assist.windowBeforeMs}/+${assist.windowAfterMs} ms | ` +
-    `Magnet ${limits.lateral.toFixed(2)}/${limits.vertical.toFixed(2)}/${limits.depth.toFixed(2)} m`;
+    (playerAssistLevel === "training" ? "Strike-zone gate; no contact magnet" :
+      "Moving-racket physical collision");
   practiceAttempts += 1;
   practiceRelaunchAt = 0;
   launchBall(strokeType === "forehand" ? "guaranteedForehand" : "guaranteedBackhand", plan.profile);
@@ -2295,38 +2295,6 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
     ballController.ball.spinStrength = premium.spin.length();
     ballController.ball.spinType = premium.spin.x > 0 ? "topspin" : "flat";
   }
-}
-
-function applyPlayableContactMagnet(now: number): void {
-  appliedContactCorrection = 0;
-  if (!isPlayableCalibratedHitEnabled() || ballController.ball.bounceCount !== 1 ||
-      ballController.ball.contactDeadline <= 0 || ballController.ball.hit) {
-    contactMagnetOffset.set(0, 0, 0);
-    return;
-  }
-  const assist = BALL_CONFIG.playerAssist[playerAssistLevel];
-  const start = ballController.ball.contactDeadline - assist.windowBeforeMs;
-  const end = ballController.ball.contactDeadline + assist.windowAfterMs;
-  const motion = createEasyHitMotion();
-  if (now < start || now > end || !motion?.swingIntent?.active) {
-    contactMagnetOffset.set(0, 0, 0);
-    return;
-  }
-  const profile = activeCalibrationProfile ?? trajectoryProfiles[ballController.ball.expectedStrokeType];
-  if (!profile) return;
-  const currentStringCenter = new THREE.Vector3();
-  racketStringCollider.getWorldPosition(currentStringCenter);
-  const correction = boundedContactCorrectionForLevel(
-    currentStringCenter, new THREE.Vector3().fromArray(profile.contactPointWorld), playerAssistLevel
-  );
-  contactDistanceBeforeCorrection = currentStringCenter.distanceTo(new THREE.Vector3().fromArray(profile.contactPointWorld));
-  const frameFactor = Math.min(1, 16.7 / BALL_CONFIG.playableCalibratedHit.snapDurationMs);
-  contactMagnetOffset.lerp(correction, frameFactor);
-  racketRoot.position.add(contactMagnetOffset);
-  appliedContactCorrection = contactMagnetOffset.length();
-  contactDistanceAfterCorrection = currentStringCenter.clone().add(contactMagnetOffset)
-    .distanceTo(new THREE.Vector3().fromArray(profile.contactPointWorld));
-  racketRoot.updateMatrixWorld(true);
 }
 
 function updatePlayableStatus(now: number): void {
@@ -2499,7 +2467,6 @@ function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibra
   previewTrajectoryActive = preview;
   easySwingIntentDetector.reset();
   latestEasySwingIntent = null;
-  contactMagnetOffset.set(0, 0, 0);
   const guaranteed = preset === "guaranteedForehand" || preset === "guaranteedBackhand";
   const sideOffset = isBackhandPreset(preset)
     ? backhandSideOffset

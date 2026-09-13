@@ -12,6 +12,9 @@ test("Training feeds move bounce and contact into comparable comfortable reach",
     positionValidatedProfileAtBaseline(VALIDATED_TRAJECTORY_PRESET[stroke])
   );
   const training = positioned.map(createTrainingComfortProfile);
+  assert.deepEqual(training[0].launchPointWorld, training[1].launchPointWorld);
+  assert.equal(training[0].bouncePointWorld[0], -training[1].bouncePointWorld[0]);
+  assert.equal(training[0].contactPointWorld[0], -training[1].contactPointWorld[0]);
   const baseline = new THREE.Vector3(0, 1.45, 5.75);
   for (let index = 0; index < training.length; index += 1) {
     const oldContact = new THREE.Vector3().fromArray(positioned[index].contactPointWorld);
@@ -24,6 +27,18 @@ test("Training feeds move bounce and contact into comparable comfortable reach",
   const backhandReach = new THREE.Vector3().fromArray(training[1].contactPointWorld).distanceTo(baseline);
   assert.ok(Math.abs(forehandReach - backhandReach) < 0.08);
   assert.ok(training[0].contactPointWorld[0] > 0 && training[1].contactPointWorld[0] < 0);
+});
+
+test("canonical Training feed uses exact mirrored strike-zone geometry", () => {
+  const forehand = createTrainingComfortProfile(VALIDATED_TRAJECTORY_PRESET.forehand);
+  const backhand = createTrainingComfortProfile(VALIDATED_TRAJECTORY_PRESET.backhand);
+  assert.deepEqual(forehand.launchPointWorld, [0, 2.2, -8.5]);
+  assert.deepEqual(forehand.bouncePointWorld, [0.75, 0.10350000000000001, 0.25]);
+  assert.deepEqual(backhand.bouncePointWorld, [-0.75, 0.10350000000000001, 0.25]);
+  assert.deepEqual(forehand.contactPointWorld, [1.5, 1.05, 4.65]);
+  assert.deepEqual(backhand.contactPointWorld, [-1.5, 1.05, 4.65]);
+  assert.equal(forehand.bounceToContactMs, 820);
+  assert.equal(backhand.bounceToContactMs, 820);
 });
 
 test("Training feed clears net, bounces once, then rises into contact without a snap", () => {

@@ -3,7 +3,7 @@ import test from "node:test";
 import * as THREE from "three";
 import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
 import { BallController } from "../client-pc/src/ball/BallController.js";
-import { boundedContactCorrection, createPlayableStrokePlan, evaluatePlayableCalibratedHit, isWithinAssistedContactEnvelope } from "../client-pc/src/ball/playableCalibratedHit.js";
+import { createPlayableStrokePlan, evaluatePlayableCalibratedHit } from "../client-pc/src/ball/playableCalibratedHit.js";
 import { createDefaultTrajectoryProfile, worldToPlayerLocal } from "../client-pc/src/ball/trajectoryCalibration.js";
 import { EasyHitMotion } from "../client-pc/src/ball/ballTypes.js";
 import { StrokeDetectorSnapshot } from "../client-pc/src/strokeDetection/strokeTypes.js";
@@ -69,22 +69,6 @@ test("calibrated opportunity rejects early, late, wrong-side, and duplicate cont
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, alreadyHit: true }).reason, "CONTACT_ALREADY_USED");
 });
 
-test("contact magnet stays inside every configured axis bound", () => {
-  const correction = boundedContactCorrection(new THREE.Vector3(), new THREE.Vector3(5, -5, 5));
-  assert.equal(correction.x, BALL_CONFIG.playerAssist.training.maximumCorrection.lateral);
-  assert.equal(correction.y, -BALL_CONFIG.playerAssist.training.maximumCorrection.vertical);
-  assert.equal(correction.z, BALL_CONFIG.playerAssist.training.maximumCorrection.depth);
-});
-
-test("Training contact envelope is forgiving while Realistic remains tighter", () => {
-  const strings = new THREE.Vector3(0, 1, 0);
-  const near = new THREE.Vector3(0.22, 1.18, 0.2);
-  const outside = new THREE.Vector3(0.5, 1, 0);
-  assert.equal(isWithinAssistedContactEnvelope(near, strings, "training"), true);
-  assert.equal(isWithinAssistedContactEnvelope(near, strings, "realistic"), false);
-  assert.equal(isWithinAssistedContactEnvelope(outside, strings, "training"), false);
-});
-
 test("Training accepts a reasonable swing that Realistic keeps below threshold", () => {
   const profile = createDefaultTrajectoryProfile("forehand", "right");
   const reasonable = motion("forehand");
@@ -113,7 +97,7 @@ test("backward fused intent cannot receive playability assistance", () => {
   assert.equal(decision.reason, "NO_REAL_SWING");
 });
 
-test("playable contact resolves once at the actual ball position without snapping", () => {
+test("Training strike-zone contact resolves without string-plane intersection or snapping", () => {
   const hits: unknown[] = [];
   const controller = new BallController(event => hits.push(event));
   const profile = createDefaultTrajectoryProfile("forehand", "right");
@@ -127,7 +111,7 @@ test("playable contact resolves once at the actual ball position without snappin
   controller.ball.previousPosition.copy(controller.ball.position);
   controller.ball.velocity.set(0, 1, 4);
   const racket = new THREE.Matrix4().compose(
-    controller.ball.position.clone(), new THREE.Quaternion(), new THREE.Vector3(0.01, 0.01, 0.01)
+    new THREE.Vector3(20, 20, 20), new THREE.Quaternion(), new THREE.Vector3(0.01, 0.01, 0.01)
   );
   controller.update(0, now, racket, snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true, "training");
   controller.update(0, now + 1, racket, snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true, "training");
@@ -141,7 +125,7 @@ test("playable contact resolves once at the actual ball position without snappin
   assert.ok(Math.abs(bounce.x) < 4.2 && bounce.z < BALL_CONFIG.launch.netDepth && bounce.z > BALL_CONFIG.bounds.zFar);
 });
 
-test("a timed real swing cannot hit a ball outside the bounded contact reach", () => {
+test("Realistic mode remains moving-racket geometry based", () => {
   const controller = new BallController();
   const profile = createDefaultTrajectoryProfile("forehand", "right");
   controller.launch("guaranteedForehand", "right", "normal", 0, "one-handed", undefined, profile);
@@ -151,7 +135,7 @@ test("a timed real swing cannot hit a ball outside the bounded contact reach", (
   controller.ball.previousPosition.copy(controller.ball.position);
   // A real racket is centimetre-scaled; identity made a 102-metre collider.
   const racket = new THREE.Matrix4().makeScale(0.01, 0.01, 0.01);
-  controller.update(0, 1000, racket, snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true);
+  controller.update(0, 1000, racket, snapshot("forehand"), null, "prototype", motion("forehand"), true, profile, false, "realistic");
   assert.equal(controller.ball.hit, false);
   assert.deepEqual(controller.ball.position.toArray(), [5, 1, 2]);
 });
