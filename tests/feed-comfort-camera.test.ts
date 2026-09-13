@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
-import { createTrainingComfortProfile, positionValidatedProfileAtBaseline } from "../client-pc/src/ball/courtPositioning.js";
+import {
+  createTrainingComfortProfile, getTrainingStrikeZoneGeometry, isInsideTrainingStrikeZone,
+  positionValidatedProfileAtBaseline, TRAINING_STRIKE_ZONE_RADII
+} from "../client-pc/src/ball/courtPositioning.js";
 import { solveTrajectoryProfile } from "../client-pc/src/ball/trajectoryCalibration.js";
 import { VALIDATED_TRAJECTORY_PRESET } from "../client-pc/src/ball/validatedTrajectoryPreset.js";
 import { BALL_CAMERA_BASE_FOV, BALL_CAMERA_BASE_TARGET, updateBallFlightCamera } from "../client-pc/src/scene/ballFlightCamera.js";
@@ -17,9 +20,10 @@ test("Training feeds move bounce and contact into comparable comfortable reach",
   assert.equal(training[0].contactPointWorld[0], -training[1].contactPointWorld[0]);
   const baseline = new THREE.Vector3(0, 1.45, 5.75);
   for (let index = 0; index < training.length; index += 1) {
-    const oldContact = new THREE.Vector3().fromArray(positioned[index].contactPointWorld);
     const contact = new THREE.Vector3().fromArray(training[index].contactPointWorld);
-    assert.ok(contact.distanceTo(baseline) < oldContact.distanceTo(baseline));
+    const stringCenter = getTrainingStrikeZoneGeometry(positioned[index]).stringBedCenter;
+    assert.ok(contact.distanceTo(stringCenter) < 1e-12);
+    assert.ok(contact.distanceTo(baseline) < 3);
     assert.ok(training[index].bouncePointWorld[2] > positioned[index].bouncePointWorld[2] + 4.5);
     assert.equal(solveTrajectoryProfile(training[index]).valid, true);
   }
@@ -33,10 +37,19 @@ test("canonical Training feed uses exact mirrored strike-zone geometry", () => {
   const forehand = createTrainingComfortProfile(VALIDATED_TRAJECTORY_PRESET.forehand);
   const backhand = createTrainingComfortProfile(VALIDATED_TRAJECTORY_PRESET.backhand);
   assert.deepEqual(forehand.launchPointWorld, [0, 2.2, -8.5]);
-  assert.deepEqual(forehand.bouncePointWorld, [0.75, 0.10350000000000001, 0.25]);
-  assert.deepEqual(backhand.bouncePointWorld, [-0.75, 0.10350000000000001, 0.25]);
-  assert.deepEqual(forehand.contactPointWorld, [1.5, 1.05, 4.65]);
-  assert.deepEqual(backhand.contactPointWorld, [-1.5, 1.05, 4.65]);
+  const expected = getTrainingStrikeZoneGeometry(VALIDATED_TRAJECTORY_PRESET.forehand).stringBedCenter;
+  assert.ok(forehand.contactPointWorld[0] > 1.5);
+  assert.deepEqual(forehand.contactPointWorld, expected.toArray());
+  assert.deepEqual(backhand.contactPointWorld, [-expected.x, expected.y, expected.z]);
+  assert.equal(forehand.bouncePointWorld[0], -backhand.bouncePointWorld[0]);
+  assert.ok(forehand.bouncePointWorld[0] > 0.75);
+  const preSlope = (forehand.bouncePointWorld[0] - forehand.launchPointWorld[0]) /
+    (forehand.bouncePointWorld[2] - forehand.launchPointWorld[2]);
+  const postSlope = (forehand.contactPointWorld[0] - forehand.bouncePointWorld[0]) /
+    (forehand.contactPointWorld[2] - forehand.bouncePointWorld[2]);
+  assert.ok(Math.abs(preSlope - postSlope) < 1e-12);
+  assert.ok(isInsideTrainingStrikeZone(new THREE.Vector3().fromArray(forehand.contactPointWorld), expected));
+  assert.ok(TRAINING_STRIKE_ZONE_RADII.lateral >= 0.35);
   assert.equal(forehand.bounceToContactMs, 820);
   assert.equal(backhand.bounceToContactMs, 820);
 });

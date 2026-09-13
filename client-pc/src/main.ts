@@ -22,7 +22,10 @@ import {
   configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createCourtBackdrop,
   createFeedOriginMarker
 } from "./scene/tennisEnvironment.js";
-import { createTrainingComfortProfile, PLAYER_BASELINE_OFFSET_Z, positionValidatedProfileAtBaseline } from "./ball/courtPositioning.js";
+import {
+  createTrainingComfortProfile, isInsideTrainingStrikeZone, PLAYER_BASELINE_OFFSET_Z,
+  positionValidatedProfileAtBaseline, TRAINING_STRIKE_ZONE_RADII
+} from "./ball/courtPositioning.js";
 import { BALL_CAMERA_BASE_TARGET, BallFlightCameraState, updateBallFlightCamera } from "./scene/ballFlightCamera.js";
 import { assertBallVisualState } from "./ball/ballVisualState.js";
 import { sampleBallVisualPosition } from "./ball/fixedStepBallPhysics.js";
@@ -415,6 +418,9 @@ let practiceMisses = 0;
 let appliedContactCorrection = 0;
 let contactDistanceBeforeCorrection = 0;
 let contactDistanceAfterCorrection = 0;
+let trainingClosestStringBedDistance = Number.POSITIVE_INFINITY;
+let trainingStrikeZoneEntryAt: number | null = null;
+const trainingStringBedCenter = new THREE.Vector3();
 let currentFeedVariation: FeedVariationResult | null = null;
 let activeCalibrationProfile: TrajectoryCalibrationProfile | null = null;
 let geometryMissStreak = 0;
@@ -755,7 +761,11 @@ const contactTargetVolume = new THREE.Mesh(
   new THREE.SphereGeometry(0.22, 18, 12),
   new THREE.MeshBasicMaterial({ color: 0x54e9ff, wireframe: true, transparent: true, opacity: 0.38, depthTest: false })
 );
-contactTargetVolume.scale.set(1.25, 1, 0.75);
+contactTargetVolume.scale.set(
+  TRAINING_STRIKE_ZONE_RADII.lateral / 0.22,
+  TRAINING_STRIKE_ZONE_RADII.vertical / 0.22,
+  TRAINING_STRIKE_ZONE_RADII.depth / 0.22
+);
 contactTargetGroup.add(contactTargetVolume);
 const contactHeightGuide = new THREE.Line(
   new THREE.BufferGeometry(),
@@ -1204,6 +1214,7 @@ function animate(): void {
     );
   }
   telemetryPhysicsMs += performance.now() - physicsStartedAt;
+  updateTrainingFeedMetrics(nowEpoch);
   const physicsStepsThisFrame = ballController.physicsState.totalSteps - physicsStepsBeforeFrame;
   updateBallVisuals(ballDeltaSeconds);
   const outgoingFlight = ballController.ball.active && ballController.ball.state === "RETURNED";
@@ -1317,6 +1328,13 @@ function updatePerformanceTelemetry(now: number, _nowEpoch: number): void {
     runtimeErrorCount,
     unhandledRejectionCount,
     lastRuntimeError,
+    trainingClosestBallToStringBedMeters: Number.isFinite(trainingClosestStringBedDistance)
+      ? Number(trainingClosestStringBedDistance.toFixed(3)) : null,
+    trainingStrikeZoneEntryAt,
+    trainingBouncePosition: ballController.ball.bounceCount > 0 ? formatVector(observedBouncePoint) : null,
+    trainingBounceToContactMs: activeCalibrationProfile?.bounceToContactMs ?? null,
+    trainingContactHeight: activeCalibrationProfile?.contactPointWorld[1] ?? null,
+    trainingLateralOffset: activeCalibrationProfile?.contactPointWorld[0] ?? null,
     lastRuntimeErrorAgeMs: lastRuntimeErrorAt > 0 ? Math.round(now - lastRuntimeErrorAt) : null,
     droppedPhysicsMs: Math.round(ballController.physicsState.droppedSeconds * 1000)
   }, null, 2);
@@ -1615,6 +1633,19 @@ function createEasyHitMotion(): EasyHitMotion | null {
     forwardSwing,
     playabilityAssistStrength: BALL_CONFIG.playerAssist[playerAssistLevel].directionAnchorStrength
   };
+}
+
+function updateTrainingFeedMetrics(now: number): void {
+  const ball = ballController.ball;
+  if (playerAssistLevel !== "training" || !ball.active || ball.hit || ball.state === "RETURNED") return;
+  trainingStringBedCenter.setFromMatrixPosition(racketStringCollider.matrixWorld);
+  trainingClosestStringBedDistance = Math.min(
+    trainingClosestStringBedDistance,
+    ball.position.distanceTo(trainingStringBedCenter)
+  );
+  if (trainingStrikeZoneEntryAt === null && isInsideTrainingStrikeZone(ball.position, ball.contactTarget)) {
+    trainingStrikeZoneEntryAt = now;
+  }
 }
 
 function updateStrokeDebug(): void {
@@ -2467,6 +2498,8 @@ function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibra
   previewTrajectoryActive = preview;
   easySwingIntentDetector.reset();
   latestEasySwingIntent = null;
+  trainingClosestStringBedDistance = Number.POSITIVE_INFINITY;
+  trainingStrikeZoneEntryAt = null;
   const guaranteed = preset === "guaranteedForehand" || preset === "guaranteedBackhand";
   const sideOffset = isBackhandPreset(preset)
     ? backhandSideOffset
@@ -2951,7 +2984,10 @@ function updateBallDebug(): void {
     `side ${target.x.toFixed(2)} m, center gap ${target.distanceTo(expected.stringBedCenter).toFixed(3)} m, ` +
     `contact ETA ${ball.contactDeadline > 0 ? Math.max(0, (ball.contactDeadline - Date.now()) / 1000).toFixed(2) : "--"} s, ` +
     `second bounce ETA ${ball.secondBounceDeadline > 0 ? Math.max(0, (ball.secondBounceDeadline - Date.now()) / 1000).toFixed(2) : "--"} s, ` +
-    `closest ${ballController.lastCollision?.closestDistance.toFixed(3) ?? "--"} m`;
+    `closest physical ${ballController.lastCollision?.closestDistance.toFixed(3) ?? "--"} m, ` +
+    `Training closest ball/string center ${Number.isFinite(trainingClosestStringBedDistance)
+      ? trainingClosestStringBedDistance.toFixed(3) : "--"} m, ` +
+    `zone entry ${trainingStrikeZoneEntryAt ?? "--"}`;
 }
 
 function completeCalibration(): void {
