@@ -17,11 +17,13 @@ import {
 } from "./ball/validatedTrajectoryPreset.js";
 import { canLaunchPracticeFeed, FeedVariationLevel, FeedVariationResult, generateSafeFeedVariation } from "./ball/feedVariation.js";
 import { createArchetypeFeed, FeedArchetype } from "./ball/feedArchetypes.js";
+import { solveSpinFlight } from "./ball/spinFlight.js";
 import {
   configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createCourtBackdrop,
   createFeedOriginMarker
 } from "./scene/tennisEnvironment.js";
-import { PLAYER_BASELINE_OFFSET_Z, positionValidatedProfileAtBaseline } from "./ball/courtPositioning.js";
+import { createTrainingComfortProfile, PLAYER_BASELINE_OFFSET_Z, positionValidatedProfileAtBaseline } from "./ball/courtPositioning.js";
+import { BALL_CAMERA_BASE_TARGET, BallFlightCameraState, updateBallFlightCamera } from "./scene/ballFlightCamera.js";
 import { assertBallVisualState } from "./ball/ballVisualState.js";
 import { sampleBallVisualPosition } from "./ball/fixedStepBallPhysics.js";
 import { addPremiumEnvironment, courtPixelRatio, createMicroTexture, createSoftContactShadowTexture, finishPremiumRacket } from "./scene/premiumVisuals.js";
@@ -522,6 +524,8 @@ const camera = new THREE.PerspectiveCamera(
 );
 camera.position.set(...BALL_CONFIG.camera.position);
 camera.lookAt(...BALL_CONFIG.camera.target);
+let ballFlightCameraState: BallFlightCameraState = { targetY: BALL_CONFIG.camera.target[1], fov: BALL_CONFIG.camera.fovDegrees };
+let ballFlightCameraActive = false;
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
@@ -639,7 +643,8 @@ const ballMesh = new THREE.Mesh(
     bumpScale: 0.0006,
     metalness: 0,
     clearcoat: 0,
-    emissiveIntensity: 0
+    emissive: 0x263000,
+    emissiveIntensity: 0.08
   })
 );
 ballMesh.castShadow = true;
@@ -1202,6 +1207,18 @@ function animate(): void {
   telemetryPhysicsMs += performance.now() - physicsStartedAt;
   const physicsStepsThisFrame = ballController.physicsState.totalSteps - physicsStepsBeforeFrame;
   updateBallVisuals(ballDeltaSeconds);
+  const outgoingFlight = ballController.ball.active && ballController.ball.state === "RETURNED";
+  if (outgoingFlight) ballFlightCameraActive = true;
+  if (ballFlightCameraActive) {
+    ballFlightCameraState = updateBallFlightCamera(
+      ballFlightCameraState, ballController.ball.position, outgoingFlight, ballDeltaSeconds
+    );
+    camera.fov = ballFlightCameraState.fov;
+    camera.lookAt(BALL_CAMERA_BASE_TARGET.x, ballFlightCameraState.targetY, BALL_CAMERA_BASE_TARGET.z);
+    camera.updateProjectionMatrix();
+    if (!outgoingFlight && Math.abs(ballFlightCameraState.targetY - BALL_CAMERA_BASE_TARGET.y) < 0.01 &&
+        Math.abs(ballFlightCameraState.fov - BALL_CONFIG.camera.fovDegrees) < 0.01) ballFlightCameraActive = false;
+  }
   impactLight.intensity = 0;
   targetSwingSpeedKmh *= 0.94;
   displayedSwingSpeedKmh = damp(displayedSwingSpeedKmh, targetSwingSpeedKmh, 0.45);
@@ -2213,7 +2230,9 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   const generatedVariation = premium?.variation ?? baseVariation;
   currentFeedVariation = {
     ...generatedVariation,
-    profile: positionValidatedProfileAtBaseline(generatedVariation.profile)
+    profile: playerAssistLevel === "training"
+      ? createTrainingComfortProfile(positionValidatedProfileAtBaseline(generatedVariation.profile))
+      : positionValidatedProfileAtBaseline(generatedVariation.profile)
   };
   const launchProfiles = {
     forehand: strokeType === "forehand" ? currentFeedVariation.profile : VALIDATED_TRAJECTORY_PRESET.forehand,
@@ -2265,7 +2284,12 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   practiceRelaunchAt = 0;
   launchBall(strokeType === "forehand" ? "guaranteedForehand" : "guaranteedBackhand", plan.profile);
   if (premium && !premium.variation.fallback) {
-    ballController.ball.velocity.copy(premium.launchVelocity);
+    const solvedComfortFeed = solveTrajectoryProfile(plan.profile);
+    ballController.ball.velocity.copy(solveSpinFlight(
+      new THREE.Vector3().fromArray(plan.profile.launchPointWorld),
+      new THREE.Vector3().fromArray(plan.profile.bouncePointWorld),
+      solvedComfortFeed.launchToBounceSeconds, premium.spin
+    ));
     ballController.ball.spinVector.copy(premium.spin);
     ballController.ball.angularVelocity.copy(premium.spin);
     ballController.ball.spinStrength = premium.spin.length();
