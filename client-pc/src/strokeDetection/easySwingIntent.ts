@@ -45,7 +45,8 @@ export class EasySwingIntentDetector {
       confidence >= config.minimumConfidence;
 
     if (qualifies) {
-      const previous = this.snapshot?.strokeType === strokeType ? this.snapshot : null;
+      const previous = this.snapshot?.strokeType === strokeType && this.snapshot.active &&
+        input.timestamp <= this.snapshot.expiresAt ? this.snapshot : null;
       this.snapshot = {
         active: true,
         confidence: Math.max(previous?.confidence ?? 0, confidence),

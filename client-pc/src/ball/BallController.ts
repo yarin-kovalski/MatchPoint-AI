@@ -4,7 +4,7 @@ import { BALL_CONFIG } from "./ballConfig.js";
 import { getLaunchParameters } from "./ballLauncher.js";
 import { isBallOutOfBounds } from "./ballPhysics.js";
 import { advanceBallFixedStep, createFixedStepPhysicsState } from "./fixedStepBallPhysics.js";
-import { calculateOutgoingVelocity, predictReturnTrajectory } from "./ballResponse.js";
+import { calculateOutgoingVelocity } from "./ballResponse.js";
 import { estimateSecondBounceDelay, solveVelocity } from "./ballDelivery.js";
 import { interpolateRacketMatrix, sweepBallAgainstMovingRacket } from "./racketCollider.js";
 import { EasyTrajectoryAssistResult } from "./easyTrajectoryAssist.js";
@@ -12,7 +12,8 @@ import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset,
 import { TrajectoryCalibrationProfile } from "./trajectoryCalibration.js";
 import { evaluatePlayableCalibratedHit, PlayableHitDecision } from "./playableCalibratedHit.js";
 import { ContactLifecycle, isSuccessfulTennisOutcome, PhysicalImpactResolution, resolvePhysicalImpact } from "./contactRealism.js";
-import { isReturnInCourt, solveTrainingReturn } from "./trainingReturn.js";
+import { judgeReturnBounce, ReturnResult } from "./courtRules.js";
+import { solveTrainingReturn } from "./trainingReturn.js";
 import { solveSpinFlight } from "./spinFlight.js";
 
 export function shouldEnterContactZone(ball: BallSnapshot, now: number, assistMode: AssistMode = "prototype"): boolean {
@@ -54,7 +55,8 @@ export class BallController {
     ballToStringBedDistance: Number.POSITIVE_INFINITY, currentSwingSpeed: 0,
     minimumSwingSpeed: BALL_CONFIG.easyAssist.minimumAngularSpeed, stringBedCenter: new THREE.Vector3()
   };
-  private returnClearedNet = false;
+  private returnTouchedNet = false;
+  lastReturnResult: ReturnResult | null = null;
   private sequence = 0;
   private finalResultEmitted = false;
   private closestDistance = Number.POSITIVE_INFINITY;
@@ -81,7 +83,7 @@ export class BallController {
   constructor(
     private readonly onHit?: (event: BallHitEvent) => void,
     private readonly onMiss?: (event: BallMissEvent) => void,
-    private readonly onReturnLanded?: (result: "IN" | "OUT" | "NET") => void
+    private readonly onReturnLanded?: (result: ReturnResult) => void
   ) {}
 
   launch(
@@ -94,6 +96,8 @@ export class BallController {
     calibrationProfile?: TrajectoryCalibrationProfile
   ): void {
     const launch = getLaunchParameters(preset, handedness, speed, backhandStyle, targetOffsets, calibrationProfile);
+    this.returnTouchedNet = false;
+    this.lastReturnResult = null;
     this.sequence += 1;
     this.ball.id = `ball-${this.sequence}`;
     this.ball.state = "IN_FLIGHT_TO_PLAYER";
@@ -172,20 +176,22 @@ export class BallController {
       if (this.ball.state === "MISSED" && now >= this.resetAt) this.reset();
       return;
     }
-    const beforeStep = this.ball.position.clone();
     const physics = advanceBallFixedStep(this.ball, deltaSeconds, this.physicsState);
     const bounced = physics.bounced;
-    if (this.ball.hit && beforeStep.z > BALL_CONFIG.launch.netDepth && this.ball.position.z <= BALL_CONFIG.launch.netDepth) {
-      const fraction = (beforeStep.z - BALL_CONFIG.launch.netDepth) / (beforeStep.z - this.ball.position.z);
-      this.returnClearedNet = THREE.MathUtils.lerp(beforeStep.y, this.ball.position.y, fraction) >
-        BALL_CONFIG.launch.netHeight + this.ball.physicsRadius;
+    if ((this.ball.hit || this.ball.state === "RETURNED") && !this.lastReturnResult) {
+      for (const event of physics.events) {
+        if (event.type === "net") this.returnTouchedNet = true;
+        if (event.type === "bounce") {
+          this.lastReturnResult = judgeReturnBounce(event.point, this.returnTouchedNet);
+          this.onReturnLanded?.(this.lastReturnResult);
+          this.ball.state = "OUT";
+          this.resetAt = now + BALL_CONFIG.resetDelayMs;
+          break;
+        }
+      }
     }
-    if (bounced) {
-      if (this.ball.hit) {
-        if (this.ball.state !== "OUT") this.onReturnLanded?.(!this.returnClearedNet ? "NET" : isReturnInCourt(this.ball.position) ? "IN" : "OUT");
-        this.ball.state = "OUT";
-        this.resetAt = now + BALL_CONFIG.resetDelayMs;
-      } else if (this.ball.bounceCount >= 2) {
+    if (bounced && !this.ball.hit && !this.lastReturnResult) {
+      if (this.ball.bounceCount >= 2) {
         this.emitMiss(now, "second bounce before contact", stroke, contact, colliderWorldMatrix);
         return;
       } else {
@@ -207,7 +213,7 @@ export class BallController {
     if (shouldEnterContactZone(this.ball, now, assistMode)) {
       this.ball.state = "CONTACT_ZONE";
     }
-    if (allowHit && assistMode === "easy" && playableEnabled && this.ball.contactDeadline > 0) {
+    if (allowHit && !this.lastReturnResult && this.ball.state !== "RETURNED" && assistMode === "easy" && playableEnabled && this.ball.contactDeadline > 0) {
       this.lastPlayableDecision = evaluatePlayableCalibratedHit({
         now, contactTime: this.ball.contactDeadline, bounceCount: this.ball.bounceCount,
         alreadyHit: this.ball.hit, expectedStrokeType: this.ball.expectedStrokeType,
@@ -219,7 +225,7 @@ export class BallController {
       }
     }
     const trainingStrikeZoneOwnsContact = assistMode === "easy" && playableEnabled && playerAssistLevel === "training";
-    if (!trainingStrikeZoneOwnsContact && !this.ball.hit && this.ball.velocity.z > 0 && allowHit) {
+    if (!trainingStrikeZoneOwnsContact && !this.lastReturnResult && this.ball.state !== "RETURNED" && !this.ball.hit && this.ball.velocity.z > 0 && allowHit) {
       this.lastCollision = sweepBallAgainstMovingRacket(
         this.ball.previousPosition,
         this.ball.position,
@@ -269,7 +275,10 @@ export class BallController {
     }
     if (isBallOutOfBounds(this.ball, now) && this.ball.state !== "OUT") {
       if (!this.ball.hit) this.emitMiss(now, "ball left world bounds", stroke, contact, colliderWorldMatrix);
-      else { this.onReturnLanded?.("OUT"); this.ball.state = "OUT"; this.resetAt = now + BALL_CONFIG.resetDelayMs; }
+      else {
+        if (!this.lastReturnResult) { this.lastReturnResult = "OUT"; this.onReturnLanded?.("OUT"); }
+        this.ball.state = "OUT"; this.resetAt = now + BALL_CONFIG.resetDelayMs;
+      }
     }
     if (this.ball.state === "OUT" && now >= this.resetAt) this.reset();
     this.previousColliderWorldMatrix.copy(colliderWorldMatrix);
@@ -338,7 +347,7 @@ export class BallController {
     if (!isSuccessfulTennisOutcome(resolution.outcome)) return;
     const effective = contact ?? (motion ? this.createEasyContact(now, motion) : null);
     if (!effective) return;
-    this.returnClearedNet = false;
+    this.returnTouchedNet = false;
     this.ball.hit = true;
     this.finalResultEmitted = true;
     const event: BallHitEvent = {
@@ -394,19 +403,36 @@ export class BallController {
       forwardSwing: motion.forwardSwing,
       playabilityAssistStrength: BALL_CONFIG.playerAssist[playerAssistLevel].directionAnchorStrength
     });
-    const trainingReturn = solveTrainingReturn(calibratedPoint, physical.rawOutgoingVelocity, physical.outgoingAngularVelocity);
-    if (trainingReturn) {
-      physical.outcome = "VALID_HIT";
-      physical.outgoingVelocity.copy(trainingReturn.velocity);
-      physical.assistedOutgoingVelocity.copy(trainingReturn.velocity);
-      physical.outgoingAngularVelocity.copy(trainingReturn.spin);
-      physical.spinRateRadiansPerSecond = trainingReturn.spin.length();
-      physical.safetyCorrection.copy(trainingReturn.velocity).sub(physical.rawOutgoingVelocity);
-      physical.prediction = predictReturnTrajectory(calibratedPoint, trainingReturn.velocity, trainingReturn.spin);
-      physical.predictedNetClearance = physical.prediction.netCrossingPoint
-        ? physical.prediction.netCrossingPoint.y - BALL_CONFIG.launch.netHeight - this.ball.physicsRadius : null;
-      response.prediction = physical.prediction;
-    }
+    const trainingReturn = solveTrainingReturn(calibratedPoint, motion);
+    physical.spinType = trainingReturn.spinType;
+    physical.outcome = trainingReturn.spinType === "TOPSPIN" ? "TOPSPIN_HIT"
+      : trainingReturn.spinType === "SLICE" ? "SLICE_HIT" : trainingReturn.spinType === "FLAT" ? "FLAT_HIT" : "VALID_HIT";
+    physical.outgoingVelocity.copy(trainingReturn.velocity);
+    physical.rawOutgoingVelocity.copy(trainingReturn.rawVelocity);
+    physical.assistedOutgoingVelocity.copy(trainingReturn.velocity);
+    physical.outgoingAngularVelocity.copy(trainingReturn.spin);
+    physical.rawSpin.copy(trainingReturn.spin);
+    physical.spinRateRadiansPerSecond = trainingReturn.spin.length();
+    physical.powerScore = trainingReturn.power;
+    physical.forwardDirectionQuality = trainingReturn.velocity.clone().normalize().dot(new THREE.Vector3(0, 0, -1));
+    physical.upwardBrushVelocity = Math.max(0, trainingReturn.verticalPath) * trainingReturn.headSpeed;
+    physical.downwardBrushVelocity = Math.max(0, -trainingReturn.verticalPath) * trainingReturn.headSpeed;
+    physical.tangentialImpulse.copy(trainingReturn.spin).multiplyScalar(this.ball.physicsRadius);
+    physical.racketHeadSpeed = trainingReturn.headSpeed;
+    physical.swingPathAngleRadians = Math.atan(trainingReturn.verticalPath);
+    physical.launchAngleRadians = Math.atan2(trainingReturn.velocity.y, Math.hypot(trainingReturn.velocity.x, trainingReturn.velocity.z));
+    physical.rawLaunchAngleRadians = Math.atan2(trainingReturn.rawVelocity.y, Math.hypot(trainingReturn.rawVelocity.x, trainingReturn.rawVelocity.z));
+    physical.safetyCorrection.copy(trainingReturn.velocity).sub(trainingReturn.rawVelocity);
+    physical.prediction = trainingReturn.prediction;
+    physical.rawPrediction = trainingReturn.rawPrediction;
+    physical.predictedNetClearance = physical.prediction.netCrossingPoint
+      ? physical.prediction.netCrossingPoint.y - BALL_CONFIG.launch.netHeight - this.ball.physicsRadius : null;
+    response.prediction = physical.prediction;
+    response.velocity.copy(trainingReturn.velocity);
+    response.spinVector.copy(trainingReturn.spin);
+    response.speed = trainingReturn.velocity.length();
+    response.direction.rawDirection.copy(trainingReturn.rawVelocity).normalize();
+    response.direction.constrainedDirection.copy(trainingReturn.velocity).normalize();
     this.ball.position.copy(calibratedPoint);
     this.ball.previousPosition.copy(calibratedPoint);
     this.ball.velocity.copy(physical.outgoingVelocity);
@@ -421,7 +447,7 @@ export class BallController {
       this.ball.hit = false;
       return;
     }
-    this.returnClearedNet = false;
+    this.returnTouchedNet = false;
     this.ball.hit = true;
     const detectedStrokeType = strictContact?.strokeType ?? "unknown";
     const mismatch = detectedStrokeType !== "unknown" && detectedStrokeType !== this.ball.expectedStrokeType
@@ -513,7 +539,7 @@ export class BallController {
     this.ball.angularVelocity.copy(physical.outgoingAngularVelocity);
     this.ball.spinType = physical.spinType === "TOPSPIN" ? "topspin" : physical.spinType === "SLICE" ? "slice" : "flat";
     this.ball.spinStrength = physical.spinRateRadiansPerSecond;
-    this.returnClearedNet = false;
+    this.returnTouchedNet = false;
     this.ball.hit = true;
     this.ball.state = "RETURNED";
     const detectedStrokeType = contact?.strokeType ?? "unknown";

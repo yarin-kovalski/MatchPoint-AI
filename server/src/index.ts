@@ -69,6 +69,7 @@ type BrokeredMotionPacket = ControllerMotionPacket & {
 type StrokeType = "Forehand" | "Backhand";
 
 type ContinuousOrientationPacket = {
+  angularVelocityRadPerSecond?: SensorVector | null;
   t: number;
   sensorTimestamp: number;
   source: "expo-mobile";

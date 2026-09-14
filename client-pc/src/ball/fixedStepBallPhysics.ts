@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { BALL_CONFIG } from "./ballConfig.js";
-import { stepBallPhysics } from "./ballPhysics.js";
+import { BallPhysicsEvent, stepBallPhysics } from "./ballPhysics.js";
 import { BallSnapshot } from "./ballTypes.js";
 
 export type FixedStepPhysicsState = {
@@ -13,6 +13,7 @@ export type FixedStepPhysicsState = {
 
 export type FixedStepPhysicsResult = {
   bounced: boolean;
+  events: BallPhysicsEvent[];
   steps: number;
   droppedSeconds: number;
 };
@@ -37,11 +38,12 @@ export function advanceBallFixedStep(
   state.frameStartPosition.copy(ball.position);
   state.accumulatorSeconds += frameDelta;
   let bounced = false;
+  const events: BallPhysicsEvent[] = [];
   let steps = 0;
 
   while (state.accumulatorSeconds >= fixedDelta && steps < BALL_CONFIG.maximumPhysicsSubsteps) {
     state.previousStepPosition.copy(ball.position);
-    bounced = stepBallPhysics(ball, fixedDelta) || bounced;
+    bounced = stepBallPhysics(ball, fixedDelta, event => events.push(event)) || bounced;
     state.accumulatorSeconds -= fixedDelta;
     steps += 1;
   }
@@ -56,7 +58,7 @@ export function advanceBallFixedStep(
 
   // Collision remains swept across the full render interval, not only the final substep.
   if (steps > 0) ball.previousPosition.copy(state.frameStartPosition);
-  return { bounced, steps, droppedSeconds };
+  return { bounced, events, steps, droppedSeconds };
 }
 
 /** Interpolate completed physics states, never feed this transform into collision. */

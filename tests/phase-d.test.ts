@@ -234,6 +234,7 @@ test("topspin creates stronger downward Magnus curve than flat", () => {
 test("slice and topspin alter bounce differently", () => {
   const top = ball(); top.state = "RETURNED"; top.spinType = "topspin"; top.position.y = 0.11; top.velocity.set(0, -2, -8);
   const slice = ball(); slice.state = "RETURNED"; slice.spinType = "slice"; slice.position.y = 0.11; slice.velocity.set(0, -2, -8);
+  top.spinVector.set(-35, 0, 0); slice.spinVector.set(22, 0, 0);
   stepBallPhysics(top, 0.02); stepBallPhysics(slice, 0.02);
   assert.ok(Math.abs(top.velocity.z) > Math.abs(slice.velocity.z));
 });

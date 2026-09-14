@@ -14,6 +14,9 @@ export type SensorNormalizationInput = {
   currentPhoneQuaternion: THREE.Quaternion;
   relativePhoneQuaternion: THREE.Quaternion;
   mappedRacketQuaternion: THREE.Quaternion;
+  /** Expo rotationRate, mapped to phone X/Y/Z and converted from deg/s to rad/s. */
+  angularVelocityPhoneRadPerSecond?: THREE.Vector3;
+  sensorToWorldQuaternion?: THREE.Quaternion;
   accelerationMps2: THREE.Vector3;
   accelerationIncludingGravityMps2: THREE.Vector3;
 };
@@ -90,10 +93,10 @@ export class SensorNormalizer {
     // tennis-direction scoring. The racket model correction is deliberately not
     // used here: it aligns mesh axes and is not part of the accelerometer frame.
     const worldLinearAcceleration = rawAcceleration.clone()
-      .applyQuaternion(input.relativePhoneQuaternion);
+      .applyQuaternion(input.sensorToWorldQuaternion ?? input.relativePhoneQuaternion);
     const accelerationIncludingGravity = phoneVectorToThreeVector(
       input.accelerationIncludingGravityMps2
-    ).applyQuaternion(input.relativePhoneQuaternion);
+    ).applyQuaternion(input.sensorToWorldQuaternion ?? input.relativePhoneQuaternion);
     const accelerationInvalid =
       !isFiniteVector(rawAcceleration) ||
       rawAcceleration.length() > MOTION_CONFIG.validation.maximumAccelerationMps2;
@@ -132,6 +135,13 @@ export class SensorNormalizer {
       }
     }
 
+    const gyro = input.angularVelocityPhoneRadPerSecond;
+    if (gyro && isFiniteVector(gyro) && gyro.lengthSq() > 1e-8 &&
+        gyro.length() <= MOTION_CONFIG.validation.maximumAngularSpeedRadPerSecond && !packetGapInvalid) {
+      angularVelocityLocal.copy(gyro);
+      angularSpeed = gyro.length();
+    }
+
     if (packetGapInvalid && this.previousTimestamp !== null) {
       rejectionReason = "packet gap";
     }
@@ -152,9 +162,9 @@ export class SensorNormalizer {
       : 0;
     this.hasAccelerationHistory = true;
 
-    const angularVelocityWorld = angularVelocityLocal
-      .clone()
-      .applyQuaternion(input.mappedRacketQuaternion);
+    const angularVelocityWorld = input.sensorToWorldQuaternion
+      ? phoneVectorToThreeVector(angularVelocityLocal).applyQuaternion(input.sensorToWorldQuaternion)
+      : angularVelocityLocal.clone().applyQuaternion(input.mappedRacketQuaternion);
     const basis = getRacketBasisFromQuaternion(input.mappedRacketQuaternion);
     const scoreScale = MOTION_CONFIG.scoring.referenceAccelerationMps2;
 

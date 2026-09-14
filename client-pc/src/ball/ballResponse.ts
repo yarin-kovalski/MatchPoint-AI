@@ -142,44 +142,30 @@ export function predictReturnTrajectory(
   velocity: THREE.Vector3,
   spin = new THREE.Vector3()
 ): ReturnTrajectoryPrediction {
-  if (spin.lengthSq() > 1e-8) {
-    const p = position.clone();
-    const v = velocity.clone();
-    const acceleration = new THREE.Vector3();
-    const floor = BALL_CONFIG.courtHeight + BALL_CONFIG.scale.physicalRadiusMeters;
-    let netCrossingPoint: THREE.Vector3 | null = null;
-    let apexPoint = p.clone();
-    for (let elapsed = 0; elapsed < 4; elapsed += BALL_CONFIG.physicsStepSeconds) {
-      const previousZ = p.z;
-      acceleration.crossVectors(spin, v).multiplyScalar(BALL_CONFIG.spin.magnusCoefficient)
-        .clampLength(0, BALL_CONFIG.spin.maximumAcceleration);
-      v.x += acceleration.x * BALL_CONFIG.physicsStepSeconds;
-      v.y += (BALL_CONFIG.gravity + acceleration.y) * BALL_CONFIG.physicsStepSeconds;
-      v.z += acceleration.z * BALL_CONFIG.physicsStepSeconds;
-      v.multiplyScalar(1 - BALL_CONFIG.airDrag * BALL_CONFIG.physicsStepSeconds);
-      p.addScaledVector(v, BALL_CONFIG.physicsStepSeconds);
-      if (p.y > apexPoint.y) apexPoint = p.clone();
-      if (!netCrossingPoint && previousZ > BALL_CONFIG.launch.netDepth && p.z <= BALL_CONFIG.launch.netDepth) {
-        netCrossingPoint = p.clone();
-      }
-      if (p.y <= floor && v.y < 0) {
-        p.y = floor;
-        return { netCrossingPoint, bouncePoint: p.clone(), apexPoint,
-          bounceTimeSeconds: elapsed + BALL_CONFIG.physicsStepSeconds };
-      }
-    }
-    return { netCrossingPoint, bouncePoint: null, apexPoint, bounceTimeSeconds: null };
-  }
-  const netTime = velocity.z < 0 ? (BALL_CONFIG.launch.netDepth - position.z) / velocity.z : -1;
-  const netCrossingPoint = netTime > 0 ? position.clone().addScaledVector(velocity, netTime) : null;
-  if (netCrossingPoint) netCrossingPoint.y += 0.5 * BALL_CONFIG.gravity * netTime ** 2;
+  const p = position.clone(), v = velocity.clone(), acceleration = new THREE.Vector3();
   const floor = BALL_CONFIG.courtHeight + BALL_CONFIG.scale.physicalRadiusMeters;
-  const discriminant = velocity.y ** 2 - 2 * BALL_CONFIG.gravity * (position.y - floor);
-  const bounceTime = discriminant >= 0 ? (-velocity.y - Math.sqrt(discriminant)) / BALL_CONFIG.gravity : -1;
-  const bouncePoint = bounceTime > 0 ? position.clone().addScaledVector(velocity, bounceTime) : null;
-  if (bouncePoint) bouncePoint.y = floor;
-  const apexTime = Math.max(0, -velocity.y / BALL_CONFIG.gravity);
-  const apexPoint = position.clone().addScaledVector(velocity, apexTime);
-  apexPoint.y += 0.5 * BALL_CONFIG.gravity * apexTime ** 2;
-  return { netCrossingPoint, bouncePoint, apexPoint, bounceTimeSeconds: bounceTime > 0 ? bounceTime : null };
+  let netCrossingPoint: THREE.Vector3 | null = null;
+  let apexPoint = p.clone();
+  const dt = BALL_CONFIG.physicsStepSeconds;
+  for (let elapsed = 0; elapsed < 4; elapsed += dt) {
+    const previous = p.clone();
+    acceleration.crossVectors(spin, v).multiplyScalar(BALL_CONFIG.spin.magnusCoefficient)
+      .clampLength(0, BALL_CONFIG.spin.maximumAcceleration);
+    v.addScaledVector(acceleration, dt);
+    v.y += BALL_CONFIG.gravity * dt;
+    v.multiplyScalar(1 - BALL_CONFIG.airDrag * dt);
+    p.addScaledVector(v, dt);
+    if (p.y > apexPoint.y) apexPoint = p.clone();
+    // Stop at the first bounce before considering a later net-plane crossing.
+    const bounceFraction = p.y <= floor && v.y < 0
+      ? THREE.MathUtils.clamp((previous.y - floor) / (previous.y - p.y), 0, 1) : 1;
+    const netFraction = previous.z > BALL_CONFIG.launch.netDepth && p.z <= BALL_CONFIG.launch.netDepth
+      ? (previous.z - BALL_CONFIG.launch.netDepth) / (previous.z - p.z) : Infinity;
+    if (!netCrossingPoint && netFraction <= bounceFraction) netCrossingPoint = previous.clone().lerp(p, netFraction);
+    if (p.y <= floor && v.y < 0) {
+      return { netCrossingPoint, bouncePoint: previous.lerp(p, bounceFraction).setY(floor), apexPoint,
+        bounceTimeSeconds: elapsed + dt * bounceFraction };
+    }
+  }
+  return { netCrossingPoint, bouncePoint: null, apexPoint, bounceTimeSeconds: null };
 }

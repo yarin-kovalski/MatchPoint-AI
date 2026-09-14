@@ -79,7 +79,7 @@ export function featureSnapshotFromImpact(
     swingPathAngle: impact.swingPathAngleRadians,
     brushingDirection: impact.tangentialImpulse.clone().normalize().toArray(),
     contactPointVelocity: impact.racketContactPointVelocity.toArray(),
-    estimatedContactSpeed: impact.racketContactPointVelocity.length(),
+    estimatedContactSpeed: impact.racketHeadSpeed,
     preContactOrientationDelta: sensor.preContactOrientationDelta ?? 0,
     postContactFollowThrough: (sensor.postContactFollowThrough ?? new THREE.Vector3()).toArray(),
     powerScore: score,

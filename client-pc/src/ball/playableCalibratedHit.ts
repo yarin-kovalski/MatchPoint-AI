@@ -77,6 +77,7 @@ export function evaluatePlayableCalibratedHit(input: {
     : (input.motion?.angularSpeed ?? 0) >= assist.minimumAngularSpeed &&
       (input.motion?.accelerationMagnitude ?? 0) >= assist.minimumAcceleration;
   if (!input.motion?.valid || !input.motion.swingIntent?.active ||
+      input.now > input.motion.swingIntent.expiresAt ||
       input.now - input.motion.swingIntent.startedAt < BALL_CONFIG.playableCalibratedHit.minimumActiveSwingMs ||
       !enoughMotion ||
       forwardDriveScore < assist.minimumForwardDriveScore ||

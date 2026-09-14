@@ -101,6 +101,7 @@ type BrokeredMotionPacket = {
 type StrokeType = "forehand" | "backhand" | "Forehand" | "Backhand";
 
 type BrokeredContinuousOrientationPacket = {
+  angularVelocityRadPerSecond?: { x: number; y: number; z: number } | null;
   t: number;
   sensorTimestamp: number;
   source: "expo-mobile";
@@ -701,7 +702,8 @@ scene.add(ballTrail);
 
 let landingAnnouncementTimer: ReturnType<typeof setTimeout> | undefined;
 const ballController = new BallController(onBallHit, onBallMiss, result => {
-  elements.ballResult.textContent = result === "IN" ? "IN! Nice shot!" : result === "NET" ? "NET ? try a higher arc" : "OUT";
+  elements.ballResult.textContent = ({ IN: "IN! Nice shot!", NET: "NET - not enough clearance",
+    OUT_WIDE: "OUT - wide", OUT_LONG: "OUT - long", SHORT: "SHORT - bounced on your side", OUT: "OUT" } as const)[result];
   const announcement = getElement("landingAnnouncement");
   announcement.textContent = elements.ballResult.textContent;
   announcement.hidden = false;
@@ -921,6 +923,11 @@ socket.on("continuous_orientation", (payload: unknown) => {
     currentPhoneQuaternion: rawPhoneQuaternion,
     relativePhoneQuaternion: packetRelativeQuaternion,
     mappedRacketQuaternion: packetRacketQuaternion,
+    // New Expo packets have explicit, platform-normalized phone axes in rad/s.
+    // Older controllers fall back to quaternion differences.
+    angularVelocityPhoneRadPerSecond: orientationPacket.angularVelocityRadPerSecond
+      ? nullableVectorToThree(orientationPacket.angularVelocityRadPerSecond) : undefined,
+    sensorToWorldQuaternion: baseReadyPoseQuaternion.clone().multiply(packetRelativeQuaternion),
     accelerationMps2: nullableVectorToThree(orientationPacket.acceleration),
     accelerationIncludingGravityMps2: nullableVectorToThree(
       orientationPacket.accelerationIncludingGravity
@@ -2754,13 +2761,13 @@ function updatePhysicalContactFeedback(): void {
   const timingOffset = ballController.lastPlayableDecision?.timingOffsetMs ?? 0;
   const timingLabel = Math.abs(timingOffset) <= 70 ? "Good Timing"
     : timingOffset < 0 ? "Slightly Early" : "Slightly Late";
-  const profile = trajectoryProfiles[ballController.ball.expectedStrokeType];
-  const landingDepth = impact.prediction.bouncePoint && profile
-    ? worldToPlayerLocal(impact.prediction.bouncePoint, profile.playerBasisAtCalibration).z
-    : 0;
-  const depthLabel = landingDepth >= 7 ? "Deep" : landingDepth >= 4.5 ? "Mid Depth" : "Short";
+  const landingDepth = impact.prediction.bouncePoint
+    ? BALL_CONFIG.launch.netDepth - impact.prediction.bouncePoint.z : 0;
+  const depthLabel = landingDepth <= 0 ? "Short of net" : landingDepth > 11.885 ? "Predicted long"
+    : Math.abs(impact.prediction.bouncePoint?.x ?? 0) > 4.1485 ? "Predicted wide"
+      : landingDepth >= 8 ? "Deep" : landingDepth >= 4.5 ? "Mid court" : "Short court";
   document.getElementById("shotFeedback")!.hidden = false;
-  document.getElementById("shotFeedbackType")!.textContent = `${shotNames[featureSnapshot.shotShape]} ${ballController.ball.expectedStrokeType}`.toUpperCase();
+  document.getElementById("shotFeedbackType")!.textContent = `${featureSnapshot.powerLevel === "Weak" ? "Weak " : featureSnapshot.powerLevel === "Strong" || featureSnapshot.powerLevel === "Very Strong" ? "Fast " : ""}${shotNames[featureSnapshot.shotShape]} ${ballController.ball.expectedStrokeType}`.toUpperCase();
   document.getElementById("shotFeedbackSpeed")!.textContent = elements.playerShotSpeed.textContent;
   document.getElementById("shotFeedbackDetail")!.textContent =
     `${featureSnapshot.powerLevel} · ${timingLabel} · ${depthLabel} · ${contactLabel}`;

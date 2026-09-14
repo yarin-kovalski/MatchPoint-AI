@@ -149,3 +149,7 @@ Mitigation:
 ## 2026-09-14 repair verification
 - In-app browser returned unavailable, so visual browser QA could not run. Build, tests, and HTTP asset checks pass; verify the new landing overlay on the desktop with a fresh phone session.
 - Training assistance deliberately favors successful court returns; it is not an accurate reconstruction of physical racket impact. Realistic mode retains the existing impact model.
+
+## Sensor-driven shots verification (2026-09-14)
+- In-app browser again reports unavailable. HTTP/compiled asset checks are available; desktop visual QA and a live Expo swing session remain unverified.
+- Phone-derived velocity/spin gains, net deflection and bounce friction are approximations. Verify fresh iOS and Android swings after reloading the controller, especially grip-dependent face orientation. Expo SDK upgrades must re-check native rotationRate axis mapping.

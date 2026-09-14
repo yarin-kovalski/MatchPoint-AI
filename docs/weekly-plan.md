@@ -98,3 +98,6 @@ Each day should end with something demonstrable.
 
 ## 2026-09-14 requested run/playability repair
 Resolved nested conflict markers in PC imports while retaining both diagnostic modules. Added Training court-targeted return assistance, a less brittle active-swing gate, and landing announcements. Automated validation complete (222 app + 6 kanban tests); fresh phone verification remains. Run `npm run all` for the Expo controller workflow, or `npm run dev` for the browser controller and desktop.
+
+## Sensor-driven return variation (2026-09-14)
+Removed safe landing targets at user request. Expo motion now drives power, vertical brush and lateral aim; axis normalization is explicit for iOS/Android. Added physical net contact, singles first-bounce calls and persistent outcomes. Build, Expo typecheck, automated regression tests and HTTP verification are required; real phone validation follows reload/recalibration. See docs/shot-behavior.md.

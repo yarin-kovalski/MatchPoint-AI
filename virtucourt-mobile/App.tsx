@@ -1,6 +1,7 @@
 import { Accelerometer, DeviceMotion } from "expo-sensors";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  Platform,
   Pressable,
   SafeAreaView,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
   View
 } from "react-native";
 import { io, Socket } from "socket.io-client";
+import { normalizeMotionRotationRate } from "./deviceMotionGyro";
 import { SensorUiThrottle } from "./sensorUiThrottle";
 
 type StrokeType = "forehand" | "backhand";
@@ -191,6 +193,7 @@ export default function App() {
             source: "expo-mobile",
             rotation: orientationRef.current,
             quaternion,
+            angularVelocityRadPerSecond: normalizeMotionRotationRate(sample.rotationRate, Platform.OS),
             rotationRate: {
               alpha: sample.rotationRate?.alpha ?? 0,
               beta: sample.rotationRate?.beta ?? 0,
