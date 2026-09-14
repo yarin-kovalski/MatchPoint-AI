@@ -38,6 +38,7 @@ import { RacketStallTelemetry } from "./diagnostics/racketStallTelemetry.js";
 import {
   classifyTrainingMiss, emptyTrainingMissBreakdown, TrainingMissReason
 } from "./diagnostics/trainingMissDiagnostics.js";
+import { TrainingSessionCalibration } from "./diagnostics/trainingSessionCalibration.js";
 import { adaptiveVisualSmoothingFactor, SensorResampler, updateVisualRacketQuaternion } from "./motion/sensorResampler.js";
 import { ForwardSwingFusion } from "./motion/forwardSwingFusion.js";
 import { stabilizeTrainingRacketOrigin } from "./motion/racketOriginStability.js";
@@ -404,6 +405,7 @@ let replayTimer: number | null = null;
 let contactFlashUntil = 0;
 let assistMode: AssistMode = "easy";
 let playerAssistLevel: PlayerAssistLevel = "training";
+const trainingSessionCalibration = new TrainingSessionCalibration();
 let ballSpeedPreset: BallSpeedPreset = "normal";
 let activeLaunchPreset: LaunchPreset = "easyForehand";
 let lastBallFrameAt = performance.now();
@@ -697,7 +699,17 @@ ballTrail.visible = false;
 ballTrail.frustumCulled = false;
 scene.add(ballTrail);
 
-const ballController = new BallController(onBallHit, onBallMiss);
+let landingAnnouncementTimer: ReturnType<typeof setTimeout> | undefined;
+const ballController = new BallController(onBallHit, onBallMiss, result => {
+  elements.ballResult.textContent = result === "IN" ? "IN! Nice shot!" : result === "NET" ? "NET ? try a higher arc" : "OUT";
+  const announcement = getElement("landingAnnouncement");
+  announcement.textContent = elements.ballResult.textContent;
+  announcement.hidden = false;
+  clearTimeout(landingAnnouncementTimer);
+  landingAnnouncementTimer = setTimeout(() => { announcement.hidden = true; }, 2600);
+  elements.ballResult.setAttribute("role", "status");
+  elements.ballResult.setAttribute("aria-live", "polite");
+});
 const ballDebugGroup = new THREE.Group();
 ballDebugGroup.visible = false;
 scene.add(ballDebugGroup);
@@ -2614,6 +2626,10 @@ function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibra
 }
 
 function onBallHit(event: BallHitEvent): void {
+  if (playerAssistLevel === "training") {
+    const report = trainingSessionCalibration.record(true, event.expectedStrokeType);
+    if (report) console.info("Training 20-swing calibration", report);
+  }
   contactMarker.position.copy(event.contactPointWorld);
   contactMarker.visible = true;
   elements.ballResult.textContent = "HIT";
@@ -2652,6 +2668,11 @@ function onBallHit(event: BallHitEvent): void {
 }
 
 function onBallMiss(event: BallMissEvent): void {
+  if (playerAssistLevel === "training") {
+    const diagnosticReason = ballController.lastPlayableDecision?.reason ?? event.reason;
+    const report = trainingSessionCalibration.record(false, ballController.ball.expectedStrokeType, diagnosticReason);
+    if (report) console.info("Training 20-swing calibration", report);
+  }
   elements.ballResult.textContent = /too early/i.test(event.reason) ? "Too Early"
     : /too late/i.test(event.reason) ? "Too Late" : "MISS";
   ballRelaunchAt = performance.now() + BALL_CONFIG.resetDelayMs;

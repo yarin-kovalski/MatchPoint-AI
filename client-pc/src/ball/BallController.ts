@@ -4,7 +4,7 @@ import { BALL_CONFIG } from "./ballConfig.js";
 import { getLaunchParameters } from "./ballLauncher.js";
 import { isBallOutOfBounds } from "./ballPhysics.js";
 import { advanceBallFixedStep, createFixedStepPhysicsState } from "./fixedStepBallPhysics.js";
-import { calculateOutgoingVelocity } from "./ballResponse.js";
+import { calculateOutgoingVelocity, predictReturnTrajectory } from "./ballResponse.js";
 import { estimateSecondBounceDelay, solveVelocity } from "./ballDelivery.js";
 import { interpolateRacketMatrix, sweepBallAgainstMovingRacket } from "./racketCollider.js";
 import { EasyTrajectoryAssistResult } from "./easyTrajectoryAssist.js";
@@ -12,6 +12,7 @@ import { AssistMode, BallHitEvent, BallMissEvent, BallSnapshot, BallSpeedPreset,
 import { TrajectoryCalibrationProfile } from "./trajectoryCalibration.js";
 import { evaluatePlayableCalibratedHit, PlayableHitDecision } from "./playableCalibratedHit.js";
 import { ContactLifecycle, isSuccessfulTennisOutcome, PhysicalImpactResolution, resolvePhysicalImpact } from "./contactRealism.js";
+import { isReturnInCourt, solveTrainingReturn } from "./trainingReturn.js";
 import { solveSpinFlight } from "./spinFlight.js";
 
 export function shouldEnterContactZone(ball: BallSnapshot, now: number, assistMode: AssistMode = "prototype"): boolean {
@@ -53,6 +54,7 @@ export class BallController {
     ballToStringBedDistance: Number.POSITIVE_INFINITY, currentSwingSpeed: 0,
     minimumSwingSpeed: BALL_CONFIG.easyAssist.minimumAngularSpeed, stringBedCenter: new THREE.Vector3()
   };
+  private returnClearedNet = false;
   private sequence = 0;
   private finalResultEmitted = false;
   private closestDistance = Number.POSITIVE_INFINITY;
@@ -78,7 +80,8 @@ export class BallController {
 
   constructor(
     private readonly onHit?: (event: BallHitEvent) => void,
-    private readonly onMiss?: (event: BallMissEvent) => void
+    private readonly onMiss?: (event: BallMissEvent) => void,
+    private readonly onReturnLanded?: (result: "IN" | "OUT" | "NET") => void
   ) {}
 
   launch(
@@ -169,10 +172,17 @@ export class BallController {
       if (this.ball.state === "MISSED" && now >= this.resetAt) this.reset();
       return;
     }
+    const beforeStep = this.ball.position.clone();
     const physics = advanceBallFixedStep(this.ball, deltaSeconds, this.physicsState);
     const bounced = physics.bounced;
+    if (this.ball.hit && beforeStep.z > BALL_CONFIG.launch.netDepth && this.ball.position.z <= BALL_CONFIG.launch.netDepth) {
+      const fraction = (beforeStep.z - BALL_CONFIG.launch.netDepth) / (beforeStep.z - this.ball.position.z);
+      this.returnClearedNet = THREE.MathUtils.lerp(beforeStep.y, this.ball.position.y, fraction) >
+        BALL_CONFIG.launch.netHeight + this.ball.physicsRadius;
+    }
     if (bounced) {
       if (this.ball.hit) {
+        if (this.ball.state !== "OUT") this.onReturnLanded?.(!this.returnClearedNet ? "NET" : isReturnInCourt(this.ball.position) ? "IN" : "OUT");
         this.ball.state = "OUT";
         this.resetAt = now + BALL_CONFIG.resetDelayMs;
       } else if (this.ball.bounceCount >= 2) {
@@ -259,7 +269,7 @@ export class BallController {
     }
     if (isBallOutOfBounds(this.ball, now) && this.ball.state !== "OUT") {
       if (!this.ball.hit) this.emitMiss(now, "ball left world bounds", stroke, contact, colliderWorldMatrix);
-      else { this.ball.state = "OUT"; this.resetAt = now + BALL_CONFIG.resetDelayMs; }
+      else { this.onReturnLanded?.("OUT"); this.ball.state = "OUT"; this.resetAt = now + BALL_CONFIG.resetDelayMs; }
     }
     if (this.ball.state === "OUT" && now >= this.resetAt) this.reset();
     this.previousColliderWorldMatrix.copy(colliderWorldMatrix);
@@ -328,6 +338,7 @@ export class BallController {
     if (!isSuccessfulTennisOutcome(resolution.outcome)) return;
     const effective = contact ?? (motion ? this.createEasyContact(now, motion) : null);
     if (!effective) return;
+    this.returnClearedNet = false;
     this.ball.hit = true;
     this.finalResultEmitted = true;
     const event: BallHitEvent = {
@@ -383,6 +394,19 @@ export class BallController {
       forwardSwing: motion.forwardSwing,
       playabilityAssistStrength: BALL_CONFIG.playerAssist[playerAssistLevel].directionAnchorStrength
     });
+    const trainingReturn = solveTrainingReturn(calibratedPoint, physical.rawOutgoingVelocity, physical.outgoingAngularVelocity);
+    if (trainingReturn) {
+      physical.outcome = "VALID_HIT";
+      physical.outgoingVelocity.copy(trainingReturn.velocity);
+      physical.assistedOutgoingVelocity.copy(trainingReturn.velocity);
+      physical.outgoingAngularVelocity.copy(trainingReturn.spin);
+      physical.spinRateRadiansPerSecond = trainingReturn.spin.length();
+      physical.safetyCorrection.copy(trainingReturn.velocity).sub(physical.rawOutgoingVelocity);
+      physical.prediction = predictReturnTrajectory(calibratedPoint, trainingReturn.velocity, trainingReturn.spin);
+      physical.predictedNetClearance = physical.prediction.netCrossingPoint
+        ? physical.prediction.netCrossingPoint.y - BALL_CONFIG.launch.netHeight - this.ball.physicsRadius : null;
+      response.prediction = physical.prediction;
+    }
     this.ball.position.copy(calibratedPoint);
     this.ball.previousPosition.copy(calibratedPoint);
     this.ball.velocity.copy(physical.outgoingVelocity);
@@ -397,6 +421,7 @@ export class BallController {
       this.ball.hit = false;
       return;
     }
+    this.returnClearedNet = false;
     this.ball.hit = true;
     const detectedStrokeType = strictContact?.strokeType ?? "unknown";
     const mismatch = detectedStrokeType !== "unknown" && detectedStrokeType !== this.ball.expectedStrokeType
@@ -488,6 +513,7 @@ export class BallController {
     this.ball.angularVelocity.copy(physical.outgoingAngularVelocity);
     this.ball.spinType = physical.spinType === "TOPSPIN" ? "topspin" : physical.spinType === "SLICE" ? "slice" : "flat";
     this.ball.spinStrength = physical.spinRateRadiansPerSecond;
+    this.returnClearedNet = false;
     this.ball.hit = true;
     this.ball.state = "RETURNED";
     const detectedStrokeType = contact?.strokeType ?? "unknown";

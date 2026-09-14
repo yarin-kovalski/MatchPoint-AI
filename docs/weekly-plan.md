@@ -95,3 +95,6 @@ Focus: game polish and final demo.
 ## Daily Rule
 
 Each day should end with something demonstrable.
+
+## 2026-09-14 requested run/playability repair
+Resolved nested conflict markers in PC imports while retaining both diagnostic modules. Added Training court-targeted return assistance, a less brittle active-swing gate, and landing announcements. Automated validation complete (222 app + 6 kanban tests); fresh phone verification remains. Run `npm run all` for the Expo controller workflow, or `npm run dev` for the browser controller and desktop.

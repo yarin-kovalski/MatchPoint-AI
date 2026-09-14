@@ -7,6 +7,7 @@ import { createPlayableStrokePlan, evaluatePlayableCalibratedHit } from "../clie
 import { createDefaultTrajectoryProfile, worldToPlayerLocal } from "../client-pc/src/ball/trajectoryCalibration.js";
 import { EasyHitMotion } from "../client-pc/src/ball/ballTypes.js";
 import { StrokeDetectorSnapshot } from "../client-pc/src/strokeDetection/strokeTypes.js";
+import { TrainingSessionCalibration } from "../client-pc/src/diagnostics/trainingSessionCalibration.js";
 
 function motion(strokeType: "forehand" | "backhand", active = true): EasyHitMotion {
   return {
@@ -170,4 +171,87 @@ test("Realistic mode remains moving-racket geometry based", () => {
   controller.update(0, 1000, racket, snapshot("forehand"), null, "prototype", motion("forehand"), true, profile, false, "realistic");
   assert.equal(controller.ball.hit, false);
   assert.deepEqual(controller.ball.position.toArray(), [5, 1, 2]);
+});
+
+test("Training refinement reaches 17 of 20 representative normal swings symmetrically", () => {
+  const offsets = [-270, -245, -220, -190, -155, -120, -80, -40, 0, 35,
+    70, 105, 140, 175, 205, 220, 230, 235, 260, 320];
+  const calibration = new TrainingSessionCalibration();
+  const priorAccepted = offsets.filter((offset, index) =>
+    offset >= -220 && offset <= 180 && (index === 17 ? 0.08 : 0.15) >= 0.12).length;
+  assert.equal(priorAccepted, 12, "previous Training gates accepted 60% of this timing/intent set");
+  let report = null;
+  for (let index = 0; index < offsets.length; index += 1) {
+    const strokeType = index % 2 === 0 ? "forehand" : "backhand";
+    const sample = motion(strokeType);
+    sample.swingIntent = { ...sample.swingIntent!, startedAt: 400 };
+    sample.motionForwardScore = index === 17 ? 0.08 : 0.15;
+    const decision = evaluatePlayableCalibratedHit({
+      now: 1000 + offsets[index], contactTime: 1000, bounceCount: 1, alreadyHit: false,
+      expectedStrokeType: strokeType, profile: createDefaultTrajectoryProfile(strokeType, "right"),
+      motion: sample, assistLevel: "training"
+    });
+    report = calibration.record(decision.accepted, strokeType, decision.reason);
+  }
+  assert.equal(report?.hits, 17);
+  assert.equal(report?.hitPercentage, 85);
+  assert.ok(report!.bySide.forehand.hitPercentage >= 80);
+  assert.ok(report!.bySide.backhand.hitPercentage >= 80);
+  assert.deepEqual(report!.missReasons, [
+    { reason: "SWING_TOO_LATE", count: 2 },
+    { reason: "NO_REAL_SWING", count: 1 }
+  ]);
+});
+
+test("20-swing calibration ranks misses and backward swings remain rejected", () => {
+  const calibration = new TrainingSessionCalibration();
+  let report = null;
+  for (let index = 0; index < 20; index += 1) {
+    report = calibration.record(index < 17, index % 2 ? "backhand" : "forehand",
+      index === 17 ? "NO_REAL_SWING" : "SWING_TOO_LATE");
+  }
+  assert.deepEqual(report?.missReasons, [
+    { reason: "SWING_TOO_LATE", count: 2 },
+    { reason: "NO_REAL_SWING", count: 1 }
+  ]);
+
+  const backward = motion("backhand");
+  backward.forwardSwing = {
+    windowDurationMs: 160, sampleCount: 8, forwardAcceleration: -4, upwardAcceleration: 0,
+    lateralAcceleration: 0, peakForwardAcceleration: 0,
+    racketHeadVelocityWorld: new THREE.Vector3(0, 0, 2), forwardRacketHeadVelocity: -2,
+    upwardRacketHeadVelocity: 0, lateralRacketHeadVelocity: 0, angularSpeed: 4,
+    faceAngleRadians: 0.4, forwardDriveScore: -0.2, invalidDirectionReason: "BACKWARD_SWING"
+  };
+  assert.equal(evaluatePlayableCalibratedHit({ now: 1000, contactTime: 1000, bounceCount: 1,
+    alreadyHit: false, expectedStrokeType: "backhand", profile: createDefaultTrajectoryProfile("backhand", "right"),
+    motion: backward, assistLevel: "training" }).reason, "NO_REAL_SWING");
+});
+
+
+test("Training tolerates a single motion channel dipping during an active forward swing", () => {
+  const profile = createDefaultTrajectoryProfile("forehand", "right");
+  const moving = motion("forehand");
+  moving.accelerationMagnitude = 0.5;
+  const input = { now: 1000, contactTime: 1000, bounceCount: 1, alreadyHit: false,
+    expectedStrokeType: "forehand" as const, profile, motion: moving };
+  assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "training" }).accepted, true);
+  assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "realistic" }).accepted, false);
+  moving.angularSpeed = 0.2;
+  assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "training" }).accepted, false);
+});
+
+test("court landing announcement occurs once after the physical bounce", () => {
+  const results: string[] = [];
+  const controller = new BallController(undefined, undefined, result => results.push(result));
+  const ball = controller.ball;
+  ball.active = true; ball.hit = true; ball.state = "RETURNED";
+  ball.position.set(0, 2, BALL_CONFIG.launch.netDepth + 0.1);
+  ball.velocity.set(0, 2, -7);
+  ball.launchTimestamp = 0;
+  for (let i = 1; i <= 240; i++) {
+    controller.update(1 / 120, i * 1000 / 120, new THREE.Matrix4(), snapshot("forehand"), null, "off", null, false);
+    if (ball.bounceCount === 0) assert.deepEqual(results, []);
+  }
+  assert.deepEqual(results, ["IN"]);
 });

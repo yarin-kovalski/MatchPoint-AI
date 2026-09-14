@@ -116,9 +116,9 @@ export const BALL_CONFIG = {
   },
   playerAssist: {
     training: {
-      windowBeforeMs: 220, windowAfterMs: 180,
+      windowBeforeMs: 280, windowAfterMs: 240,
       directionAnchorStrength: 0.68,
-      minimumAngularSpeed: 0.9, minimumAcceleration: 1.8, minimumForwardDriveScore: 0.12
+      minimumAngularSpeed: 0.9, minimumAcceleration: 1.8, minimumForwardDriveScore: 0.09
     },
     realistic: {
       windowBeforeMs: 150, windowAfterMs: 130,

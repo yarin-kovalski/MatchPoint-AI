@@ -155,3 +155,27 @@ Generate simple advice from repeated patterns:
 - If accuracy improves: "Accuracy is improving. Keep the same timing."
 
 Keep advice short and visible after rallies or every few hits.
+
+## Training Reliability Calibration (September 2026)
+
+The focused Phase 1 refinement identified timing and marginal forward-drive intent as the
+remaining Training bottlenecks. The deterministic 20-swing timing/intent calibration improved
+from 12/20 under the previous gates to 17/20. Training now uses a `-280ms/+240ms` opportunity
+window and a `0.09` minimum forward-drive score. Realistic thresholds, trajectory geometry,
+and response physics remain unchanged; backward and inactive motion are still rejected.
+
+Every completed 20-swing Training block now logs hits, misses, hit percentage, per-side hit
+percentage, and miss reasons ranked by frequency. This is a calibration diagnostic rather than
+a substitute for the next real-phone validation block.
+
+## Training return repair acceptance criteria
+- Build without unresolved merge markers, preserving both diagnostic imports.
+- Accepted Training swings use a bounded numerical flight solve to land safely across the net; stationary/backward/wrong-side swings still fail the existing gate.
+- Keep Realistic impact behavior intact. Announce IN only at the actual first return bounce after net clearance; otherwise show OUT or NET.
+- Verify varied contacts, powers and both lateral directions with live physics.
+
+### Implemented repair (2026-09-14)
+Training now accepts either sufficient angular speed or acceleration during an already active forward swing. Both channels below threshold, no active intent, backward motion, wrong stroke side, and missed timing windows remain rejected.
+After that gate, a bounded numerical shooting solve chooses a landing point 4.5?7.5 m beyond the net, with lateral aim capped at 2.2 m. It uses live gravity, drag and Magnus acceleration, caps assisted spin at 12 rad/s, and searches flight times for at least 0.35 m net clearance. This explicitly assisted return replaces the second strict impact rejection in Training only. Realistic remains physical.
+A court overlay announces IN! Nice shot!, OUT, or NET after the actual return bounce; world-bound exits announce OUT. IN requires observed net clearance and a bounce within singles bounds. It is separate from the existing contact hit counter.
+Validation: build succeeds; 222 application tests and 6 kanban tests pass, including 162 live-physics return scenarios and a once-only landing callback check. HTTP /pc and the compiled return helper respond 200. Reviewed sampled frames from 5.mp4 and 6.mp4; recorded hit rates were 23?24%. Those videos predate this repair; simulated success is not a measured phone hit rate.

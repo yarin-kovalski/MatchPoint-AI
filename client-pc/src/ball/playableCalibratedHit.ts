@@ -71,10 +71,14 @@ export function evaluatePlayableCalibratedHit(input: {
   const fusedDirectionRejected = (input.assistLevel ?? "training") === "training"
     ? fusedDirectionReason === "BACKWARD_SWING"
     : fusedDirectionReason !== "NONE";
+  const enoughMotion = (input.assistLevel ?? "training") === "training"
+    ? (input.motion?.angularSpeed ?? 0) >= assist.minimumAngularSpeed ||
+      (input.motion?.accelerationMagnitude ?? 0) >= assist.minimumAcceleration
+    : (input.motion?.angularSpeed ?? 0) >= assist.minimumAngularSpeed &&
+      (input.motion?.accelerationMagnitude ?? 0) >= assist.minimumAcceleration;
   if (!input.motion?.valid || !input.motion.swingIntent?.active ||
       input.now - input.motion.swingIntent.startedAt < BALL_CONFIG.playableCalibratedHit.minimumActiveSwingMs ||
-      input.motion.angularSpeed < assist.minimumAngularSpeed ||
-      input.motion.accelerationMagnitude < assist.minimumAcceleration ||
+      !enoughMotion ||
       forwardDriveScore < assist.minimumForwardDriveScore ||
       fusedDirectionRejected) {
     return { ...base, accepted: false, reason: "NO_REAL_SWING" };

@@ -11,6 +11,7 @@
   },
   "include": [
     "premium-quality.test.ts",
+    "training-return.test.ts",
     "phase-b.test.ts",
     "phase-c.test.ts",
     "phase-d.test.ts",

@@ -145,3 +145,7 @@ Mitigation:
 - Show a visible stats overlay from Phase 1.
 - Explain that the game is the demo environment.
 - Emphasize sensor analysis, predictive hit logic, and coaching feedback in the presentation.
+
+## 2026-09-14 repair verification
+- In-app browser returned unavailable, so visual browser QA could not run. Build, tests, and HTTP asset checks pass; verify the new landing overlay on the desktop with a fresh phone session.
+- Training assistance deliberately favors successful court returns; it is not an accurate reconstruction of physical racket impact. Realistic mode retains the existing impact model.
