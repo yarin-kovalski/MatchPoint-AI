@@ -49,7 +49,8 @@ test("player mode exposes simple play controls and keeps advanced tools collapse
   assert.match(html, /id="feedVariationLevel"/);
   assert.match(html, /id="playerAssistLevel"/);
   assert.match(html, /<option value="training" selected>Training<\/option>/);
-  assert.match(html, /<option value="realistic">Realistic<\/option>/);
+  assert.match(html, /<option value="game">Game \(coming later\)<\/option>/);
+  assert.match(html, /id="modeDescription"/);
   assert.match(html, /<option value="low" selected>Low<\/option>/);
   assert.match(html, /<details class="developer-panel">/);
   assert.doesNotMatch(html, /<details class="developer-panel" open>/);

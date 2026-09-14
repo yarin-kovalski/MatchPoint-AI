@@ -153,3 +153,8 @@ Mitigation:
 ## Sensor-driven shots verification (2026-09-14)
 - In-app browser again reports unavailable. HTTP/compiled asset checks are available; desktop visual QA and a live Expo swing session remain unverified.
 - Phone-derived velocity/spin gains, net deflection and bounce friction are approximations. Verify fresh iOS and Android swings after reloading the controller, especially grip-dependent face orientation. Expo SDK upgrades must re-check native rotationRate axis mapping.
+
+## Backhand field verification (2026-09-14)
+
+- Automated replay and symmetry checks pass, but the widened backhand timing/strike envelope needs a fresh real-phone backhand session. If it still misses, record the new diagnostic attempt before changing thresholds again.
+- Game scoring thresholds are provisional planning values. Do not implement or tune them until Phase 1 Training is confirmed and the POC video is recorded.

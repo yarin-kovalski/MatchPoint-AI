@@ -25,7 +25,7 @@ import {
 } from "./scene/tennisEnvironment.js";
 import {
   createTrainingComfortProfile, isInsideTrainingStrikeZone, PLAYER_BASELINE_OFFSET_Z,
-  positionValidatedProfileAtBaseline, TRAINING_STRIKE_ZONE_RADII
+  positionValidatedProfileAtBaseline, TRAINING_BACKHAND_STRIKE_ZONE_RADII, TRAINING_STRIKE_ZONE_RADII
 } from "./ball/courtPositioning.js";
 import { BALL_CAMERA_BASE_TARGET, BallFlightCameraState, updateBallFlightCamera } from "./scene/ballFlightCamera.js";
 import { assertBallVisualState } from "./ball/ballVisualState.js";
@@ -269,6 +269,7 @@ const elements = {
   practiceLoopMode: getElement<HTMLSelectElement>("practiceLoopMode"),
   feedVariationLevel: getElement<HTMLSelectElement>("feedVariationLevel"),
   playerAssistLevel: getElement<HTMLSelectElement>("playerAssistLevel"),
+  modeDescription: getElement("modeDescription"),
   feedSeed: getElement<HTMLInputElement>("feedSeed"),
   feedVariationDebug: getElement("feedVariationDebug"),
   playerShotSpeed: getElement("playerShotSpeed"),
@@ -1691,14 +1692,18 @@ function updateTrainingFeedMetrics(now: number): void {
     trainingClosestStringBedDistance,
     ball.position.distanceTo(trainingStringBedCenter)
   );
-  if (trainingStrikeZoneEntryAt === null && isInsideTrainingStrikeZone(ball.position, ball.contactTarget)) {
+  if (trainingStrikeZoneEntryAt === null && isInsideTrainingStrikeZone(
+    ball.position, ball.contactTarget, ball.expectedStrokeType
+  )) {
     trainingStrikeZoneEntryAt = now;
   }
   trainingStrikeZoneOffsetScratch.copy(ball.position).sub(ball.contactTarget);
+  const strikeZoneRadii = ball.expectedStrokeType === "backhand"
+    ? TRAINING_BACKHAND_STRIKE_ZONE_RADII : TRAINING_STRIKE_ZONE_RADII;
   const normalizedZoneMetric =
-    trainingStrikeZoneOffsetScratch.x ** 2 / TRAINING_STRIKE_ZONE_RADII.lateral ** 2 +
-    trainingStrikeZoneOffsetScratch.y ** 2 / TRAINING_STRIKE_ZONE_RADII.vertical ** 2 +
-    trainingStrikeZoneOffsetScratch.z ** 2 / TRAINING_STRIKE_ZONE_RADII.depth ** 2;
+    trainingStrikeZoneOffsetScratch.x ** 2 / strikeZoneRadii.lateral ** 2 +
+    trainingStrikeZoneOffsetScratch.y ** 2 / strikeZoneRadii.vertical ** 2 +
+    trainingStrikeZoneOffsetScratch.z ** 2 / strikeZoneRadii.depth ** 2;
   if (normalizedZoneMetric < trainingClosestStrikeZoneMetric) {
     trainingClosestStrikeZoneMetric = normalizedZoneMetric;
     trainingClosestStrikeZoneOffset.copy(trainingStrikeZoneOffsetScratch);
@@ -1718,7 +1723,10 @@ function updateTrainingFeedMetrics(now: number): void {
   else {
     trainingSawActiveIntentInWindow = true;
     const measuredForward = latestSensorFrame?.motionForwardScore ?? 0;
-    if (measuredForward >= BALL_CONFIG.playerAssist.training.minimumForwardDriveScore) {
+    const minimumForward = ball.expectedStrokeType === "backhand"
+      ? BALL_CONFIG.playerAssist.training.minimumForwardDriveScore * 0.45
+      : BALL_CONFIG.playerAssist.training.minimumForwardDriveScore;
+    if (measuredForward >= minimumForward) {
       trainingSawForwardIntentInWindow = true;
     }
     if (decision.reason !== null) trainingRejectedInWindow = decision.reason;
@@ -2483,7 +2491,17 @@ function wireBallControls(): void {
     elements.playableCalibratedHitToggle.checked = assistMode === "easy";
   });
   elements.playerAssistLevel.addEventListener("change", () => {
-    playerAssistLevel = elements.playerAssistLevel.value as PlayerAssistLevel;
+    if (elements.playerAssistLevel.value === "game") {
+      elements.playerAssistLevel.value = "training";
+      playerAssistLevel = "training";
+      elements.modeDescription.textContent =
+        "Game mode is planned: court targets, per-shot points, accuracy ranks, streaks, and session score. Training remains active for now.";
+      elements.practiceStatus.textContent = "Game mode is planned for a later phase. Training mode is still active.";
+      return;
+    }
+    playerAssistLevel = "training";
+    elements.modeDescription.textContent =
+      "Training: practice forehand and backhand with sensor-driven speed, spin, direction, and landing feedback.";
   });
   elements.ballSpeedSelect.addEventListener("change", () => {
     ballSpeedPreset = elements.ballSpeedSelect.value as BallSpeedPreset;
@@ -2701,7 +2719,8 @@ function onBallMiss(event: BallMissEvent): void {
       closestBallToStringBedMeters: Number.isFinite(trainingClosestStringBedDistance)
         ? trainingClosestStringBedDistance : null,
       maximumStringBedReachMeters: 0.75,
-      strikeZoneRadii: TRAINING_STRIKE_ZONE_RADII,
+      strikeZoneRadii: ballController.ball.expectedStrokeType === "backhand"
+        ? TRAINING_BACKHAND_STRIKE_ZONE_RADII : TRAINING_STRIKE_ZONE_RADII,
       enteredStrikeZone: trainingStrikeZoneEntryAt !== null,
       maximumNeutralOriginDriftMeters: trainingMaximumNeutralOriginDriftMeters,
       sawActiveIntentBeforeWindow: trainingSawActiveIntentBeforeWindow,
@@ -2952,6 +2971,13 @@ function updateContactTargetGuide(): void {
     backhandStyle: strokeStateMachine.getBackhandStyle()
   });
   const strokeType = isBackhandPreset(activeLaunchPreset) ? "backhand" : "forehand";
+  const guideRadii = strokeType === "backhand"
+    ? TRAINING_BACKHAND_STRIKE_ZONE_RADII : TRAINING_STRIKE_ZONE_RADII;
+  contactTargetVolume.scale.set(
+    guideRadii.lateral / 0.22,
+    guideRadii.vertical / 0.22,
+    guideRadii.depth / 0.22
+  );
   const expected = getExpectedRacketContactTransform({
     strokeType,
     handedness: strokeStateMachine.getHandedness(),

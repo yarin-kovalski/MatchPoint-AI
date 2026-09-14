@@ -10,6 +10,7 @@ const RACKET_MODEL_SCALE = 0.01;
 const TRAINING_GRIP_HEIGHT = 1.45;
 const TRAINING_BOUNCE_Z = 0.25;
 export const TRAINING_STRIKE_ZONE_RADII = { lateral: 0.42, vertical: 0.32, depth: 0.42 } as const;
+export const TRAINING_BACKHAND_STRIKE_ZONE_RADII = { lateral: 0.50, vertical: 0.38, depth: 0.50 } as const;
 
 export type TrainingStrikeZoneGeometry = {
   gripPoint: THREE.Vector3;
@@ -46,13 +47,18 @@ export function getTrainingStrikeZoneGeometry(source: TrajectoryCalibrationProfi
   };
 }
 
-export function isInsideTrainingStrikeZone(point: THREE.Vector3, center: THREE.Vector3): boolean {
+export function isInsideTrainingStrikeZone(
+  point: THREE.Vector3,
+  center: THREE.Vector3,
+  strokeType: "forehand" | "backhand" = "forehand"
+): boolean {
+  const radii = strokeType === "backhand" ? TRAINING_BACKHAND_STRIKE_ZONE_RADII : TRAINING_STRIKE_ZONE_RADII;
   const x = point.x - center.x;
   const y = point.y - center.y;
   const z = point.z - center.z;
-  return x ** 2 / TRAINING_STRIKE_ZONE_RADII.lateral ** 2 +
-    y ** 2 / TRAINING_STRIKE_ZONE_RADII.vertical ** 2 +
-    z ** 2 / TRAINING_STRIKE_ZONE_RADII.depth ** 2 <= 1;
+  return x ** 2 / radii.lateral ** 2 +
+    y ** 2 / radii.vertical ** 2 +
+    z ** 2 / radii.depth ** 2 <= 1;
 }
 
 export function positionValidatedProfileAtBaseline(

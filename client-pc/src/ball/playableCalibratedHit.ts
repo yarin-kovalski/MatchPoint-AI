@@ -48,8 +48,13 @@ export function evaluatePlayableCalibratedHit(input: {
   assistLevel?: PlayerAssistLevel;
 }): PlayableHitDecision {
   const assist = BALL_CONFIG.playerAssist[input.assistLevel ?? "training"];
-  const opportunityStart = input.contactTime - assist.windowBeforeMs;
-  const opportunityEnd = input.contactTime + assist.windowAfterMs;
+  // Recorded backhands reach contact later while the phone/racket crosses the
+  // body and turns the opposite face forward. Preserve the forehand gate with
+  // a modest backhand-specific timing allowance in Training.
+  const backhandTimingAllowance = input.expectedStrokeType === "backhand" &&
+    (input.assistLevel ?? "training") === "training" ? 120 : 0;
+  const opportunityStart = input.contactTime - assist.windowBeforeMs - backhandTimingAllowance * 0.35;
+  const opportunityEnd = input.contactTime + assist.windowAfterMs + backhandTimingAllowance;
   const timing: PlayableTimingState = input.now < opportunityStart ? "TOO EARLY" : input.now <= opportunityEnd ? "HIT WINDOW" : "TOO LATE";
   const base: Omit<PlayableHitDecision, "accepted" | "reason"> = {
     timing, resolvedPlayableStrokeType: input.expectedStrokeType, opportunityStart, opportunityEnd,
@@ -71,6 +76,10 @@ export function evaluatePlayableCalibratedHit(input: {
   const fusedDirectionRejected = (input.assistLevel ?? "training") === "training"
     ? fusedDirectionReason === "BACKWARD_SWING"
     : fusedDirectionReason !== "NONE";
+  const minimumForwardDriveScore = input.expectedStrokeType === "backhand" &&
+    (input.assistLevel ?? "training") === "training"
+    ? assist.minimumForwardDriveScore * 0.45
+    : assist.minimumForwardDriveScore;
   const enoughMotion = (input.assistLevel ?? "training") === "training"
     ? (input.motion?.angularSpeed ?? 0) >= assist.minimumAngularSpeed ||
       (input.motion?.accelerationMagnitude ?? 0) >= assist.minimumAcceleration
@@ -80,7 +89,7 @@ export function evaluatePlayableCalibratedHit(input: {
       input.now > input.motion.swingIntent.expiresAt ||
       input.now - input.motion.swingIntent.startedAt < BALL_CONFIG.playableCalibratedHit.minimumActiveSwingMs ||
       !enoughMotion ||
-      forwardDriveScore < assist.minimumForwardDriveScore ||
+      forwardDriveScore < minimumForwardDriveScore ||
       fusedDirectionRejected) {
     return { ...base, accepted: false, reason: "NO_REAL_SWING" };
   }

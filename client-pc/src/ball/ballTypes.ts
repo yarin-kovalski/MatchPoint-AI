@@ -9,6 +9,8 @@ export function isBackhandPreset(preset: LaunchPreset | null): boolean {
   return preset === "easyBackhand" || preset === "guaranteedBackhand";
 }
 export type AssistMode = "off" | "prototype" | "easy";
+// `realistic` remains an internal developer physics profile. The player-facing
+// product modes are Training now and Game when its phase gate opens.
 export type PlayerAssistLevel = "realistic" | "training";
 export type BallSpeedPreset = "slow" | "normal" | "fast";
 

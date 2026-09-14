@@ -101,3 +101,7 @@ Resolved nested conflict markers in PC imports while retaining both diagnostic m
 
 ## Sensor-driven return variation (2026-09-14)
 Removed safe landing targets at user request. Expo motion now drives power, vertical brush and lateral aim; axis normalization is explicit for iOS/Android. Added physical net contact, singles first-bounce calls and persistent outcomes. Build, Expo typecheck, automated regression tests and HTTP verification are required; real phone validation follows reload/recalibration. See docs/shot-behavior.md.
+
+## Training and Game mode split (2026-09-14)
+
+The player UI now exposes Training and a clearly labeled future Game mode; Realistic is removed from the player workflow. Training keeps sensor-driven shot physics. Backhand uses the same intent and return pipeline as forehand with mirrored contact geometry, a slightly larger cross-body strike envelope, 42 ms more early tolerance, 120 ms more late tolerance, and a lower forward-score floor while still rejecting backward motion. Game targets and ranks remain behind the Phase 1 video gate; see `docs/game-mode-plan.md`.

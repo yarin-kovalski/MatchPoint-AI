@@ -899,3 +899,11 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
   font-weight: 700; text-align: center; pointer-events: none;
 }
 .landing-announcement[hidden] { display: none; }
+
+.mode-description {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted, #a9b6b4);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}

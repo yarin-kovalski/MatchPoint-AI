@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 import {
-  CONTACT_EASE_DEPTH_Z, PLAYER_BASELINE_OFFSET_Z, positionValidatedProfileAtBaseline
+  CONTACT_EASE_DEPTH_Z, PLAYER_BASELINE_OFFSET_Z, positionValidatedProfileAtBaseline,
+  createTrainingComfortProfile, isInsideTrainingStrikeZone
 } from "../client-pc/src/ball/courtPositioning.js";
 import { solveTrajectoryProfile, worldToPlayerLocal } from "../client-pc/src/ball/trajectoryCalibration.js";
 import { VALIDATED_TRAJECTORY_PRESET } from "../client-pc/src/ball/validatedTrajectoryPreset.js";
@@ -36,3 +37,16 @@ for (const strokeType of ["forehand", "backhand"] as const) {
     assert.ok(solved.safetyMarginMs > 0);
   });
 }
+
+test("Training backhand feed mirrors forehand contact and has a practical cross-body strike envelope", () => {
+  const forehand = createTrainingComfortProfile(VALIDATED_TRAJECTORY_PRESET.forehand);
+  const backhand = createTrainingComfortProfile(VALIDATED_TRAJECTORY_PRESET.backhand);
+  assert.equal(backhand.contactPointWorld[0], -forehand.contactPointWorld[0]);
+  assert.equal(backhand.contactPointWorld[1], forehand.contactPointWorld[1]);
+  assert.equal(backhand.contactPointWorld[2], forehand.contactPointWorld[2]);
+  const backhandEdge = new THREE.Vector3().fromArray(backhand.contactPointWorld).add(
+    new THREE.Vector3(0.46, 0, 0)
+  );
+  assert.equal(isInsideTrainingStrikeZone(backhandEdge, new THREE.Vector3().fromArray(backhand.contactPointWorld), "backhand"), true);
+  assert.equal(isInsideTrainingStrikeZone(backhandEdge, new THREE.Vector3().fromArray(forehand.contactPointWorld), "forehand"), false);
+});

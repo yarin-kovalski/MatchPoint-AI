@@ -173,7 +173,7 @@ test("Realistic mode remains moving-racket geometry based", () => {
   assert.deepEqual(controller.ball.position.toArray(), [5, 1, 2]);
 });
 
-test("Training refinement reaches 17 of 20 representative normal swings symmetrically", () => {
+test("Training refinement keeps forehand playable and expands measured backhand coverage", () => {
   const offsets = [-270, -245, -220, -190, -155, -120, -80, -40, 0, 35,
     70, 105, 140, 175, 205, 220, 230, 235, 260, 320];
   const calibration = new TrainingSessionCalibration();
@@ -193,13 +193,12 @@ test("Training refinement reaches 17 of 20 representative normal swings symmetri
     });
     report = calibration.record(decision.accepted, strokeType, decision.reason);
   }
-  assert.equal(report?.hits, 17);
-  assert.equal(report?.hitPercentage, 85);
+  assert.equal(report?.hits, 19);
+  assert.equal(report?.hitPercentage, 95);
   assert.ok(report!.bySide.forehand.hitPercentage >= 80);
-  assert.ok(report!.bySide.backhand.hitPercentage >= 80);
+  assert.equal(report!.bySide.backhand.hitPercentage, 100);
   assert.deepEqual(report!.missReasons, [
-    { reason: "SWING_TOO_LATE", count: 2 },
-    { reason: "NO_REAL_SWING", count: 1 }
+    { reason: "SWING_TOO_LATE", count: 1 }
   ]);
 });
 
@@ -239,6 +238,22 @@ test("Training tolerates a single motion channel dipping during an active forwar
   assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "realistic" }).accepted, false);
   moving.angularSpeed = 0.2;
   assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "training" }).accepted, false);
+});
+
+test("Training backhand mirrors forehand logic with its measured timing and forward allowance", () => {
+  const forehand = motion("forehand");
+  const backhand = motion("backhand");
+  forehand.motionForwardScore = 0.05;
+  backhand.motionForwardScore = 0.05;
+  const common = { now: 1300, contactTime: 1000, bounceCount: 1, alreadyHit: false };
+  assert.equal(evaluatePlayableCalibratedHit({
+    ...common, expectedStrokeType: "forehand", profile: createDefaultTrajectoryProfile("forehand", "right"),
+    motion: forehand, assistLevel: "training"
+  }).accepted, false);
+  assert.equal(evaluatePlayableCalibratedHit({
+    ...common, expectedStrokeType: "backhand", profile: createDefaultTrajectoryProfile("backhand", "right"),
+    motion: backhand, assistLevel: "training"
+  }).accepted, true);
 });
 
 test("court landing announcement occurs once after the physical bounce", () => {
