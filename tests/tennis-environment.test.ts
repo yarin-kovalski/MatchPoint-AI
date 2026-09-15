@@ -41,8 +41,16 @@ test("tennis net includes mesh, white band, and two shadow-casting posts", () =>
   assert.ok(edgeTop > centerTop, "top band should sag toward regulation center height");
 });
 
-test("court backdrop adds restrained windscreens and depth structure", () => {
+test("court backdrop adds transparent chain-link fencing and depth structure", () => {
   const backdrop = createCourtBackdrop(-5.5);
+  assert.ok(backdrop.getObjectByName("farChainLinkFence"));
+  assert.ok(backdrop.getObjectByName("leftChainLinkFence"));
+  assert.ok(backdrop.getObjectByName("rightChainLinkFence"));
+  assert.ok(backdrop.getObjectByName("farFenceTopRail"));
+  assert.ok(backdrop.getObjectByName("leftFencePost1"));
+  const fenceMaterial = (backdrop.getObjectByName("farChainLinkFence") as THREE.Mesh).material as THREE.ShaderMaterial;
+  assert.equal(fenceMaterial.transparent, true);
+  assert.equal(fenceMaterial.depthWrite, false);
   assert.ok(backdrop.getObjectByName("farWindscreen"));
   assert.ok(backdrop.getObjectByName("sideWindscreenLeft"));
   assert.ok(backdrop.getObjectByName("sideWindscreenRight"));

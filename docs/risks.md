@@ -158,3 +158,9 @@ Mitigation:
 
 - Automated replay and symmetry checks pass, but the widened backhand timing/strike envelope needs a fresh real-phone backhand session. If it still misses, record the new diagnostic attempt before changing thresholds again.
 - Game scoring thresholds are provisional planning values. Do not implement or tune them until Phase 1 Training is confirmed and the POC video is recorded.
+
+## Outdoor scene performance (2026-09-15)
+
+- Transparent fence and cloud layers can increase overdraw on low-power laptops. The fence uses one procedural material per run, clouds use a small fixed mesh count, and neither casts shadows.
+- The outdoor motion is decorative and time-based. It has no effect on phone telemetry, hit detection, or ball physics.
+- Automated scene tests and HTTP verification pass. The configured in-app browser was unavailable, so final visual inspection on the target PC remains the only open QA step.

@@ -105,3 +105,14 @@ Removed safe landing targets at user request. Expo motion now drives power, vert
 ## Training and Game mode split (2026-09-14)
 
 The player UI now exposes Training and a clearly labeled future Game mode; Realistic is removed from the player workflow. Training keeps sensor-driven shot physics. Backhand uses the same intent and return pipeline as forehand with mirrored contact geometry, a slightly larger cross-body strike envelope, 42 ms more early tolerance, 120 ms more late tolerance, and a lower forward-score floor while still rejecting backward motion. Game targets and ranks remain behind the Phase 1 video gate; see `docs/game-mode-plan.md`.
+
+## Outdoor court visual pass (2026-09-15)
+
+Acceptance criteria:
+
+- The playing area reads clearly as a blue hard court inside a green surround.
+- The enclosure uses transparent black diamond chain-link mesh, substantial posts, and top/bottom rails like the supplied reference.
+- The sky is bright blue with a visible sun, soft drifting clouds, and small animated bird silhouettes.
+- Distant landscaping, daylight, haze, and materials add depth without changing sensor, swing, ball, or training behavior.
+- Animation remains time-based and the scene continues to fit the existing render pixel budget.
+- TypeScript build and the complete automated test suite pass before delivery.

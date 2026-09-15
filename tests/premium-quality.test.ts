@@ -17,7 +17,7 @@ import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
 import { StrokeDetectorSnapshot } from "../client-pc/src/strokeDetection/strokeTypes.js";
 import { validateVariation, validatedForehandBase, validatedBackhandBase } from "../client-pc/src/ball/feedVariation.js";
 import { createAuthenticTennisNet } from "../client-pc/src/scene/tennisEnvironment.js";
-import { courtPixelRatio, createMicroTexture, createSkyDome, createSoftContactShadowTexture, finishPremiumRacket, impactSquashScale } from "../client-pc/src/scene/premiumVisuals.js";
+import { addPremiumEnvironment, courtPixelRatio, createMicroTexture, createSkyDome, createSoftContactShadowTexture, finishPremiumRacket, impactSquashScale, updatePremiumEnvironment } from "../client-pc/src/scene/premiumVisuals.js";
 
 test("a rejected orientation spike cannot latch the racket on an old pose", () => {
   const normalizer = new SensorNormalizer();
@@ -133,6 +133,22 @@ test("premium net has physical cords in one mesh and reusable scene finishes",()
   assert.equal(frame.geometry,geometry);assert.deepEqual(frame.matrix,matrix);
   assert.equal((frame.material as THREE.Material).name,'premiumCompositeFrame');
   assert.deepEqual(impactSquashScale(30,.2,new THREE.Vector3()).toArray(),[1,1,1]);
+});
+
+test("outdoor environment contains sun, moving clouds and animated birds",()=>{
+  const scene = new THREE.Scene();
+  const environment = addPremiumEnvironment(scene, {} as THREE.WebGLRenderer);
+  assert.equal(environment.name, "outdoorEnvironment");
+  assert.ok(environment.getObjectByName("daylightSun"));
+  assert.equal(environment.getObjectByName("movingClouds")?.children.length, 4);
+  assert.equal(environment.getObjectByName("flyingBirds")?.children.length, 5);
+  const clouds = environment.getObjectByName("movingClouds") as THREE.Group;
+  const birds = environment.getObjectByName("flyingBirds") as THREE.Group;
+  const cloudBefore = clouds.children[0].position.x;
+  const birdBefore = birds.position.x;
+  updatePremiumEnvironment(environment, 5);
+  assert.notEqual(clouds.children[0].position.x, cloudBefore);
+  assert.notEqual(birds.position.x, birdBefore);
 });
 
 test("Player Mode keeps debug geometry behind the Advanced visibility gate",()=>{

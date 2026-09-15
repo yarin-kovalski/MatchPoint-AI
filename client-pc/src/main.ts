@@ -30,7 +30,7 @@ import {
 import { BALL_CAMERA_BASE_TARGET, BallFlightCameraState, updateBallFlightCamera } from "./scene/ballFlightCamera.js";
 import { assertBallVisualState } from "./ball/ballVisualState.js";
 import { sampleBallVisualPosition } from "./ball/fixedStepBallPhysics.js";
-import { addPremiumEnvironment, courtPixelRatio, createMicroTexture, createSoftContactShadowTexture, finishPremiumRacket } from "./scene/premiumVisuals.js";
+import { addPremiumEnvironment, courtPixelRatio, createMicroTexture, createSoftContactShadowTexture, finishPremiumRacket, updatePremiumEnvironment } from "./scene/premiumVisuals.js";
 import { analyzeGameplayDiagnostic, AttemptType, diagnosticMarkdown, GameplayDiagnosticFrame, GameplayDiagnosticRecorder } from "./diagnostics/gameplayDiagnostic.js";
 import { MOTION_CONFIG } from "./motion/motionConfig.js";
 import { FrameTelemetry } from "./diagnostics/frameTelemetry.js";
@@ -538,8 +538,8 @@ let armedStrokeExampleLabel: string | null = null;
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xa9ced7);
-scene.fog = new THREE.Fog(0xa9ced7, 24, 58);
+scene.background = new THREE.Color(0x86d4f4);
+scene.fog = new THREE.Fog(0xc7ebf7, 30, 78);
 
 const camera = new THREE.PerspectiveCamera(
   BALL_CONFIG.camera.fovDegrees,
@@ -559,7 +559,7 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 resizeRendererToVisualizationPanel();
 configureAuthenticRenderer(renderer);
-addPremiumEnvironment(scene, renderer);
+const outdoorEnvironment = addPremiumEnvironment(scene, renderer);
 
 const ambientLight = new THREE.HemisphereLight(0xe8f5f7, 0x315449, 1.4);
 scene.add(ambientLight);
@@ -1190,6 +1190,7 @@ function mapPacketToRotation(packet: BrokeredMotionPacket): { x: number; y: numb
 function animate(): void {
   requestAnimationFrame(animate);
   const elapsed = clock.getElapsedTime();
+  updatePremiumEnvironment(outdoorEnvironment, elapsed);
   const now = performance.now();
   const nowEpoch = Date.now();
   const rawFrameDeltaMs = now - lastBallFrameAt;

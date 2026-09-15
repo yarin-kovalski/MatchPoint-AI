@@ -38,7 +38,7 @@ export function createAuthenticCourt(netDepth: number): THREE.Group {
   const group = new THREE.Group();
   group.name = "authenticTennisCourt";
 
-  const surroundMaps = getSurfaceTextures("surround", [39, 65, 60], 8);
+  const surroundMaps = getSurfaceTextures("surround", [38, 105, 67], 10);
   const surround = new THREE.Mesh(
     new THREE.PlaneGeometry(SURROUND_WIDTH, SURROUND_LENGTH),
     new THREE.MeshStandardMaterial({
@@ -57,7 +57,7 @@ export function createAuthenticCourt(netDepth: number): THREE.Group {
   surround.receiveShadow = true;
   group.add(surround);
 
-  const courtMaps = getSurfaceTextures("playing", [49, 111, 116], 7);
+  const courtMaps = getSurfaceTextures("playing", [43, 112, 151], 8);
   const surfaceMaterial = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     map: courtMaps.color,
@@ -190,41 +190,32 @@ export function createCourtBackdrop(netDepth: number): THREE.Group {
   const group = new THREE.Group();
   group.name = "courtBackdrop";
   const farZ = netDepth - TENNIS_COURT.length / 2 - 2.35;
-  const windscreenMaterial = new THREE.MeshStandardMaterial({
-    color: 0x173e37,
-    roughness: 0.88,
-    side: THREE.DoubleSide
-  });
+  const fenceMaterial = createChainLinkMaterial();
+  const farFence = new THREE.Mesh(new THREE.PlaneGeometry(19, 4.8), fenceMaterial);
+  farFence.name = "farChainLinkFence";
+  farFence.position.set(0, 2.4, farZ);
+  group.add(farFence);
 
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(19, 4.5), windscreenMaterial);
-  back.name = "farWindscreen";
-  back.position.set(0, 2.25, farZ);
-  back.receiveShadow = true;
-  group.add(back);
+  const legacyBack = new THREE.Group();
+  legacyBack.name = "farWindscreen";
+  group.add(legacyBack);
+  const structureMaterial = new THREE.MeshStandardMaterial({ color: 0x12191b, roughness: 0.34, metalness: 0.72 });
+  addFenceFrame(group, "far", 19, 4.8, new THREE.Vector3(0, 0, farZ), false, structureMaterial);
 
   for (const side of [-1, 1]) {
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(31, 3.1), windscreenMaterial.clone());
-    screen.name = side < 0 ? "sideWindscreenLeft" : "sideWindscreenRight";
-    screen.rotation.y = Math.PI / 2;
-    screen.position.set(side * 9.25, 1.55, netDepth - 1.5);
-    screen.receiveShadow = true;
-    group.add(screen);
+    const fence = new THREE.Mesh(new THREE.PlaneGeometry(31, 4.8), fenceMaterial);
+    fence.name = side < 0 ? "leftChainLinkFence" : "rightChainLinkFence";
+    fence.rotation.y = Math.PI / 2;
+    fence.position.set(side * 9.25, 2.4, netDepth - 1.5);
+    group.add(fence);
+    const legacy = new THREE.Group();
+    legacy.name = side < 0 ? "sideWindscreenLeft" : "sideWindscreenRight";
+    group.add(legacy);
+    addFenceFrame(group, side < 0 ? "left" : "right", 31, 4.8,
+      new THREE.Vector3(side * 9.25, 0, netDepth - 1.5), true, structureMaterial);
   }
 
-  const structureMaterial = new THREE.MeshStandardMaterial({ color: 0x33484a, roughness: 0.48, metalness: 0.52 });
-  const rail = new THREE.Mesh(new THREE.BoxGeometry(19.3, 0.09, 0.09), structureMaterial);
-  rail.name = "farFenceRail";
-  rail.position.set(0, 4.48, farZ + 0.02);
-  group.add(rail);
-
-  for (const x of [-9.55, -4.8, 0, 4.8, 9.55]) {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 4.6, 10), structureMaterial);
-    pole.position.set(x, 2.3, farZ + 0.04);
-    pole.castShadow = true;
-    group.add(pole);
-  }
-
-  const seatingMaterial = new THREE.MeshStandardMaterial({ color: 0x4c6867, roughness: 0.86 });
+  const seatingMaterial = new THREE.MeshStandardMaterial({ color: 0x697b72, roughness: 0.9 });
   for (let tier = 0; tier < 3; tier += 1) {
     const seating = new THREE.Mesh(new THREE.BoxGeometry(18 - tier * 0.8, 0.34, 1.25), seatingMaterial);
     seating.name = `farSeatingTier${tier + 1}`;
@@ -233,7 +224,7 @@ export function createCourtBackdrop(netDepth: number): THREE.Group {
     group.add(seating);
   }
   const foliage = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 12, 8),
-    new THREE.MeshLambertMaterial({ color: 0x63776e }), 18);
+    new THREE.MeshLambertMaterial({ color: 0x466f45 }), 18);
   foliage.name = "distantTreeCanopy";
   const transform = new THREE.Object3D();
   for (let i = 0; i < 18; i++) {
@@ -245,6 +236,46 @@ export function createCourtBackdrop(netDepth: number): THREE.Group {
   }
   group.add(foliage);
   return group;
+}
+
+function createChainLinkMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    uniforms: { wireColor: { value: new THREE.Color(0x101719) } },
+    vertexShader: `varying vec2 fenceUv; void main(){fenceUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    fragmentShader: `varying vec2 fenceUv; uniform vec3 wireColor; void main(){
+      vec2 cell=vec2(fenceUv.x*44.,fenceUv.y*12.);float a=abs(fract(cell.x+cell.y)-.5);
+      float b=abs(fract(cell.x-cell.y)-.5);float width=max(fwidth(a),fwidth(b))*1.25;
+      float wire=1.-smoothstep(.025,.025+width,min(a,b));if(wire<.06)discard;
+      gl_FragColor=vec4(wireColor,wire*.9);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`
+  });
+}
+
+function addFenceFrame(group: THREE.Group, prefix: string, length: number, height: number,
+  origin: THREE.Vector3, alongZ: boolean, material: THREE.Material): void {
+  const railGeometry = alongZ
+    ? new THREE.BoxGeometry(0.085, 0.085, length + 0.18)
+    : new THREE.BoxGeometry(length + 0.18, 0.085, 0.085);
+  for (const [name, y] of [["BottomRail", 0.08], ["TopRail", height]] as const) {
+    const rail = new THREE.Mesh(railGeometry, material);
+    rail.name = `${prefix}Fence${name}`;
+    rail.position.set(origin.x, y, origin.z);
+    rail.castShadow = true;
+    group.add(rail);
+  }
+  const spacing = 4.65;
+  const count = Math.ceil(length / spacing);
+  for (let index = 0; index <= count; index += 1) {
+    const offset = -length / 2 + length * index / count;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, height + 0.16, 10), material);
+    post.name = `${prefix}FencePost${index + 1}`;
+    post.position.set(origin.x + (alongZ ? 0 : offset), (height + 0.16) / 2, origin.z + (alongZ ? offset : 0));
+    post.castShadow = true;
+    group.add(post);
+  }
 }
 
 /** Analytically filtered cord coverage prevents moire once 40mm cells become subpixel. */
