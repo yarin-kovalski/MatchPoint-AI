@@ -21,6 +21,7 @@ import { createArchetypeFeed, FeedArchetype } from "./ball/feedArchetypes.js";
 import { solveSpinFlight } from "./ball/spinFlight.js";
 import {
   configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createCourtBackdrop,
+  updateCourtBackdrop,
   createFeedOriginMarker
 } from "./scene/tennisEnvironment.js";
 import {
@@ -538,8 +539,8 @@ let armedStrokeExampleLabel: string | null = null;
 
 const clock = new THREE.Clock();
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x86d4f4);
-scene.fog = new THREE.Fog(0xc7ebf7, 30, 78);
+scene.background = new THREE.Color(0xd5b6a4);
+scene.fog = new THREE.Fog(0xe6c4a3, 34, 82);
 
 const camera = new THREE.PerspectiveCamera(
   BALL_CONFIG.camera.fovDegrees,
@@ -561,11 +562,11 @@ resizeRendererToVisualizationPanel();
 configureAuthenticRenderer(renderer);
 const outdoorEnvironment = addPremiumEnvironment(scene, renderer);
 
-const ambientLight = new THREE.HemisphereLight(0xe8f5f7, 0x315449, 1.4);
+const ambientLight = new THREE.HemisphereLight(0xd9e3f1, 0x30493a, 1.22);
 scene.add(ambientLight);
 
-const keyLight = new THREE.DirectionalLight(0xfff4dc, 1.9);
-keyLight.position.set(-7.5, 13.5, 8.5);
+const keyLight = new THREE.DirectionalLight(0xffc47f, 2.05);
+keyLight.position.set(-12, 9.5, -8.5);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(1024, 1024);
 keyLight.shadow.camera.left = -10;
@@ -579,7 +580,7 @@ keyLight.shadow.normalBias = 0.025;
 keyLight.shadow.radius = 2;
 scene.add(keyLight);
 
-const softFillLight = new THREE.DirectionalLight(0xbadce6, 0.72);
+const softFillLight = new THREE.DirectionalLight(0xaecbe4, 0.58);
 softFillLight.position.set(8, 6, 3);
 scene.add(softFillLight);
 
@@ -1191,6 +1192,7 @@ function animate(): void {
   requestAnimationFrame(animate);
   const elapsed = clock.getElapsedTime();
   updatePremiumEnvironment(outdoorEnvironment, elapsed);
+  updateCourtBackdrop(courtBackdrop, elapsed);
   const now = performance.now();
   const nowEpoch = Date.now();
   const rawFrameDeltaMs = now - lastBallFrameAt;

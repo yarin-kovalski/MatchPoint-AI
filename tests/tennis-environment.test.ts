@@ -3,6 +3,7 @@ import test from "node:test";
 import * as THREE from "three";
 import {
   configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createCourtBackdrop, createFeedOriginMarker,
+  updateCourtBackdrop,
   TENNIS_COURT
 } from "../client-pc/src/scene/tennisEnvironment.js";
 
@@ -47,7 +48,7 @@ test("court backdrop adds transparent chain-link fencing and depth structure", (
   assert.ok(backdrop.getObjectByName("leftChainLinkFence"));
   assert.ok(backdrop.getObjectByName("rightChainLinkFence"));
   assert.ok(backdrop.getObjectByName("farFenceTopRail"));
-  assert.ok(backdrop.getObjectByName("leftFencePost1"));
+  assert.ok(backdrop.getObjectByName("leftFencePost2"));
   const fenceMaterial = (backdrop.getObjectByName("farChainLinkFence") as THREE.Mesh).material as THREE.ShaderMaterial;
   assert.equal(fenceMaterial.transparent, true);
   assert.equal(fenceMaterial.depthWrite, false);
@@ -55,6 +56,34 @@ test("court backdrop adds transparent chain-link fencing and depth structure", (
   assert.ok(backdrop.getObjectByName("sideWindscreenLeft"));
   assert.ok(backdrop.getObjectByName("sideWindscreenRight"));
   assert.ok(backdrop.getObjectByName("farSeatingTier1"));
+  assert.ok(backdrop.getObjectByName("resortGround"));
+  assert.ok(backdrop.getObjectByName("palmTree1"));
+  assert.ok(backdrop.getObjectByName("courtsideBench"));
+  assert.ok(backdrop.getObjectByName("courtsideUmbrella"));
+});
+
+test("side fences share exact rear corners without duplicate posts", () => {
+  const backdrop = createCourtBackdrop(-5.5);
+  const far = backdrop.getObjectByName("farChainLinkFence") as THREE.Mesh;
+  const left = backdrop.getObjectByName("leftChainLinkFence") as THREE.Mesh;
+  const farHalfWidth = (far.geometry as THREE.PlaneGeometry).parameters.width / 2;
+  const sideHalfLength = (left.geometry as THREE.PlaneGeometry).parameters.width / 2;
+  assert.equal(far.position.x - farHalfWidth, left.position.x);
+  assert.ok(Math.abs(left.position.z - sideHalfLength - far.position.z) < 1e-9);
+  assert.equal(backdrop.getObjectByName("leftFencePost1"), undefined,
+    "side run must not duplicate the rear corner post owned by the far fence");
+  assert.ok(backdrop.getObjectByName("farFencePost1"));
+  assert.ok(backdrop.getObjectByName("farFencePost5"));
+});
+
+test("palm crowns sway while fence geometry stays fixed", () => {
+  const backdrop = createCourtBackdrop(-5.5);
+  const crown = backdrop.getObjectByName("palmCrown1") as THREE.Group;
+  const fence = backdrop.getObjectByName("farChainLinkFence") as THREE.Mesh;
+  const fencePosition = fence.position.clone();
+  updateCourtBackdrop(backdrop, 3.4);
+  assert.notEqual(crown.rotation.z, 0);
+  assert.deepEqual(fence.position, fencePosition);
 });
 
 test("renderer configuration enables soft shadows and color-managed tone mapping", () => {

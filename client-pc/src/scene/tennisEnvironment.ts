@@ -190,52 +190,58 @@ export function createCourtBackdrop(netDepth: number): THREE.Group {
   const group = new THREE.Group();
   group.name = "courtBackdrop";
   const farZ = netDepth - TENNIS_COURT.length / 2 - 2.35;
+  const fenceX = 9.25;
+  const nearZ = netDepth + 14.5;
+  const farWidth = fenceX * 2;
+  const sideLength = nearZ - farZ;
+  const sideCenterZ = (nearZ + farZ) / 2;
   const fenceMaterial = createChainLinkMaterial();
-  const farFence = new THREE.Mesh(new THREE.PlaneGeometry(19, 4.8), fenceMaterial);
+  const farFence = new THREE.Mesh(new THREE.PlaneGeometry(farWidth, 4.8), fenceMaterial);
   farFence.name = "farChainLinkFence";
   farFence.position.set(0, 2.4, farZ);
   group.add(farFence);
 
-  const legacyBack = new THREE.Group();
-  legacyBack.name = "farWindscreen";
-  group.add(legacyBack);
+  const screenMaterial = new THREE.MeshStandardMaterial({
+    color: 0x163f32, roughness: 0.94, transparent: true, opacity: 0.78,
+    side: THREE.DoubleSide, depthWrite: true
+  });
+  const backScreen = new THREE.Mesh(new THREE.PlaneGeometry(farWidth - 0.14, 3.65), screenMaterial);
+  backScreen.name = "farWindscreen";
+  backScreen.position.set(0, 1.84, farZ - 0.035);
+  group.add(backScreen);
   const structureMaterial = new THREE.MeshStandardMaterial({ color: 0x12191b, roughness: 0.34, metalness: 0.72 });
-  addFenceFrame(group, "far", 19, 4.8, new THREE.Vector3(0, 0, farZ), false, structureMaterial);
+  addFenceFrame(group, "far", farWidth, 4.8, new THREE.Vector3(0, 0, farZ), false, structureMaterial);
 
   for (const side of [-1, 1]) {
-    const fence = new THREE.Mesh(new THREE.PlaneGeometry(31, 4.8), fenceMaterial);
+    const fence = new THREE.Mesh(new THREE.PlaneGeometry(sideLength, 4.8), fenceMaterial);
     fence.name = side < 0 ? "leftChainLinkFence" : "rightChainLinkFence";
     fence.rotation.y = Math.PI / 2;
-    fence.position.set(side * 9.25, 2.4, netDepth - 1.5);
+    fence.position.set(side * fenceX, 2.4, sideCenterZ);
     group.add(fence);
-    const legacy = new THREE.Group();
-    legacy.name = side < 0 ? "sideWindscreenLeft" : "sideWindscreenRight";
-    group.add(legacy);
-    addFenceFrame(group, side < 0 ? "left" : "right", 31, 4.8,
-      new THREE.Vector3(side * 9.25, 0, netDepth - 1.5), true, structureMaterial);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(sideLength - 0.14, 3.65), screenMaterial.clone());
+    screen.name = side < 0 ? "sideWindscreenLeft" : "sideWindscreenRight";
+    screen.rotation.y = Math.PI / 2;
+    screen.position.set(side * (fenceX + 0.035), 1.84, sideCenterZ);
+    group.add(screen);
+    // The far fence owns both shared corner posts. Side runs begin after that
+    // post so no mesh or structural member is doubled at either rear corner.
+    addFenceFrame(group, side < 0 ? "left" : "right", sideLength, 4.8,
+      new THREE.Vector3(side * fenceX, 0, sideCenterZ), true, structureMaterial, true);
   }
 
-  const seatingMaterial = new THREE.MeshStandardMaterial({ color: 0x697b72, roughness: 0.9 });
-  for (let tier = 0; tier < 3; tier += 1) {
-    const seating = new THREE.Mesh(new THREE.BoxGeometry(18 - tier * 0.8, 0.34, 1.25), seatingMaterial);
-    seating.name = `farSeatingTier${tier + 1}`;
-    seating.position.set(0, 0.22 + tier * 0.34, farZ - 0.8 - tier * 0.75);
-    seating.receiveShadow = true;
-    group.add(seating);
-  }
-  const foliage = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 12, 8),
-    new THREE.MeshLambertMaterial({ color: 0x466f45 }), 18);
-  foliage.name = "distantTreeCanopy";
-  const transform = new THREE.Object3D();
-  for (let i = 0; i < 18; i++) {
-    transform.position.set(-26 + i * 3.2, 2.5 + Math.sin(i * 1.7) * 0.5, farZ - 11 - (i % 3));
-    transform.scale.set(3.2, 2.7 + (i % 3) * 0.4, 3);
-    transform.rotation.y = i * 0.7;
-    transform.updateMatrix();
-    foliage.setMatrixAt(i, transform.matrix);
-  }
-  group.add(foliage);
+  addResortLandscape(group, farZ, netDepth);
   return group;
+}
+
+export function updateCourtBackdrop(backdrop: THREE.Object3D, elapsed: number): void {
+  backdrop.traverse(node => {
+    if (!node.userData.windAnimated) return;
+    const phase = Number(node.userData.windPhase ?? 0);
+    const strength = Number(node.userData.windStrength ?? 0.018);
+    node.rotation.z = Number(node.userData.baseRotationZ ?? 0) +
+      Math.sin(elapsed * 0.72 + phase) * strength + Math.sin(elapsed * 1.9 + phase * 1.7) * strength * 0.24;
+    node.rotation.x = Math.cos(elapsed * 0.55 + phase) * strength * 0.32;
+  });
 }
 
 function createChainLinkMaterial(): THREE.ShaderMaterial {
@@ -255,7 +261,7 @@ function createChainLinkMaterial(): THREE.ShaderMaterial {
 }
 
 function addFenceFrame(group: THREE.Group, prefix: string, length: number, height: number,
-  origin: THREE.Vector3, alongZ: boolean, material: THREE.Material): void {
+  origin: THREE.Vector3, alongZ: boolean, material: THREE.Material, skipFirstPost = false): void {
   const railGeometry = alongZ
     ? new THREE.BoxGeometry(0.085, 0.085, length + 0.18)
     : new THREE.BoxGeometry(length + 0.18, 0.085, 0.085);
@@ -269,6 +275,7 @@ function addFenceFrame(group: THREE.Group, prefix: string, length: number, heigh
   const spacing = 4.65;
   const count = Math.ceil(length / spacing);
   for (let index = 0; index <= count; index += 1) {
+    if (skipFirstPost && index === 0) continue;
     const offset = -length / 2 + length * index / count;
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, height + 0.16, 10), material);
     post.name = `${prefix}FencePost${index + 1}`;
@@ -276,6 +283,139 @@ function addFenceFrame(group: THREE.Group, prefix: string, length: number, heigh
     post.castShadow = true;
     group.add(post);
   }
+}
+
+function addResortLandscape(group: THREE.Group, farZ: number, netDepth: number): void {
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(74, 48),
+    new THREE.MeshLambertMaterial({ color: 0x244832 }));
+  ground.name = "resortGround";
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(0, -0.025, farZ - 15);
+  ground.receiveShadow = true;
+  group.add(ground);
+
+  const hedgeMaterial = new THREE.MeshLambertMaterial({ color: 0x244f34 });
+  const hedge = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), hedgeMaterial, 22);
+  hedge.name = "distantTreeCanopy";
+  const transform = new THREE.Object3D();
+  for (let index = 0; index < 22; index += 1) {
+    transform.position.set(-27 + index * 2.55, 3.1 + Math.sin(index * 1.9) * 0.65, farZ - 6.5 - index % 3);
+    transform.scale.set(2.6 + index % 2, 2.5 + index % 4 * 0.28, 2.4);
+    transform.rotation.y = index * 0.83;
+    transform.updateMatrix();
+    hedge.setMatrixAt(index, transform.matrix);
+  }
+  group.add(hedge);
+
+  const palms: Array<[number, number, number, number]> = [
+    [-15, farZ - 4, 7.8, 0.2], [-8.2, farZ - 5.8, 9.5, 1.4],
+    [7.6, farZ - 5.2, 8.8, 2.6], [15.5, farZ - 3.5, 10.4, 3.8],
+    [-12.5, netDepth + 3, 7.1, 4.6], [13.2, netDepth + 1, 7.6, 5.4]
+  ];
+  palms.forEach((entry, index) => group.add(createPalmTree(...entry, index)));
+
+  for (const side of [-1, 1]) {
+    for (const z of [farZ + 5.5, netDepth + 7.5]) group.add(createCourtLight(side * 8.7, z));
+  }
+  const bench = createBench();
+  bench.position.set(-7.4, 0, farZ + 1.05);
+  group.add(bench);
+  const umbrella = createUmbrella();
+  umbrella.position.set(-6.1, 0, farZ + 0.75);
+  group.add(umbrella);
+
+  const legacySeating = new THREE.Group();
+  legacySeating.name = "farSeatingTier1";
+  group.add(legacySeating);
+}
+
+function createPalmTree(x: number, z: number, height: number, phase: number, index: number): THREE.Group {
+  const palm = new THREE.Group();
+  palm.name = `palmTree${index + 1}`;
+  palm.position.set(x, 0, z);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.27, height, 9),
+    new THREE.MeshStandardMaterial({ color: 0x76533b, roughness: 0.96 }));
+  trunk.position.y = height / 2;
+  trunk.rotation.z = (index % 2 ? -1 : 1) * 0.035;
+  trunk.castShadow = true;
+  palm.add(trunk);
+
+  const crown = new THREE.Group();
+  crown.name = `palmCrown${index + 1}`;
+  crown.position.y = height;
+  crown.userData.windAnimated = true;
+  crown.userData.windPhase = phase;
+  crown.userData.windStrength = 0.032;
+  crown.userData.baseRotationZ = 0;
+  const frondGeometry = createPalmFrondGeometry();
+  const frondMaterial = new THREE.MeshLambertMaterial({ color: 0x285f38, side: THREE.DoubleSide });
+  for (let frond = 0; frond < 11; frond += 1) {
+    const leaf = new THREE.Mesh(frondGeometry, frondMaterial);
+    leaf.rotation.y = frond / 11 * Math.PI * 2;
+    leaf.rotation.z = -0.18 - (frond % 3) * 0.09;
+    leaf.scale.setScalar(0.8 + (frond % 4) * 0.06);
+    leaf.castShadow = false;
+    crown.add(leaf);
+  }
+  palm.add(crown);
+  return palm;
+}
+
+function createPalmFrondGeometry(): THREE.BufferGeometry {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute([
+    0, 0, 0, 1.05, 0.18, -0.22, 3.4, -0.38, 0,
+    0, 0, 0, 3.4, -0.38, 0, 1.05, 0.18, 0.22
+  ], 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function createCourtLight(x: number, z: number): THREE.Group {
+  const light = new THREE.Group();
+  light.name = "courtLight";
+  const metal = new THREE.MeshStandardMaterial({ color: 0x20282a, roughness: 0.38, metalness: 0.7 });
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.085, 6.8, 10), metal);
+  pole.position.y = 3.4;
+  pole.castShadow = true;
+  const fixture = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.18, 0.46), metal);
+  fixture.position.set(0, 6.75, -0.12);
+  fixture.rotation.x = -0.18;
+  light.position.set(x, 0, z);
+  light.add(pole, fixture);
+  return light;
+}
+
+function createBench(): THREE.Group {
+  const bench = new THREE.Group();
+  bench.name = "courtsideBench";
+  const wood = new THREE.MeshStandardMaterial({ color: 0x5a4030, roughness: 0.82 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0x1a2222, roughness: 0.5, metalness: 0.55 });
+  for (const y of [0.38, 0.68]) {
+    const slat = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.11, 0.22), wood);
+    slat.position.set(0, y, y > 0.5 ? 0.13 : 0);
+    bench.add(slat);
+  }
+  for (const x of [-0.58, 0.58]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.48, 0.42), metal);
+    leg.position.set(x, 0.24, 0);
+    bench.add(leg);
+  }
+  return bench;
+}
+
+function createUmbrella(): THREE.Group {
+  const umbrella = new THREE.Group();
+  umbrella.name = "courtsideUmbrella";
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.035, 2.2, 8),
+    new THREE.MeshStandardMaterial({ color: 0xd8d4c7, roughness: 0.5, metalness: 0.4 }));
+  pole.position.y = 1.1;
+  const canopy = new THREE.Mesh(new THREE.ConeGeometry(1.25, 0.32, 16, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0xf0eadb, roughness: 0.86, side: THREE.DoubleSide }));
+  canopy.position.y = 2.15;
+  canopy.rotation.x = Math.PI;
+  umbrella.add(pole, canopy);
+  return umbrella;
 }
 
 /** Analytically filtered cord coverage prevents moire once 40mm cells become subpixel. */

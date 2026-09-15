@@ -116,3 +116,14 @@ Acceptance criteria:
 - Distant landscaping, daylight, haze, and materials add depth without changing sensor, swing, ball, or training behavior.
 - Animation remains time-based and the scene continues to fit the existing render pixel budget.
 - TypeScript build and the complete automated test suite pass before delivery.
+
+## Sunset resort refinement (2026-09-15)
+
+Acceptance criteria:
+
+- Rear and side fence meshes terminate at one shared corner with no doubled mesh, rail, or post.
+- The existing blue and green court surfaces remain unchanged.
+- A warm sunset, green privacy screens, tropical palms, dense trees, court lights, and small courtside details match the supplied resort reference.
+- Tree crowns and palm fronds move gently with time-based wind while trunks and fence remain stable.
+- Decorative geometry stays outside the playable court and does not affect training physics or phone sensor handling.
+- Build, scene tests, and the full regression suite pass.

@@ -43,9 +43,9 @@ export function createSkyDome(): THREE.Mesh {
   const sky = new THREE.Mesh(new THREE.SphereGeometry(90, 32, 18), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false,
     uniforms: {
-      zenith: { value: new THREE.Color(0x168bd1) },
-      middle: { value: new THREE.Color(0x70c9ef) },
-      horizon: { value: new THREE.Color(0xe8f7ff) }
+      zenith: { value: new THREE.Color(0x6789ad) },
+      middle: { value: new THREE.Color(0xb7b6bf) },
+      horizon: { value: new THREE.Color(0xffc77e) }
     },
     vertexShader: `uniform vec3 zenith; uniform vec3 horizon; varying vec3 skyColor;
       uniform vec3 middle;
@@ -93,16 +93,16 @@ export function updatePremiumEnvironment(environment: THREE.Object3D, elapsed: n
 function createSun(): THREE.Group {
   const sun = new THREE.Group();
   sun.name = "daylightSun";
-  sun.position.set(-25, 24, -55);
+  sun.position.set(-18, 8.5, -55);
   const sunTexture = createRadialGlowTexture();
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: sunTexture, color: 0xffe8a3, transparent: true,
-    opacity: 0.72, depthWrite: false, blending: THREE.AdditiveBlending
+    map: sunTexture, color: 0xffb65c, transparent: true,
+    opacity: 0.88, depthWrite: false, blending: THREE.AdditiveBlending
   }));
   glow.name = "sunGlow";
-  glow.scale.set(11, 11, 1);
+  glow.scale.set(16, 16, 1);
   const disc = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: sunTexture, color: 0xfff4c2, transparent: true, opacity: 1, depthWrite: false
+    map: sunTexture, color: 0xfff0b0, transparent: true, opacity: 1, depthWrite: false
   }));
   disc.name = "sunDisc";
   disc.scale.set(2.2, 2.2, 1);
@@ -114,11 +114,11 @@ function createCloudField(): THREE.Group {
   const field = new THREE.Group();
   field.name = "movingClouds";
   const material = new THREE.MeshLambertMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.78, depthWrite: false
+    color: 0xf3d9c8, transparent: true, opacity: 0.68, depthWrite: false
   });
   const geometry = new THREE.SphereGeometry(1, 10, 7);
   const placements = [
-    [-25, 15, -48, 4.2], [-7, 18, -58, 5.3], [16, 14, -51, 3.8], [31, 20, -64, 5.8]
+    [-25, 14, -48, 4.2], [-7, 17, -58, 5.3], [16, 13, -51, 3.8], [31, 19, -64, 5.8]
   ];
   placements.forEach(([x, y, z, size], cloudIndex) => {
     const cloud = new THREE.Group();

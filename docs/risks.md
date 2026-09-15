@@ -164,3 +164,8 @@ Mitigation:
 - Transparent fence and cloud layers can increase overdraw on low-power laptops. The fence uses one procedural material per run, clouds use a small fixed mesh count, and neither casts shadows.
 - The outdoor motion is decorative and time-based. It has no effect on phone telemetry, hit detection, or ball physics.
 - Automated scene tests and HTTP verification pass. The configured in-app browser was unavailable, so final visual inspection on the target PC remains the only open QA step.
+
+## Sunset resort refinement verification (2026-09-15)
+
+- Fence corner coordinates and ownership are covered by regression tests, including the absence of duplicate side corner posts.
+- Palm motion is deliberately subtle and affects crown pivots only. Verify its preferred strength on the target display; automated browser capture remains unavailable in this workspace.
