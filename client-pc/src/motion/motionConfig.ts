@@ -13,11 +13,12 @@ export const MOTION_CONFIG = {
   validation: {
     minimumQuaternionLength: 0.5,
     maximumQuaternionLength: 1.5,
-    maximumAngularSpeedRadPerSecond: 25,
+    // Modern phone gyros commonly measure up to about 2000 deg/s. Keep the
+    // ceiling below that range while allowing a genuinely fast tennis swing.
+    maximumAngularSpeedRadPerSecond: 35,
     maximumAccelerationMps2: 80
   },
   scoring: {
     referenceAccelerationMps2: 12
   }
 } as const;
-

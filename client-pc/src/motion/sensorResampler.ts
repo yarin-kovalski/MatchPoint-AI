@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import { ensureQuaternionContinuity, isFiniteQuaternion, isFiniteVector } from "./motionFiltering.js";
 
-export const SENSOR_INTERPOLATION_DELAY_MS = 40;
-export const MAXIMUM_SENSOR_EXTRAPOLATION_MS = 50;
+export const SENSOR_INTERPOLATION_DELAY_MS = 32;
+export const FAST_SWING_INTERPOLATION_DELAY_MS = 10;
+export const MAXIMUM_SENSOR_EXTRAPOLATION_MS = 90;
 const MAX_SAMPLES = 24;
 
 export type OrientationSample = {
@@ -34,6 +35,7 @@ export class SensorResampler {
   readonly output = new THREE.Quaternion();
   private readonly predictionAxis = new THREE.Vector3();
   private readonly predictionDelta = new THREE.Quaternion();
+  private currentInterpolationDelayMs = SENSOR_INTERPOLATION_DELAY_MS;
   readonly telemetry: SensorResamplerTelemetry = {
     acceptedPackets: 0, rejectedPackets: 0, duplicatePackets: 0, outOfOrderPackets: 0, staleFrames: 0,
     packetRateHz: 0, averageIntervalMs: 0, packetJitterMs: 0,
@@ -81,9 +83,16 @@ export class SensorResampler {
       this.telemetry.state = "empty";
       return null;
     }
-    const target = renderTimestamp - SENSOR_INTERPOLATION_DELAY_MS;
     const first = this.samples[0];
     const latest = this.samples[this.samples.length - 1];
+    const desiredDelay = interpolationDelayMs(latest.angularSpeed);
+    // Enter low latency quickly, then restore the smoothing buffer gradually so
+    // the render target never jumps backward when a fast swing ends.
+    const delayStep = desiredDelay < this.currentInterpolationDelayMs ? 8 : 1.5;
+    this.currentInterpolationDelayMs += THREE.MathUtils.clamp(
+      desiredDelay - this.currentInterpolationDelayMs, -delayStep, delayStep
+    );
+    const target = renderTimestamp - this.currentInterpolationDelayMs;
     if (target <= first.timestamp) {
       this.telemetry.extrapolationMs = 0;
       this.telemetry.state = "held";
@@ -108,7 +117,7 @@ export class SensorResampler {
       this.telemetry.state = extrapolationMs > 0 ? "extrapolating" : "held";
     }
     this.output.copy(latest.quaternion);
-    const speed = Math.min(25, latest.angularVelocity.length());
+    const speed = Math.min(30, latest.angularVelocity.length());
     if (speed > 1e-5 && extrapolationMs > 0) {
       // Taper prediction to zero velocity at the horizon instead of abruptly
       // stopping a full-speed rotation when packets are lost.
@@ -126,12 +135,18 @@ export class SensorResampler {
   reset(): void {
     this.samples.length = 0;
     this.output.identity();
+    this.currentInterpolationDelayMs = SENSOR_INTERPOLATION_DELAY_MS;
     Object.assign(this.telemetry, {
       acceptedPackets: 0, rejectedPackets: 0, duplicatePackets: 0, outOfOrderPackets: 0, staleFrames: 0,
       packetRateHz: 0, averageIntervalMs: 0, packetJitterMs: 0,
       maximumAngularDeltaRadians: 0, extrapolationMs: 0, state: "empty", latestSampleTimestamp: null
     });
   }
+}
+
+export function interpolationDelayMs(angularSpeed: number): number {
+  const fastSwingAmount = THREE.MathUtils.clamp((angularSpeed - 2) / 8, 0, 1);
+  return THREE.MathUtils.lerp(SENSOR_INTERPOLATION_DELAY_MS, FAST_SWING_INTERPOLATION_DELAY_MS, fastSwingAmount);
 }
 
 export function adaptiveVisualSmoothingFactor(

@@ -54,6 +54,7 @@ import { createCourtMapSvg } from "./diagnostics/courtVision.js";
 import { adaptiveVisualSmoothingFactor, SensorResampler, updateVisualRacketQuaternion } from "./motion/sensorResampler.js";
 import { ForwardSwingFusion } from "./motion/forwardSwingFusion.js";
 import { stabilizeTrainingRacketOrigin } from "./motion/racketOriginStability.js";
+import { isFiniteQuaternion } from "./motion/motionFiltering.js";
 import {
   NormalizedSensorFrame,
   SensorNormalizer, phoneVectorToThreeVector
@@ -427,6 +428,7 @@ let latestPacket: BrokeredMotionPacket | null = null;
 let previousPacket: BrokeredMotionPacket | null = null;
 let latestOrientationPacket: BrokeredContinuousOrientationPacket | null = null;
 let latestSensorFrame: NormalizedSensorFrame | null = null;
+let latestVisualPoseValid = false;
 let latestStrokeSnapshot: StrokeDetectorSnapshot | null = null;
 let lastContactEvent: EstimatedRacketContact | null = null;
 let targetRotationX = 0;
@@ -932,6 +934,7 @@ socket.on("broker:status", (payload: unknown) => {
 
 socket.on("controller:state", (payload: unknown) => {
   latestOrientationPacket = null;
+  latestVisualPoseValid = false;
   previousPacket = latestPacket;
   latestPacket = payload as BrokeredMotionPacket;
   packetCount += 1;
@@ -979,7 +982,12 @@ socket.on("continuous_orientation", (payload: unknown) => {
     orientationPacket.quaternion.y,
     orientationPacket.quaternion.z,
     orientationPacket.quaternion.w
-  ).normalize();
+  );
+  const incomingPoseLength = rawPhoneQuaternion.length();
+  const incomingPoseValid = isFiniteQuaternion(rawPhoneQuaternion) &&
+    incomingPoseLength >= MOTION_CONFIG.validation.minimumQuaternionLength &&
+    incomingPoseLength <= MOTION_CONFIG.validation.maximumQuaternionLength;
+  rawPhoneQuaternion.normalize();
   phoneQuaternionToThreeQuaternion(rawPhoneQuaternion, convertedPhoneQuaternion);
   const packetRelativeQuaternion = hasCalibrationBaseline
     ? calibrationBaselineInverse.clone().multiply(convertedPhoneQuaternion)
@@ -1005,16 +1013,13 @@ socket.on("continuous_orientation", (payload: unknown) => {
     )
   });
   forwardSwingFusion.add(processedFrame);
-  if (processedFrame.valid) {
-    if (!hasIncomingTelemetryQuaternion || incomingTelemetryQuaternion.angleTo(processedFrame.relativePhoneQuaternion) > 1e-5) {
-      incomingTelemetryQuaternion.copy(processedFrame.relativePhoneQuaternion);
-      hasIncomingTelemetryQuaternion = true;
-    }
-    lastValidSensorQuaternion.copy(processedFrame.relativePhoneQuaternion);
-    lastValidQuaternionAt = pcReceivedAt;
+  latestVisualPoseValid = incomingPoseValid && isFiniteQuaternion(processedFrame.relativePhoneQuaternion) &&
+    processedFrame.relativePhoneQuaternion.lengthSq() > 1e-8;
+  if (latestVisualPoseValid) {
+    // A pose can remain safe to render while its acceleration/timing data is
+    // excluded from coaching and contact. Dropping the pose caused the racket
+    // to freeze repeatedly during fast swings.
     sensorResampler.add({
-      // Browser monotonic receipt time avoids wall-clock jumps and preserves
-      // sub-millisecond ordering when queued Socket.IO messages arrive together.
       timestamp: pcReceivedAt,
       quaternion: processedFrame.relativePhoneQuaternion,
       angularVelocity: phoneVectorToThreeVector(processedFrame.angularVelocityLocal),
@@ -1022,6 +1027,14 @@ socket.on("continuous_orientation", (payload: unknown) => {
       accelerationMagnitude: processedFrame.accelerationMagnitude,
       jerk: processedFrame.jerk
     });
+  }
+  if (processedFrame.valid) {
+    if (!hasIncomingTelemetryQuaternion || incomingTelemetryQuaternion.angleTo(processedFrame.relativePhoneQuaternion) > 1e-5) {
+      incomingTelemetryQuaternion.copy(processedFrame.relativePhoneQuaternion);
+      hasIncomingTelemetryQuaternion = true;
+    }
+    lastValidSensorQuaternion.copy(processedFrame.relativePhoneQuaternion);
+    lastValidQuaternionAt = pcReceivedAt;
   } else {
     normalizerRejectedPackets += 1;
   }
@@ -1298,7 +1311,7 @@ function animate(): void {
     latestSensorFrame?.angularSpeed ?? 0,
     latestSensorFrame?.accelerationMagnitude ?? 0,
     latestSensorFrame?.jerk ?? 0,
-    latestSensorFrame?.valid ?? false,
+    latestVisualPoseValid,
     ballDeltaSeconds
   );
   updateVisualRacketQuaternion(visualOrientationPivot.quaternion, targetRacketQuaternion, visualSmoothing, ballDeltaSeconds);
@@ -1551,6 +1564,7 @@ function beginCalibration(currentPhoneQuaternion: THREE.Quaternion): void {
   forwardSwingFusion.reset();
   sensorResampler.reset();
   latestSensorFrame = null;
+  latestVisualPoseValid = false;
   hasCalibrationBaseline = true;
   isCalibrated = false;
   calibrationRequested = true;

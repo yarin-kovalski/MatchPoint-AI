@@ -102,6 +102,30 @@ test("impossible one-frame rotations are rejected", () => {
   assert.equal(frame.rejectionReason, "impossible rotation spike");
 });
 
+test("native gyro corroboration preserves a physically fast rotation", () => {
+  const normalizer = new SensorNormalizer();
+  normalizer.process(createInput(1000));
+  const fastPose = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.7);
+  const frame = normalizer.process({
+    ...createInput(1016, fastPose),
+    angularVelocityPhoneRadPerSecond: new THREE.Vector3(0, 30, 0)
+  });
+  assert.equal(frame.valid, true);
+  approximately(frame.angularSpeed, 30);
+});
+
+test("native gyro cannot excuse an inconsistent orientation teleport", () => {
+  const normalizer = new SensorNormalizer();
+  normalizer.process(createInput(1000));
+  const teleport = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+  const frame = normalizer.process({
+    ...createInput(1016, teleport),
+    angularVelocityPhoneRadPerSecond: new THREE.Vector3(0, 2, 0)
+  });
+  assert.equal(frame.valid, false);
+  assert.equal(frame.rejectionReason, "impossible rotation spike");
+});
+
 test("large packet gaps invalidate and reset angular history", () => {
   const normalizer = new SensorNormalizer();
   normalizer.process(createInput(1000));

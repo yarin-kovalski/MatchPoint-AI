@@ -30,6 +30,14 @@ test("renderer observes and sizes from the visualization panel", () => {
   assert.doesNotMatch(main, /renderer\.setSize\(window\.innerWidth/);
 });
 
+test("visual racket sampling continues independently of analytics rejection", () => {
+  const poseValidation = main.indexOf("latestVisualPoseValid = incomingPoseValid");
+  const resamplerAdd = main.indexOf("sensorResampler.add({", poseValidation);
+  const analyticsGate = main.indexOf("if (processedFrame.valid)", poseValidation);
+  assert.ok(poseValidation >= 0 && resamplerAdd > poseValidation && analyticsGate > resamplerAdd);
+  assert.match(main, /adaptiveVisualSmoothingFactor\([\s\S]*?latestVisualPoseValid/);
+});
+
 test("primary calibration and diagnostic bindings remain present", () => {
   for (const id of [
     "recordForehandAttempt", "recordBackhandAttempt", "analyzeLastAttempt",

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 import {
-  adaptiveVisualSmoothingFactor, MAXIMUM_SENSOR_EXTRAPOLATION_MS,
-  SENSOR_INTERPOLATION_DELAY_MS, SensorResampler
+  adaptiveVisualSmoothingFactor, FAST_SWING_INTERPOLATION_DELAY_MS, interpolationDelayMs,
+  MAXIMUM_SENSOR_EXTRAPOLATION_MS, SENSOR_INTERPOLATION_DELAY_MS, SensorResampler
 } from "../client-pc/src/motion/sensorResampler.js";
 
 const sample = (timestamp: number, angle: number, sign = 1) => {
@@ -51,4 +51,10 @@ test("adaptive smoothing suppresses stationary jitter and responds faster during
   assert.ok(stationary < 0.16);
   assert.ok(fast > 0.5);
   assert.ok(fast > stationary);
+});
+
+test("fast swings use a lower-latency interpolation target", () => {
+  assert.equal(interpolationDelayMs(0), SENSOR_INTERPOLATION_DELAY_MS);
+  assert.equal(interpolationDelayMs(10), FAST_SWING_INTERPOLATION_DELAY_MS);
+  assert.ok(interpolationDelayMs(6) < interpolationDelayMs(3));
 });

@@ -197,3 +197,14 @@ Training forgiveness refinement:
 - The contact-time allowance expands by 40 ms on each side while timing feedback continues to use the original measured offset.
 - Assisted reach covers the full elliptical string bed plus ball radius and a small motion-sampling allowance; it remains bounded well below the separation seen in the false-hit recording.
 - Unlocked stroke-side evidence may classify slightly earlier, but ambiguous and opposite-side motion still cannot inherit the feed type or produce a hit.
+
+## Fast-swing continuity correction (2026-09-16)
+
+Acceptance criteria:
+
+- A finite phone quaternion continues through the visual resampler even when the same frame is excluded from analytics because of acceleration, timing, or motion-quality validation.
+- Analytics-invalid frames remain unable to create swing intent or racket contact.
+- Fast rotations corroborated by Expo's native gyroscope are treated as real motion; an uncorroborated one-frame orientation teleport remains rejected.
+- Rendering uses visual-pose validity rather than analytics validity, preventing the racket from dropping into stationary smoothing during a real fast swing.
+- Interpolation latency falls dynamically from 32 ms at rest to 10 ms during a fast swing, and short network gaps use bounded, tapered prediction without allowing an indefinitely moving racket.
+- Recorded forehand/backhand behavior, wrong-side rejection, contact proximity, and all trainer measurements remain intact.

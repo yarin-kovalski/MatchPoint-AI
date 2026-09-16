@@ -108,6 +108,7 @@ export class SensorNormalizer {
 
     const angularVelocityLocal = new THREE.Vector3();
     let angularSpeed = 0;
+    let derivedAngularSpeed = 0;
 
     if (this.previousQuaternion && !rejectionReason && !packetGapInvalid) {
       const deltaQuaternion = this.previousQuaternion.clone().invert().multiply(currentQuaternion);
@@ -123,6 +124,7 @@ export class SensorNormalizer {
       const angle = 2 * Math.acos(THREE.MathUtils.clamp(deltaQuaternion.w, -1, 1));
       const sineHalfAngle = Math.sqrt(Math.max(0, 1 - deltaQuaternion.w ** 2));
       angularSpeed = angle / deltaTime;
+      derivedAngularSpeed = angularSpeed;
 
       if (sineHalfAngle > 0.0001) {
         angularVelocityLocal
@@ -130,16 +132,23 @@ export class SensorNormalizer {
           .multiplyScalar(angularSpeed / sineHalfAngle);
       }
 
-      if (angularSpeed > MOTION_CONFIG.validation.maximumAngularSpeedRadPerSecond) {
-        rejectionReason = "impossible rotation spike";
-      }
     }
 
     const gyro = input.angularVelocityPhoneRadPerSecond;
-    if (gyro && isFiniteVector(gyro) && gyro.lengthSq() > 1e-8 &&
-        gyro.length() <= MOTION_CONFIG.validation.maximumAngularSpeedRadPerSecond && !packetGapInvalid) {
+    const gyroSpeed = gyro?.length() ?? 0;
+    const usableGyro = !!gyro && isFiniteVector(gyro) && gyro.lengthSq() > 1e-8 &&
+      gyroSpeed <= MOTION_CONFIG.validation.maximumAngularSpeedRadPerSecond && !packetGapInvalid;
+    const corroboratedFastRotation = usableGyro && derivedAngularSpeed <= Math.max(
+      MOTION_CONFIG.validation.maximumAngularSpeedRadPerSecond,
+      gyroSpeed * 1.65 + 5
+    );
+    if (!rejectionReason && derivedAngularSpeed > MOTION_CONFIG.validation.maximumAngularSpeedRadPerSecond &&
+        !corroboratedFastRotation) {
+      rejectionReason = "impossible rotation spike";
+    }
+    if (usableGyro && gyro) {
       angularVelocityLocal.copy(gyro);
-      angularSpeed = gyro.length();
+      angularSpeed = gyroSpeed;
     }
 
     if (packetGapInvalid && this.previousTimestamp !== null) {
