@@ -95,6 +95,26 @@ test("stationary noise never activates Easy swing intent", () => {
   }
 });
 
+test("a fast orientation-led swing remains active through follow-through and keeps its peak source time", () => {
+  const detector = new EasySwingIntentDetector();
+  const peak = detector.update({
+    timestamp: 10_000, sourceTimestamp: 4_200, valid: true,
+    angularSpeed: 3, accelerationMagnitude: 1.1, forwardScore: 0.34,
+    preparationScore: 0.5, racketFaceAngle: 0.45
+  }, "forehand");
+  assert.equal(peak.active, true);
+  assert.equal(peak.peakSourceTimestamp, 4_200);
+
+  const followThrough = detector.update({
+    timestamp: 10_180, sourceTimestamp: 4_380, valid: true,
+    angularSpeed: 0.35, accelerationMagnitude: 0.5, forwardScore: 0.02,
+    preparationScore: 0.1, racketFaceAngle: 0.5
+  }, "forehand");
+  assert.equal(followThrough.active, true);
+  assert.equal(followThrough.peakSourceTimestamp, 4_200);
+  assert.equal(detector.getSnapshot(10_481, "forehand").active, false);
+});
+
 test("Easy feeds intersect the measured reach envelopes during the real swing windows", () => {
   for (const attempt of attempts) {
     const preset = attempt.attemptType === "forehand" ? "easyForehand" : "easyBackhand";

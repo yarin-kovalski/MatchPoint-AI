@@ -69,7 +69,7 @@ test("calibrated opportunity rejects early, late, wrong-side, and duplicate cont
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1181, assistLevel: "realistic" }).reason, "SWING_TOO_LATE");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, motion: motion("backhand") }).reason, "WRONG_STROKE_SIDE");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.2 }).reason, "RACKET_TOO_FAR");
-  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 0.85 }).accepted, true);
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.04 }).accepted, true);
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, alreadyHit: true }).reason, "CONTACT_ALREADY_USED");
 });
 

@@ -1064,6 +1064,7 @@ socket.on("continuous_orientation", (payload: unknown) => {
         // The hit window uses PC epoch time. Keep intent age in the same clock
         // domain instead of comparing the phone sensor clock with Date.now().
         timestamp: pcReceivedEpoch,
+        sourceTimestamp: processedFrame.timestamp,
         valid: processedFrame.valid,
         angularSpeed: processedFrame.angularSpeed,
         accelerationMagnitude: processedFrame.accelerationMagnitude,
@@ -1683,10 +1684,15 @@ function updateProceduralPosition(): void {
   const snapshot = latestStrokeSnapshot;
   const path = STROKE_CONFIG.proceduralPath;
   let target: readonly number[] = path.ready;
+  const trainingSwingIntent = latestEasySwingIntent ?? easySwingIntentDetector.getSnapshot(
+    Date.now(), ballController.ball.lockedStrokeType
+  );
+  const latchedTrainingSwing = trainingSwingIntent.active &&
+    Date.now() <= trainingSwingIntent.expiresAt;
   const easyMotionContact = assistMode === "easy" && ballController.ball.active &&
     ballController.ball.bounceCount === 1 && latestSensorFrame?.valid === true &&
-    latestSensorFrame.angularSpeed >= BALL_CONFIG.easyAssist.minimumAngularSpeed &&
-    ballController.ball.position.distanceTo(ballController.ball.contactTarget) <= 0.75;
+    (latchedTrainingSwing || latestSensorFrame.angularSpeed >= BALL_CONFIG.easyAssist.minimumAngularSpeed) &&
+    ballController.ball.position.distanceTo(ballController.ball.contactTarget) <= 1.0;
 
   if (!easyMotionContact && stabilizeTrainingRacketOrigin(
     proceduralPositionPivot.position,
@@ -1731,8 +1737,8 @@ function updateProceduralPosition(): void {
   }
 
   const handSign = strokeStateMachine.getHandedness() === "right" ? 1 : -1;
-  const measuredAssistedStroke = latestEasySwingIntent?.active
-    ? latestEasySwingIntent.strokeType
+  const measuredAssistedStroke = trainingSwingIntent.active
+    ? trainingSwingIntent.strokeType
     : detectedEasySwingSide(snapshot);
   const assistedStrokeType = measuredAssistedStroke ??
     (isBackhandPreset(ballController.ball.launchPreset) ? "backhand" : "forehand");
@@ -1764,7 +1770,12 @@ function createEasyHitMotion(): EasyHitMotion | null {
   );
   const playerBasis = (activeCalibrationProfile ?? trajectoryProfiles[expectedStroke] ??
     createDefaultTrajectoryProfile(expectedStroke, strokeStateMachine.getHandedness())).playerBasisAtCalibration;
-  const forwardSwing = forwardSwingFusion.snapshot(latestSensorFrame.timestamp, playerBasis) ?? undefined;
+  // Keep the technique at the swing peak. The contact assist may resolve a few
+  // frames later, after the phone has naturally slowed into follow-through.
+  const techniqueTimestamp = swingIntent.active && (swingIntent.peakSourceTimestamp ?? 0) > 0
+    ? swingIntent.peakSourceTimestamp!
+    : latestSensorFrame.timestamp;
+  const forwardSwing = forwardSwingFusion.snapshot(techniqueTimestamp, playerBasis) ?? undefined;
   return {
     valid: latestSensorFrame.valid,
     angularSpeed: latestSensorFrame.angularSpeed,

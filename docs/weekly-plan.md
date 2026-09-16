@@ -208,3 +208,9 @@ Acceptance criteria:
 - Rendering uses visual-pose validity rather than analytics validity, preventing the racket from dropping into stationary smoothing during a real fast swing.
 - Interpolation latency falls dynamically from 32 ms at rest to 10 ms during a fast swing, and short network gaps use bounded, tapered prediction without allowing an indefinitely moving racket.
 - Recorded forehand/backhand behavior, wrong-side rejection, contact proximity, and all trainer measurements remain intact.
+# Forgiving sensor-driven training contact
+
+- [x] Keep a detected real swing active through its natural follow-through instead of dropping contact assist when the latest frame slows.
+- [x] Widen the Training timing and reachable-string zones without changing Realistic mode.
+- [x] Preserve the peak sensor timestamp so return speed, spin, slice, arc, direction, and depth still come from the player's swing.
+- [x] Continue rejecting stationary motion, backward intent, expired swings, and forehand/backhand side mismatches.

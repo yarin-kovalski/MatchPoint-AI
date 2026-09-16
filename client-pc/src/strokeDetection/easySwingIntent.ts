@@ -5,6 +5,7 @@ import type { StrokeDetectorSnapshot } from "./strokeTypes.js";
 
 export type EasySwingIntentInput = {
   timestamp: number;
+  sourceTimestamp?: number;
   valid: boolean;
   angularSpeed: number;
   accelerationMagnitude: number;
@@ -19,6 +20,7 @@ export type EasySwingIntentSnapshot = {
   strokeType: Exclude<StrokeType, "unknown">;
   startedAt: number;
   peakAt: number;
+  peakSourceTimestamp?: number;
   peakAngularSpeed: number;
   expiresAt: number;
 };
@@ -38,9 +40,11 @@ export class EasySwingIntentDetector {
       0,
       1
     );
+    const enoughMotion = input.angularSpeed >= config.minimumAngularSpeed &&
+      (input.accelerationMagnitude >= config.minimumAcceleration ||
+       input.angularSpeed >= config.fullSwingAngularSpeed * 0.55);
     const qualifies = input.valid &&
-      input.angularSpeed >= config.minimumAngularSpeed &&
-      input.accelerationMagnitude >= config.minimumAcceleration &&
+      enoughMotion &&
       (input.forwardScore >= config.minimumForwardScore || input.preparationScore >= config.minimumPreparationScore) &&
       input.racketFaceAngle <= config.maximumFaceAngleRadians &&
       confidence >= config.minimumConfidence;
@@ -48,12 +52,16 @@ export class EasySwingIntentDetector {
     if (qualifies) {
       const previous = this.snapshot?.strokeType === strokeType && this.snapshot.active &&
         input.timestamp <= this.snapshot.expiresAt ? this.snapshot : null;
+      const becomesPeak = !previous || confidence >= previous.confidence;
       this.snapshot = {
         active: true,
         confidence: Math.max(previous?.confidence ?? 0, confidence),
         strokeType,
         startedAt: previous?.startedAt ?? input.timestamp,
-        peakAt: !previous || confidence >= previous.confidence ? input.timestamp : previous.peakAt,
+        peakAt: becomesPeak ? input.timestamp : previous.peakAt,
+        peakSourceTimestamp: becomesPeak
+          ? input.sourceTimestamp ?? input.timestamp
+          : previous.peakSourceTimestamp ?? previous.peakAt,
         peakAngularSpeed: Math.max(previous?.peakAngularSpeed ?? 0, input.angularSpeed),
         expiresAt: input.timestamp + config.activeWindowMs
       };
@@ -66,7 +74,8 @@ export class EasySwingIntentDetector {
 
   getSnapshot(timestamp: number, strokeType: Exclude<StrokeType, "unknown">): EasySwingIntentSnapshot {
     if (!this.snapshot || this.snapshot.strokeType !== strokeType) {
-      return { active: false, confidence: 0, strokeType, startedAt: 0, peakAt: 0, peakAngularSpeed: 0, expiresAt: 0 };
+      return { active: false, confidence: 0, strokeType, startedAt: 0, peakAt: 0,
+        peakSourceTimestamp: 0, peakAngularSpeed: 0, expiresAt: 0 };
     }
     return { ...this.snapshot, active: this.snapshot.active && timestamp <= this.snapshot.expiresAt };
   }
