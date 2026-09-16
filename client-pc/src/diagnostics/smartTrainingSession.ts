@@ -20,7 +20,7 @@ export type TrainingStrokeEvidenceInput = {
 export type TrainingStrokeDetection = {
   strokeType: DetectedTrainingStroke;
   confidence: number;
-  source: "strict-state-machine" | "motion-evidence" | "insufficient-evidence";
+  source: "feed-side" | "strict-state-machine" | "motion-evidence" | "insufficient-evidence";
 };
 
 /**

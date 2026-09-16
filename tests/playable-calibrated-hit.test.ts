@@ -67,13 +67,13 @@ test("calibrated opportunity rejects early, late, wrong-side, and duplicate cont
   const base = { contactTime: 1000, bounceCount: 1, alreadyHit: false, expectedStrokeType: "forehand" as const, profile, motion: motion("forehand") };
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 779, assistLevel: "realistic" }).reason, "SWING_TOO_EARLY");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1181, assistLevel: "realistic" }).reason, "SWING_TOO_LATE");
-  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, motion: motion("backhand") }).reason, "WRONG_STROKE_SIDE");
-  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.25 }).reason, "RACKET_TOO_FAR");
-  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.04 }).accepted, true);
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, motion: motion("backhand"), assistLevel: "realistic" }).reason, "WRONG_STROKE_SIDE");
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.33 }).reason, "RACKET_TOO_FAR");
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.25 }).accepted, true);
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, alreadyHit: true }).reason, "CONTACT_ALREADY_USED");
 });
 
-test("Training classifies swing side from motion evidence rather than feed expectation", () => {
+test("raw motion classifier retains side evidence for diagnostics", () => {
   const lockedForehand = snapshot("forehand");
   assert.equal(detectedEasySwingSide(lockedForehand), "forehand");
 
@@ -87,6 +87,17 @@ test("Training classifies swing side from motion evidence rather than feed expec
   candidateBackhand.scores.forehandCandidateScore = 0.52;
   candidateBackhand.scores.backhandCandidateScore = 0.56;
   assert.equal(detectedEasySwingSide(candidateBackhand), null, "ambiguous motion must not inherit the feed side");
+});
+
+test("Training uses the incoming feed side while Realistic keeps measured-side rejection", () => {
+  const profile = createDefaultTrajectoryProfile("forehand", "right");
+  const input = { now: 1000, contactTime: 1000, bounceCount: 1, alreadyHit: false,
+    expectedStrokeType: "forehand" as const, profile, motion: motion("backhand"), ballToRacketDistance: 1.1 };
+  const training = evaluatePlayableCalibratedHit({ ...input, assistLevel: "training" });
+  const realistic = evaluatePlayableCalibratedHit({ ...input, assistLevel: "realistic" });
+  assert.equal(training.accepted, true);
+  assert.equal(training.resolvedPlayableStrokeType, "forehand");
+  assert.equal(realistic.reason, "WRONG_STROKE_SIDE");
 });
 
 test("Training accepts a reasonable swing that Realistic keeps below threshold", () => {
@@ -273,7 +284,7 @@ test("Training keeps a proven forehand through a transient rejected packet and f
   assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "realistic" }).accepted, false);
 });
 
-test("forgiving forehand grid accepts human timing and reach but keeps hard safety boundaries", () => {
+test("forgiving forehand grid accepts human timing, feed-side labeling and near reach but keeps hard boundaries", () => {
   const profile = createDefaultTrajectoryProfile("forehand", "right");
   let accepted = 0;
   let attempts = 0;
@@ -297,15 +308,17 @@ test("forgiving forehand grid accepts human timing and reach but keeps hard safe
     }
   }
   assert.equal(accepted, attempts);
-  assert.equal(evaluatePlayableCalibratedHit({
+  const feedSideDecision = evaluatePlayableCalibratedHit({
     now: 1000, contactTime: 1000, bounceCount: 1, alreadyHit: false,
     expectedStrokeType: "forehand", profile, motion: motion("backhand"),
     ballToRacketDistance: 0.5, assistLevel: "training"
-  }).reason, "WRONG_STROKE_SIDE");
+  });
+  assert.equal(feedSideDecision.accepted, true);
+  assert.equal(feedSideDecision.resolvedPlayableStrokeType, "forehand");
   assert.equal(evaluatePlayableCalibratedHit({
     now: 1000, contactTime: 1000, bounceCount: 1, alreadyHit: false,
     expectedStrokeType: "forehand", profile, motion: motion("forehand"),
-    ballToRacketDistance: 1.21, assistLevel: "training"
+    ballToRacketDistance: 1.33, assistLevel: "training"
   }).reason, "RACKET_TOO_FAR");
 });
 

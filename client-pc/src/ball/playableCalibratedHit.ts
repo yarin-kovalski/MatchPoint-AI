@@ -99,7 +99,13 @@ export function evaluatePlayableCalibratedHit(input: {
       fusedDirectionRejected) {
     return { ...base, accepted: false, reason: "NO_REAL_SWING" };
   }
-  if (input.motion.swingIntent.strokeType !== input.expectedStrokeType) return { ...base, accepted: false, reason: "WRONG_STROKE_SIDE" };
+  // Training drills define the requested stroke from the incoming feed. Phone
+  // preparation-side classification can be noisy when the player starts close
+  // to contact, so it must not reject an otherwise real, nearby swing. Realistic
+  // mode keeps the strict measured-side requirement.
+  if (!trainingMode && input.motion.swingIntent.strokeType !== input.expectedStrokeType) {
+    return { ...base, accepted: false, reason: "WRONG_STROKE_SIDE" };
+  }
   if (input.ballToRacketDistance !== undefined &&
       (!Number.isFinite(input.ballToRacketDistance) ||
        input.ballToRacketDistance > BALL_CONFIG.playableCalibratedHit.maximumAssistedContactDistance)) {

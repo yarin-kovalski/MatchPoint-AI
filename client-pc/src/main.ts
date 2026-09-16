@@ -1751,8 +1751,10 @@ function updateProceduralPosition(): void {
   const measuredAssistedStroke = trainingSwingIntent.active
     ? trainingSwingIntent.strokeType
     : detectedEasySwingSide(snapshot);
-  const assistedStrokeType = measuredAssistedStroke ??
-    (isBackhandPreset(ballController.ball.launchPreset) ? "backhand" : "forehand");
+  const feedStrokeType = ballController.ball.expectedStrokeType;
+  const assistedStrokeType = playerAssistLevel === "training" && ballController.ball.active
+    ? feedStrokeType
+    : measuredAssistedStroke ?? (isBackhandPreset(ballController.ball.launchPreset) ? "backhand" : "forehand");
   const preparationSign = easyMotionContact
     ? assistedStrokeType === "backhand" ? -handSign : handSign
     : snapshot?.lockedStrokeType === "backhand"
@@ -1775,10 +1777,13 @@ function updateProceduralPosition(): void {
 function createEasyHitMotion(): EasyHitMotion | null {
   if (!latestSensorFrame) return null;
   const expectedStroke = ballController.ball.lockedStrokeType;
-  const swingIntent = latestEasySwingIntent ?? easySwingIntentDetector.getSnapshot(
+  const measuredSwingIntent = latestEasySwingIntent ?? easySwingIntentDetector.getSnapshot(
     Date.now(),
     expectedStroke
   );
+  const swingIntent = playerAssistLevel === "training" && measuredSwingIntent.active
+    ? { ...measuredSwingIntent, strokeType: expectedStroke }
+    : measuredSwingIntent;
   const techniqueFrame = latestSensorFrame.valid
     ? latestSensorFrame
     : swingIntent.active ? latestValidSensorFrame ?? latestSensorFrame : latestSensorFrame;
@@ -2820,11 +2825,11 @@ function onBallHit(event: BallHitEvent): void {
   }
   contactFlashUntil = performance.now() + 150;
   if (selectedPracticeStroke) {
-    const strictType = normalizeStrokeType(event.detectedStrokeType);
-    const evidence = trainingStrokeEvidence.resolve();
-    const detection: TrainingStrokeDetection = strictType
-      ? { strokeType: strictType, confidence: event.confidence, source: "strict-state-machine" }
-      : evidence;
+    const detection: TrainingStrokeDetection = playerAssistLevel === "training"
+      ? { strokeType: event.expectedStrokeType, confidence: 1, source: "feed-side" }
+      : normalizeStrokeType(event.detectedStrokeType)
+        ? { strokeType: normalizeStrokeType(event.detectedStrokeType)!, confidence: event.confidence, source: "strict-state-machine" }
+        : trainingStrokeEvidence.resolve();
     pendingReturnedTrainingShot = {
       ballId: event.ballId,
       expectedStroke: event.expectedStrokeType,

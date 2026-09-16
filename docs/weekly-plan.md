@@ -205,13 +205,13 @@ Acceptance criteria:
 - Downloaded session reports include a placement map of all recorded first-bounce locations, with separate in and out markers and totals.
 - TypeScript build, focused physics/map tests, and the complete automated test suite pass.
 
-## Wrong-side phantom-hit correction (2026-09-16)
+## Wrong-side phantom-hit correction (2026-09-16, superseded for Training)
 
 Acceptance criteria:
 
 - Court Vision is visible before the first shot, uses a smaller footprint, and contains no first-bounce/fence caption.
 - Training derives forehand/backhand intent from measured preparation-side evidence rather than assigning the launched feed type to the swing.
-- A forehand swing at a backhand feed, and the mirrored backhand-at-forehand case, must be rejected as `WRONG_STROKE_SIDE`.
+- Realistic mode rejects a forehand swing at a backhand feed and the mirrored case as `WRONG_STROKE_SIDE`. Training now follows the feed-side rule requested after this milestone.
 - Timing and swing intent alone cannot create contact: the simulated string-bed center must also be within assisted racket reach of the physical ball.
 - Correct forehand and backhand recordings remain playable, while the false-contact pattern visible in the supplied recording becomes a miss.
 - PC build and the full automated regression suite pass.
@@ -245,3 +245,11 @@ Acceptance criteria:
 - [x] Calibrate slice transfer to phone-handle speed so a deliberate 25 km/h swing clears the net and can land in court.
 - [x] Keep weaker slices short and faster slices capable of going long so power and follow-through still matter.
 - [x] Preserve racket-face, spin, swing-path, direction, and follow-through effects in the outgoing shot.
+
+## Feed-side stroke guidance and bounded contact assist (2026-09-16)
+
+- [x] In Training, label and resolve the stroke from the incoming feed: forehand feed means forehand and backhand feed means backhand.
+- [x] Move the assisted racket toward the feed side even when phone preparation-side classification is noisy.
+- [x] Expand the near-racket distance and timing gates modestly while keeping stationary, backward, expired, and clearly distant attempts as misses.
+- [x] Keep outgoing speed, spin, slice, racket face, arc, direction, and follow-through driven by the measured phone motion.
+- [x] Keep Realistic mode's strict motion-side classification unchanged.

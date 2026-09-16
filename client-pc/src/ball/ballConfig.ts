@@ -112,14 +112,15 @@ export const BALL_CONFIG = {
     snapDurationMs: 90,
     minimumActiveSwingMs: 24,
     // 0.85 m is the measured half-diagonal of the string bed. The remaining
-    // allowance covers the tennis ball and one phone/render sampling interval.
-    maximumAssistedContactDistance: 1.20,
+    // allowance covers the ball, phone-at-handle offset and brief render/network
+    // lag. This is still a near-racket gate, not an automatic court-wide hit.
+    maximumAssistedContactDistance: 1.32,
     maximumCorrection: { lateral: 0.30, vertical: 0.27, depth: 0.32 },
     practiceResetMs: 1700
   },
   playerAssist: {
     training: {
-      windowBeforeMs: 450, windowAfterMs: 400,
+      windowBeforeMs: 510, windowAfterMs: 460,
       directionAnchorStrength: 0.68,
       minimumAngularSpeed: 0.9, minimumAcceleration: 1.8, minimumForwardDriveScore: 0.09
     },

@@ -466,10 +466,12 @@ export class BallController {
     }
     this.returnTouchedNet = false;
     this.ball.hit = true;
-    const detectedStrokeType = strictContact?.strokeType ?? "unknown";
-    const mismatch = detectedStrokeType !== "unknown" && detectedStrokeType !== this.ball.expectedStrokeType
-      ? this.ball.expectedStrokeType === "forehand" ? "EXPECTED_FOREHAND_DETECTED_BACKHAND" : "EXPECTED_BACKHAND_DETECTED_FOREHAND"
-      : "NONE";
+    // A Training drill owns its stroke label: the incoming side tells the
+    // player which stroke to perform. The sensor motion still controls every
+    // technique and ball-response value, but noisy preparation-side evidence
+    // must not relabel a forehand feed as a backhand (or vice versa).
+    const detectedStrokeType = this.ball.expectedStrokeType;
+    const mismatch = "NONE" as const;
     const event: BallHitEvent = {
       id: `hit-${this.ball.id}`, ballId: this.ball.id, timestamp: now,
       strokeContactEventId: effectiveContact.id, strokeType: this.ball.expectedStrokeType,

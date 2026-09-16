@@ -85,6 +85,7 @@ test("smart trainer exposes live motion metrics and session feedback controls", 
   assert.match(html, /Visible shooting targets will arrive with Game mode/);
   assert.match(html, /1 closed .* 5 square .* 10 open/);
   assert.match(css, /@keyframes trainer-meter-rise/);
+  assert.match(main, /strokeType: event\.expectedStrokeType, confidence: 1, source: "feed-side"/);
 });
 
 test("court vision is bound to first-bounce data", () => {
