@@ -180,3 +180,14 @@ Acceptance criteria:
 - Fence contact before a first bounce is recorded as an out shot; contact after a ruled bounce does not change that first-bounce ruling.
 - Downloaded session reports include a placement map of all recorded first-bounce locations, with separate in and out markers and totals.
 - TypeScript build, focused physics/map tests, and the complete automated test suite pass.
+
+## Wrong-side phantom-hit correction (2026-09-16)
+
+Acceptance criteria:
+
+- Court Vision is visible before the first shot, uses a smaller footprint, and contains no first-bounce/fence caption.
+- Training derives forehand/backhand intent from measured preparation-side evidence rather than assigning the launched feed type to the swing.
+- A forehand swing at a backhand feed, and the mirrored backhand-at-forehand case, must be rejected as `WRONG_STROKE_SIDE`.
+- Timing and swing intent alone cannot create contact: the simulated string-bed center must also be within assisted racket reach of the physical ball.
+- Correct forehand and backhand recordings remain playable, while the false-contact pattern visible in the supplied recording becomes a miss.
+- PC build and the full automated regression suite pass.

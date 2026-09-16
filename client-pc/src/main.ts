@@ -65,7 +65,7 @@ import {
   RecordingLabel
 } from "./strokeDetection/motionRecorder.js";
 import { StrokeStateMachine } from "./strokeDetection/strokeStateMachine.js";
-import { EasySwingIntentDetector, EasySwingIntentSnapshot } from "./strokeDetection/easySwingIntent.js";
+import { detectedEasySwingSide, EasySwingIntentDetector, EasySwingIntentSnapshot } from "./strokeDetection/easySwingIntent.js";
 import { ContactFeatureSnapshot, featureSnapshotFromImpact } from "./strokeDetection/strokeFidelity.js";
 import {
   BackhandStyle,
@@ -322,7 +322,6 @@ const elements = {
   courtVision: getElement<HTMLElement>("courtVision"),
   courtVisionMap: getElement("courtVisionMap"),
   courtVisionResult: getElement("courtVisionResult"),
-  courtVisionDetail: getElement("courtVisionDetail"),
   trainingSessionReport: getElement("trainingSessionReport"),
   trainerImprovement: getElement("trainerImprovement"),
   trainerReportSummary: getElement("trainerReportSummary"),
@@ -418,6 +417,8 @@ const elements = {
   debugDeliveryTarget: getElement("debugDeliveryTarget"),
   debugStrokeTimeline: getElement("debugStrokeTimeline")
 };
+
+elements.courtVisionMap.innerHTML = createCourtMapSvg([], "Court vision awaiting the first bounce");
 
 let packetCount = 0;
 const frameTelemetry = new FrameTelemetry();
@@ -1045,8 +1046,8 @@ socket.on("continuous_orientation", (payload: unknown) => {
         upwardScore: processedFrame.motionUpwardScore,
         angularSpeed: processedFrame.angularSpeed
       });
-      const expectedStroke = ballController.ball.lockedStrokeType;
-      latestEasySwingIntent = easySwingIntentDetector.update({
+      const measuredStroke = detectedEasySwingSide(latestStrokeSnapshot);
+      latestEasySwingIntent = measuredStroke ? easySwingIntentDetector.update({
         // The hit window uses PC epoch time. Keep intent age in the same clock
         // domain instead of comparing the phone sensor clock with Date.now().
         timestamp: pcReceivedEpoch,
@@ -1056,7 +1057,7 @@ socket.on("continuous_orientation", (payload: unknown) => {
         forwardScore: processedFrame.motionForwardScore,
         preparationScore: latestStrokeSnapshot?.scores.preparationScore ?? 0,
         racketFaceAngle: processedFrame.racketFaceAngleToCourtRadians
-      }, expectedStroke);
+      }, measuredStroke) : null;
       motionRecorder.capture(processedFrame);
     }
   }
@@ -1716,7 +1717,11 @@ function updateProceduralPosition(): void {
   }
 
   const handSign = strokeStateMachine.getHandedness() === "right" ? 1 : -1;
-  const assistedStrokeType = isBackhandPreset(ballController.ball.launchPreset) ? "backhand" : "forehand";
+  const measuredAssistedStroke = latestEasySwingIntent?.active
+    ? latestEasySwingIntent.strokeType
+    : detectedEasySwingSide(snapshot);
+  const assistedStrokeType = measuredAssistedStroke ??
+    (isBackhandPreset(ballController.ball.launchPreset) ? "backhand" : "forehand");
   const preparationSign = easyMotionContact
     ? assistedStrokeType === "backhand" ? -handSign : handSign
     : snapshot?.lockedStrokeType === "backhand"
@@ -3020,22 +3025,19 @@ function startNewSmartTrainingSession(): void {
   elements.trainingReportPlayerFeedback.value = "";
   updateShotTechniqueUi(null);
   elements.trainingSessionReport.hidden = true;
-  elements.courtVision.hidden = true;
+  elements.courtVisionMap.innerHTML = createCourtMapSvg([], "Court vision awaiting the first bounce");
+  elements.courtVisionResult.textContent = "READY";
+  elements.courtVisionResult.style.color = "#f4f6e9";
   elements.practiceStatus.textContent = "New training session ready.";
   updateSmartTrainerSummary();
 }
 
 function updateCourtVision(result: ReturnResult, bouncePoint: THREE.Vector3 | null): void {
   const bounce = bouncePoint ? [{ x: bouncePoint.x, z: bouncePoint.z, outcome: result }] : [];
-  elements.courtVisionMap.innerHTML = createCourtMapSvg(bounce, bouncePoint
-    ? `Latest shot first bounce: ${result.replace(/_/g, " ")}`
-    : "Shot contacted the fence before bouncing");
+  elements.courtVisionMap.innerHTML = createCourtMapSvg(bounce,
+    bouncePoint ? `Latest shot first bounce: ${result.replace(/_/g, " ")}` : `Latest shot result: ${result}`);
   elements.courtVisionResult.textContent = result.replace(/_/g, " ");
   elements.courtVisionResult.style.color = result === "IN" ? "#c8f268" : "#ff9b82";
-  elements.courtVisionDetail.textContent = bouncePoint
-    ? `First bounce · ${Math.abs(bouncePoint.x).toFixed(1)} m ${bouncePoint.x < 0 ? "left" : "right"}`
-    : "Fence contact before first bounce";
-  elements.courtVision.hidden = false;
   elements.courtVision.classList.remove("is-new");
   void elements.courtVision.offsetWidth;
   elements.courtVision.classList.add("is-new");

@@ -5,7 +5,7 @@ import { TrajectoryCalibrationProfile, worldToPlayerLocal } from "./trajectoryCa
 
 export type PlayableTimingState = "TOO EARLY" | "HIT WINDOW" | "TOO LATE";
 export type PlayableFailureReason = "NO_SAVED_PROFILE" | "NO_REAL_SWING" | "SWING_TOO_EARLY" |
-  "SWING_TOO_LATE" | "WRONG_STROKE_SIDE" | "RACKET_FACE_IMPLAUSIBLE" | "CONTACT_ALREADY_USED";
+  "SWING_TOO_LATE" | "WRONG_STROKE_SIDE" | "RACKET_TOO_FAR" | "RACKET_FACE_IMPLAUSIBLE" | "CONTACT_ALREADY_USED";
 
 export type PlayableHitDecision = {
   accepted: boolean;
@@ -45,6 +45,7 @@ export function evaluatePlayableCalibratedHit(input: {
   expectedStrokeType: "forehand" | "backhand";
   profile: TrajectoryCalibrationProfile | null;
   motion: EasyHitMotion | null;
+  ballToRacketDistance?: number;
   assistLevel?: PlayerAssistLevel;
 }): PlayableHitDecision {
   const assist = BALL_CONFIG.playerAssist[input.assistLevel ?? "training"];
@@ -94,6 +95,11 @@ export function evaluatePlayableCalibratedHit(input: {
     return { ...base, accepted: false, reason: "NO_REAL_SWING" };
   }
   if (input.motion.swingIntent.strokeType !== input.expectedStrokeType) return { ...base, accepted: false, reason: "WRONG_STROKE_SIDE" };
+  if (input.ballToRacketDistance !== undefined &&
+      (!Number.isFinite(input.ballToRacketDistance) ||
+       input.ballToRacketDistance > BALL_CONFIG.playableCalibratedHit.maximumAssistedContactDistance)) {
+    return { ...base, accepted: false, reason: "RACKET_TOO_FAR" };
+  }
   if (input.motion.racketFaceAngle > BALL_CONFIG.playableCalibratedHit.maximumFaceAngleRadians) {
     return { ...base, accepted: false, reason: "RACKET_FACE_IMPLAUSIBLE" };
   }

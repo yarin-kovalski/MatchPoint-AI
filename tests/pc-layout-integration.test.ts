@@ -72,12 +72,13 @@ test("smart trainer exposes live motion metrics and session feedback controls", 
 });
 
 test("court vision is bound to first-bounce data", () => {
-  for (const id of ["courtVision", "courtVisionMap", "courtVisionResult", "courtVisionDetail"]) {
+  for (const id of ["courtVision", "courtVisionMap", "courtVisionResult"]) {
     assert.match(html, new RegExp(`id="${id}"`));
     assert.match(main, new RegExp(`getElement(?:<[^>]+>)?\\("${id}"\\)`));
   }
   assert.match(main, /updateCourtVision\(result, firstBouncePoint\)/);
   assert.match(css, /\.court-vision\s*\{/);
+  assert.doesNotMatch(html, /courtVisionDetail|Fence contact before first bounce/);
 });
 
 test("narrow fallback stacks panels without horizontal overflow", () => {

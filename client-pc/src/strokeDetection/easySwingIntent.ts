@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { BALL_CONFIG } from "../ball/ballConfig.js";
 import { StrokeType } from "./strokeTypes.js";
+import type { StrokeDetectorSnapshot } from "./strokeTypes.js";
 
 export type EasySwingIntentInput = {
   timestamp: number;
@@ -71,6 +72,17 @@ export class EasySwingIntentDetector {
   }
 
   reset(): void { this.snapshot = null; }
+}
+
+/** Classifies the swing side from sensor evidence without consulting the launched feed. */
+export function detectedEasySwingSide(snapshot: StrokeDetectorSnapshot | null): Exclude<StrokeType, "unknown"> | null {
+  if (!snapshot) return null;
+  if (snapshot.lockedStrokeType !== "unknown") return snapshot.lockedStrokeType;
+  const forehand = snapshot.scores.forehandCandidateScore;
+  const backhand = snapshot.scores.backhandCandidateScore;
+  const strongest = Math.max(forehand, backhand);
+  if (strongest < 0.4 || Math.abs(forehand - backhand) < 0.1) return null;
+  return forehand > backhand ? "forehand" : "backhand";
 }
 
 function inverseLerp(minimum: number, maximum: number, value: number): number {

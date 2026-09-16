@@ -224,7 +224,10 @@ export class BallController {
       this.lastPlayableDecision = evaluatePlayableCalibratedHit({
         now, contactTime: this.ball.contactDeadline, bounceCount: this.ball.bounceCount,
         alreadyHit: this.ball.hit, expectedStrokeType: this.ball.expectedStrokeType,
-        profile: playableProfile, motion: easyMotion ?? null, assistLevel: playerAssistLevel
+        profile: playableProfile, motion: easyMotion ?? null, assistLevel: playerAssistLevel,
+        ballToRacketDistance: this.ball.position.distanceTo(
+          new THREE.Vector3().setFromMatrixPosition(colliderWorldMatrix)
+        )
       });
       if (this.lastPlayableDecision.accepted && playableProfile && easyMotion &&
           playerAssistLevel === "training") {

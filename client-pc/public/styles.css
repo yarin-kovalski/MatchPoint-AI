@@ -955,11 +955,11 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 
 .court-vision {
   position: absolute;
-  top: 72px;
-  left: 24px;
+  top: 62px;
+  left: 16px;
   z-index: 4;
-  width: 142px;
-  padding: 10px 10px 8px;
+  width: 108px;
+  padding: 8px;
   border: 1px solid rgba(219, 245, 194, 0.62);
   border-radius: 12px;
   background: rgba(5, 20, 22, 0.82);
@@ -984,7 +984,6 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 .court-vision-head strong { font-size: 0.64rem; color: #fff; }
 .court-vision-map { width: 100%; line-height: 0; }
 .court-map-svg { display: block; width: 100%; height: auto; }
-.court-vision-detail { display: block; margin-top: 6px; color: #b7c7c1; font-size: 0.61rem; text-align: center; }
 .court-vision.is-new .court-map-marker circle:first-of-type { animation: court-marker-pop 520ms ease-out; transform-box: fill-box; transform-origin: center; }
 
 @keyframes court-marker-pop {

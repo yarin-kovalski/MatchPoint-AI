@@ -93,8 +93,9 @@ test("both validated preset play paths still produce exactly one HIT", () => {
     controller.ball.position.fromArray(profile.contactPointWorld);
     controller.ball.previousPosition.copy(controller.ball.position);
     controller.ball.velocity.set(0, 1, 4);
-    controller.update(0, 1000, new THREE.Matrix4(), snapshot(strokeType), null, "easy", motion(strokeType), true, profile, true);
-    controller.update(0, 1001, new THREE.Matrix4(), snapshot(strokeType), null, "easy", motion(strokeType), true, profile, true);
+    const nearbyRacket = new THREE.Matrix4().makeTranslation(...profile.contactPointWorld);
+    controller.update(0, 1000, nearbyRacket, snapshot(strokeType), null, "easy", motion(strokeType), true, profile, true);
+    controller.update(0, 1001, nearbyRacket, snapshot(strokeType), null, "easy", motion(strokeType), true, profile, true);
     assert.equal(hits, 1);
     assert.equal(controller.lastHit?.resolvedHitStrokeType, strokeType);
     assert.deepEqual(controller.lastHit?.contactPointWorld.toArray(), profile.contactPointWorld);

@@ -111,6 +111,7 @@ export const BALL_CONFIG = {
     maximumFaceAngleRadians: 1.55,
     snapDurationMs: 60,
     minimumActiveSwingMs: 40,
+    maximumAssistedContactDistance: 0.72,
     maximumCorrection: { lateral: 0.22, vertical: 0.20, depth: 0.24 },
     practiceResetMs: 1700
   },

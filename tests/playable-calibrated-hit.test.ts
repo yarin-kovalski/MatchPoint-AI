@@ -8,6 +8,7 @@ import { createDefaultTrajectoryProfile, worldToPlayerLocal } from "../client-pc
 import { EasyHitMotion } from "../client-pc/src/ball/ballTypes.js";
 import { StrokeDetectorSnapshot } from "../client-pc/src/strokeDetection/strokeTypes.js";
 import { TrainingSessionCalibration } from "../client-pc/src/diagnostics/trainingSessionCalibration.js";
+import { detectedEasySwingSide } from "../client-pc/src/strokeDetection/easySwingIntent.js";
 
 function motion(strokeType: "forehand" | "backhand", active = true): EasyHitMotion {
   return {
@@ -67,7 +68,25 @@ test("calibrated opportunity rejects early, late, wrong-side, and duplicate cont
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 779, assistLevel: "realistic" }).reason, "SWING_TOO_EARLY");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1181, assistLevel: "realistic" }).reason, "SWING_TOO_LATE");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, motion: motion("backhand") }).reason, "WRONG_STROKE_SIDE");
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 0.9 }).reason, "RACKET_TOO_FAR");
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 0.5 }).accepted, true);
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, alreadyHit: true }).reason, "CONTACT_ALREADY_USED");
+});
+
+test("Training classifies swing side from motion evidence rather than feed expectation", () => {
+  const lockedForehand = snapshot("forehand");
+  assert.equal(detectedEasySwingSide(lockedForehand), "forehand");
+
+  const candidateBackhand = snapshot("forehand");
+  candidateBackhand.lockedStrokeType = "unknown";
+  candidateBackhand.scores.forehandCandidateScore = 0.18;
+  candidateBackhand.scores.backhandCandidateScore = 0.67;
+  candidateBackhand.scores.classificationMargin = 0.49;
+  assert.equal(detectedEasySwingSide(candidateBackhand), "backhand");
+
+  candidateBackhand.scores.forehandCandidateScore = 0.52;
+  candidateBackhand.scores.backhandCandidateScore = 0.56;
+  assert.equal(detectedEasySwingSide(candidateBackhand), null, "ambiguous motion must not inherit the feed side");
 });
 
 test("Training accepts a reasonable swing that Realistic keeps below threshold", () => {
@@ -130,7 +149,7 @@ test("Training intent age and contact window use one PC clock domain", () => {
   }).accepted, true);
 });
 
-test("Training strike-zone contact resolves without string-plane intersection or snapping", () => {
+test("Training contact requires nearby strings but does not require an exact plane crossing or snap", () => {
   const hits: unknown[] = [];
   const controller = new BallController(event => hits.push(event));
   const profile = createDefaultTrajectoryProfile("forehand", "right");
@@ -144,7 +163,8 @@ test("Training strike-zone contact resolves without string-plane intersection or
   controller.ball.previousPosition.copy(controller.ball.position);
   controller.ball.velocity.set(0, 1, 4);
   const racket = new THREE.Matrix4().compose(
-    new THREE.Vector3(20, 20, 20), new THREE.Quaternion(), new THREE.Vector3(0.01, 0.01, 0.01)
+    controller.ball.position.clone().add(new THREE.Vector3(0.18, 0.05, 0.08)),
+    new THREE.Quaternion(), new THREE.Vector3(0.01, 0.01, 0.01)
   );
   controller.update(0, now, racket, snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true, "training");
   controller.update(0, now + 1, racket, snapshot("forehand"), null, "easy", motion("forehand"), true, profile, true, "training");
