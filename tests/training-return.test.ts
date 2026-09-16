@@ -70,7 +70,7 @@ test("signed swing path creates distinct topspin, slice and flat arcs and reboun
   assert.ok(top.spin.x < -10); assert.ok(slice.spin.x > 10);
   assert.ok(top.velocity.y > flat.velocity.y); assert.ok(slice.velocity.y < flat.velocity.y);
   assert.notEqual(top.prediction.bouncePoint?.z, slice.prediction.bouncePoint?.z);
-  assert.equal(flight(slice.velocity, slice.spin).result, "IN");
+  assert.equal(flight(slice.velocity, slice.spin).result, "SHORT");
   assert.equal(flight(top.velocity, top.spin).result, "IN");
   assert.ok(slice.prediction.apexPoint.y < flat.prediction.apexPoint.y);
   assert.ok(slice.prediction.bouncePoint!.z > flat.prediction.bouncePoint!.z);
@@ -164,6 +164,19 @@ test("first-bounce rulings agree at 30/60/120 FPS and stay final after the ball 
     controller.update(1 / fps, 2050, new THREE.Matrix4(), snapshot, null, "off", null, false);
     assert.deepEqual(results, [expected]);
   }
+});
+
+test("a 25 km/h phone slice clears the net and lands in without making every slice safe", () => {
+  const playable = solveTrainingReturn(start, motion(25 / 3.2, -0.55));
+  const overhit = solveTrainingReturn(start, motion(30 / 3.2, -0.55));
+  const playableFlight = flight(playable.velocity, playable.spin);
+  const overhitFlight = flight(overhit.velocity, overhit.spin);
+  assert.equal(playable.spinType, "SLICE");
+  assert.equal(playableFlight.touchedNet, false);
+  assert.equal(playableFlight.result, "IN");
+  assert.equal(overhitFlight.result, "OUT_LONG");
+  assert.ok(overhit.velocity.length() > playable.velocity.length());
+  assert.ok(overhitFlight.bounce.z < playableFlight.bounce.z);
 });
 
 test("racket-face openness directly raises arc while a closed face lowers it", () => {

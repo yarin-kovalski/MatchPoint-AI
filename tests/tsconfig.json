@@ -27,6 +27,7 @@
     "validated-trajectory-preset.test.ts",
     "feed-variation.test.ts",
     "contact-realism.test.ts",
+    "contact-position-calibration.test.ts",
     "tennis-environment.test.ts",
     "court-positioning.test.ts",
     "ball-stability.test.ts",

@@ -65,6 +65,14 @@ test("player mode exposes simple play controls and keeps advanced tools collapse
   assert.match(html, /Developer \/ Advanced/);
 });
 
+test("saved contact positions stay active after calibration controls are removed", () => {
+  assert.doesNotMatch(html, /contactCalibrationPanel|saveContactCalibration|Mark Forehand|Mark Backhand/);
+  assert.match(main, /loadContactPositionCalibration\(localStorage, "forehand"\)/);
+  assert.match(main, /loadContactPositionCalibration\(localStorage, "backhand"\)/);
+  assert.match(main, /applyContactPositionCalibration\([\s\S]*?contactPositionCalibrations\[strokeType\]/);
+  assert.doesNotMatch(css, /\.contact-calibration-pad/);
+});
+
 test("smart trainer exposes live motion metrics and session feedback controls", () => {
   for (const id of [
     "trainerDetectedStroke", "trainerSwingSpeed", "trainerTiming", "trainerAccuracy",

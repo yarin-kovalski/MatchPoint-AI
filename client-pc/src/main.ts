@@ -30,6 +30,9 @@ import {
   createTrainingComfortProfile, isInsideTrainingStrikeZone, PLAYER_BASELINE_OFFSET_Z,
   positionValidatedProfileAtBaseline, TRAINING_BACKHAND_STRIKE_ZONE_RADII, TRAINING_STRIKE_ZONE_RADII
 } from "./ball/courtPositioning.js";
+import {
+  applyContactPositionCalibration, ContactPositionCalibration, loadContactPositionCalibration
+} from "./ball/contactPositionCalibration.js";
 import { BALL_CAMERA_BASE_TARGET, BallFlightCameraState, updateBallFlightCamera } from "./scene/ballFlightCamera.js";
 import { assertBallVisualState } from "./ball/ballVisualState.js";
 import { sampleBallVisualPosition } from "./ball/fixedStepBallPhysics.js";
@@ -489,6 +492,10 @@ let contactHeightOffset = 0;
 let forehandSideOffset = 1.15;
 let backhandSideOffset = -1.15;
 let contactDepthOffset = 0;
+const contactPositionCalibrations: Record<CalibrationStrokeType, ContactPositionCalibration> = {
+  forehand: loadContactPositionCalibration(localStorage, "forehand"),
+  backhand: loadContactPositionCalibration(localStorage, "backhand")
+};
 let showBallAtContactPreview = false;
 let selectedPracticeStroke: CalibrationStrokeType | null = null;
 let practiceRelaunchAt = 0;
@@ -2470,7 +2477,10 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   currentFeedVariation = {
     ...generatedVariation,
     profile: playerAssistLevel === "training"
-      ? createTrainingComfortProfile(positionValidatedProfileAtBaseline(generatedVariation.profile))
+      ? applyContactPositionCalibration(
+          createTrainingComfortProfile(positionValidatedProfileAtBaseline(generatedVariation.profile)),
+          contactPositionCalibrations[strokeType]
+        )
       : positionValidatedProfileAtBaseline(generatedVariation.profile)
   };
   const launchProfiles = {

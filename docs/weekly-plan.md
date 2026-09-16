@@ -15,6 +15,15 @@
 - [x] Expand the Training timing and string-reach envelope while retaining finite physical limits.
 - [x] Reject stationary, expired, backward, wrong-side, and clearly unreachable attempts.
 
+## Player contact-position calibration (completed setup)
+
+- [x] Provide separate player-facing Forehand and Backhand marking workflows.
+- [x] Preview the ideal contact ball continuously and allow 5 cm left/right, height, and depth adjustments.
+- [x] Provide a physical test feed before saving.
+- [x] Persist both stroke positions locally and apply them to every later Training feed.
+- [x] Keep calibration changes inside bounded, physically valid trajectory ranges.
+- [x] Remove the setup controls after the player saved both positions while retaining the stored values.
+
 ## Expo SDK 57 Compatibility
 
 The physical iPhone confirms its Expo Go requires SDK 57. Restore SDK 57 and align dependencies using Expo install --fix. Keep the existing LAN detection, force Expo Go, and remove SDK 54 offline startup. No controller or game changes are in scope.
@@ -229,3 +238,10 @@ Acceptance criteria:
 - [x] Widen the Training timing and reachable-string zones without changing Realistic mode.
 - [x] Preserve the peak sensor timestamp so return speed, spin, slice, arc, direction, and depth still come from the player's swing.
 - [x] Continue rejecting stationary motion, backward intent, expired swings, and forehand/backhand side mismatches.
+
+## Saved contact position and phone-power forgiveness (2026-09-16)
+
+- [x] Keep the player's saved forehand and backhand contact positions active while removing the completed calibration controls.
+- [x] Calibrate slice transfer to phone-handle speed so a deliberate 25 km/h swing clears the net and can land in court.
+- [x] Keep weaker slices short and faster slices capable of going long so power and follow-through still matter.
+- [x] Preserve racket-face, spin, swing-path, direction, and follow-through effects in the outgoing shot.

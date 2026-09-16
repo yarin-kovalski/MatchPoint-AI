@@ -37,7 +37,11 @@ export function solveTrainingReturn(start: THREE.Vector3, motion: EasyHitMotion)
   const spinType: PhysicalSpinType = spin.length() < 4 ? "FLAT"
     : Math.abs(spin.y) > Math.abs(brushSpin) * 1.5 ? "SIDE_SPIN"
       : Math.abs(brushSpin) > Math.abs(spin.y) * 1.5 ? brush > 0 ? "TOPSPIN" : "SLICE" : "MIXED_SPIN";
-  const horizontalSpeed = (5 + 17 * power) * (1 - Math.max(0, -brush) * 0.3);
+  // A phone is held at the racket handle and reports much less translational
+  // speed than a real racket head. Slice also stays airborne under backspin,
+  // so compress its forward transfer to keep an ordinary 25 km/h phone swing
+  // playable while preserving deeper and long outcomes for faster swings.
+  const horizontalSpeed = (5 + 17 * power) * (1 - Math.max(0, -brush) * 0.67);
   // Face pitch is the primary launch-angle control: an open face raises the
   // arc and a closed face drives it lower. Swing path still adds topspin/slice
   // shape independently, so two strokes with the same face need not fly alike.
