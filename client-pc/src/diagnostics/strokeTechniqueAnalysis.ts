@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { BALL_CONFIG } from "../ball/ballConfig.js";
 import type { PhysicalImpactResolution, PhysicalSpinType } from "../ball/contactRealism.js";
 import type { BackhandStyle, Handedness } from "../strokeDetection/strokeTypes.js";
 import type { TrainingStroke } from "./smartTrainingSession.js";
@@ -11,6 +12,9 @@ export type FollowThroughResult = {
   upwardFinishScore: number;
   orientationTravelDegrees: number;
 };
+
+export type TrainingShotStyle =
+  | "REGULAR" | "TOPSPIN" | "SLICE" | "DROP_SHOT" | "HEAVY_TOPSPIN" | "SIDE_SPIN";
 
 export type ShotTechnique = {
   spinType: PhysicalSpinType;
@@ -31,6 +35,10 @@ export type ShotTechnique = {
   arcLabel: "Low" | "Medium" | "High";
   netClearanceMeters: number | null;
   contactQuality: number;
+  ballSpeedKmh: number;
+  bounceDepthPastNetMeters: number | null;
+  shotStyle: TrainingShotStyle;
+  shotStyleLabel: string;
   followThrough: FollowThroughResult;
 };
 
@@ -98,7 +106,8 @@ export class FollowThroughAnalyzer {
 export function createShotTechnique(
   impact: PhysicalImpactResolution | null,
   followThrough: FollowThroughResult,
-  contactHeightMeters = 1.1
+  contactHeightMeters = 1.1,
+  actualBounce: { z: number } | null = null
 ): ShotTechnique | null {
   if (!impact) return null;
   const spinRate = finiteNonNegative(impact.spinRateRadiansPerSecond);
@@ -121,6 +130,18 @@ export function createShotTechnique(
   const heightLevel = 1 + clamp01(arcRiseMeters / 2.7) * 9;
   const angleLevel = 1 + clamp01((launchDegrees - 5) / 35) * 9;
   const arcLevel = clamp(Math.round(heightLevel * 0.7 + angleLevel * 0.3), 1, 10);
+  const ballSpeedKmh = round(impact.outgoingVelocity.length() * 3.6, 1);
+  const bounceZ = actualBounce?.z ?? impact.prediction.bouncePoint?.z ?? null;
+  const bounceDepthPastNetMeters = bounceZ === null
+    ? null : round(Math.max(0, BALL_CONFIG.launch.netDepth - bounceZ), 2);
+  const shotStyle = classifyTrainingShotStyle({
+    spinType: impact.spinType,
+    spinLevel: Math.max(1, Math.round(spinLevel / 10)),
+    verticalPath,
+    ballSpeedKmh,
+    arcLevel,
+    bounceDepthPastNetMeters
+  });
   return {
     spinType: impact.spinType,
     spinRateRadPerSecond: round(spinRate, 1),
@@ -140,8 +161,46 @@ export function createShotTechnique(
     arcLabel: arcLevel <= 3 ? "Low" : arcLevel <= 7 ? "Medium" : "High",
     netClearanceMeters: impact.predictedNetClearance === null ? null : round(impact.predictedNetClearance, 2),
     contactQuality: Math.round(clamp01(impact.contactQuality) * 100),
+    ballSpeedKmh,
+    bounceDepthPastNetMeters,
+    shotStyle,
+    shotStyleLabel: trainingShotStyleLabel(shotStyle),
     followThrough
   };
+}
+
+export function classifyTrainingShotStyle(input: {
+  spinType: PhysicalSpinType;
+  spinLevel: number;
+  verticalPath: number;
+  ballSpeedKmh: number;
+  arcLevel: number;
+  bounceDepthPastNetMeters: number | null;
+}): TrainingShotStyle {
+  const sliceFamily = input.spinType === "SLICE" ||
+    (input.spinType === "MIXED_SPIN" && input.verticalPath < 0);
+  const topspinFamily = input.spinType === "TOPSPIN" ||
+    (input.spinType === "MIXED_SPIN" && input.verticalPath >= 0);
+  const depth = input.bounceDepthPastNetMeters;
+  if (sliceFamily && input.spinLevel >= 3 && input.ballSpeedKmh <= 50 &&
+      depth !== null && depth >= 0.6 && depth <= 4.5 && input.arcLevel <= 6) return "DROP_SHOT";
+  if (topspinFamily && input.spinLevel >= 7 && input.arcLevel >= 7 && input.ballSpeedKmh <= 65 &&
+      depth !== null && depth >= 6.2) return "HEAVY_TOPSPIN";
+  if (topspinFamily) return "TOPSPIN";
+  if (sliceFamily) return "SLICE";
+  if (input.spinType === "SIDE_SPIN") return "SIDE_SPIN";
+  return "REGULAR";
+}
+
+export function trainingShotStyleLabel(style: TrainingShotStyle): string {
+  return ({
+    REGULAR: "Regular shot",
+    TOPSPIN: "Topspin shot",
+    SLICE: "Slice shot",
+    DROP_SHOT: "Drop shot",
+    HEAVY_TOPSPIN: "Heavy topspin",
+    SIDE_SPIN: "Side-spin shot"
+  } as const)[style];
 }
 
 function faceOpennessLabel(degrees: number): ShotTechnique["racketFaceOpennessLabel"] {

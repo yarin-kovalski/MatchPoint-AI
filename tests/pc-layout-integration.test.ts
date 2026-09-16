@@ -61,7 +61,8 @@ test("smart trainer exposes live motion metrics and session feedback controls", 
   for (const id of [
     "trainerDetectedStroke", "trainerSwingSpeed", "trainerTiming", "trainerAccuracy",
     "trainerHitRatio", "trainerStrokeCounts", "trainerAverageSpeed", "trainerBestStreak",
-    "trainerSpinMeter", "trainerFaceMeter", "trainerArcMeter", "trainerFinishMeter",
+    "trainerShotStyle", "trainerSpinMeter", "trainerFaceMeter", "trainerArcMeter", "trainerFinishMeter",
+    "trainingReportPlayerName", "trainingReportPlayerFeedback",
     "finishTrainingSession", "newTrainingSession", "downloadTrainingReport",
     "trainingSessionReport", "trainerReportBreakdown", "trainerFeedbackList"
   ]) assert.match(html, new RegExp(`id="${id}"`));

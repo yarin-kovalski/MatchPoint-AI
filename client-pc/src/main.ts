@@ -290,6 +290,8 @@ const elements = {
   playerLaunchTendency: getElement("playerLaunchTendency"),
   playerContactQuality: getElement("playerContactQuality"),
   trainerSessionState: getElement("trainerSessionState"),
+  trainerShotStyle: getElement("trainerShotStyle"),
+  trainerShotStyleReason: getElement("trainerShotStyleReason"),
   trainerDetectedStroke: getElement("trainerDetectedStroke"),
   trainerSwingSpeed: getElement("trainerSwingSpeed"),
   trainerTiming: getElement("trainerTiming"),
@@ -314,6 +316,8 @@ const elements = {
   finishTrainingSession: getElement<HTMLButtonElement>("finishTrainingSession"),
   newTrainingSession: getElement<HTMLButtonElement>("newTrainingSession"),
   downloadTrainingReport: getElement<HTMLButtonElement>("downloadTrainingReport"),
+  trainingReportPlayerName: getElement<HTMLInputElement>("trainingReportPlayerName"),
+  trainingReportPlayerFeedback: getElement<HTMLTextAreaElement>("trainingReportPlayerFeedback"),
   trainingSessionReport: getElement("trainingSessionReport"),
   trainerImprovement: getElement("trainerImprovement"),
   trainerReportSummary: getElement("trainerReportSummary"),
@@ -449,7 +453,8 @@ let contactFlashUntil = 0;
 let assistMode: AssistMode = "easy";
 let playerAssistLevel: PlayerAssistLevel = "training";
 const trainingSessionCalibration = new TrainingSessionCalibration();
-const TRAINING_HISTORY_KEY = "matchpoint.smart-training-history.v4";
+const TRAINING_HISTORY_KEY = "matchpoint.smart-training-history.v5";
+const TRAINING_PLAYER_NAME_KEY = "matchpoint.training-player-name";
 const smartTrainingSession = new SmartTrainingSession();
 const trainingStrokeEvidence = new TrainingStrokeEvidence();
 const followThroughAnalyzer = new FollowThroughAnalyzer();
@@ -2530,6 +2535,10 @@ function wireBallControls(): void {
   elements.newTrainingSession.addEventListener("click", startNewSmartTrainingSession);
   elements.downloadTrainingReport.addEventListener("click", downloadLatestTrainingReport);
   elements.downloadTrainingReport.disabled = lastCompletedTrainingReport === null;
+  elements.trainingReportPlayerName.value = localStorage.getItem(TRAINING_PLAYER_NAME_KEY) ?? "";
+  elements.trainingReportPlayerName.addEventListener("input", () => {
+    localStorage.setItem(TRAINING_PLAYER_NAME_KEY, elements.trainingReportPlayerName.value.trim());
+  });
   elements.stopPractice.addEventListener("click", () => {
     elements.calibratedPracticeLoopToggle.checked = false;
     selectedPracticeStroke = null;
@@ -2864,7 +2873,7 @@ function finalizeReturnedTrainingShot(result: ReturnResult, bouncePoint: THREE.V
     ? calculateTrainingTargetAccuracy(bouncePoint, BALL_CONFIG.launch.netDepth)
     : 0;
   const technique = createShotTechnique(
-    pending.impact, followThroughAnalyzer.finish(), pending.contactHeightMeters
+    pending.impact, followThroughAnalyzer.finish(), pending.contactHeightMeters, bouncePoint
   );
   followThroughAnalyzer.reset();
   if (success) {
@@ -2972,10 +2981,13 @@ function finishSmartTrainingSession(): void {
     `Misses: ${report.netMisses} net, ${report.wideMisses} wide, ${report.longMisses} long, ${report.shortMisses} short. ` +
     `Best in-court streak: ${report.bestStreak}.`;
   elements.trainerTechniqueSummary.textContent =
-    `Technique levels: ${toLevel10(report.averageTopspinLevel)}/10 topspin, ` +
-    `${toLevel10(report.averageSliceLevel)}/10 slice, racket face ${report.averageFaceOpennessLevel}/10 ` +
-    `(${faceLevelMeaning(report.averageFaceOpennessLevel)}), ${arcLevelMeaning(report.averageArcLevel)} arc ` +
-    `${report.averageArcLevel}/10, and ${toLevel10(report.followThroughCompletion)}/10 far-shoulder finish.`;
+    report.regularShots + report.topspinShots + report.sliceShots + report.dropShots +
+      report.heavyTopspinShots + report.sideSpinShots === 0
+      ? "No resolved racket-contact technique was available for this session."
+      : `Technique levels: ${report.topspinShots + report.heavyTopspinShots > 0 ? `${toLevel10(report.averageTopspinLevel)}/10 topspin` : "no topspin shots"}, ` +
+        `${report.sliceShots + report.dropShots > 0 ? `${toLevel10(report.averageSliceLevel)}/10 slice` : "no slice shots"}, racket face ${report.averageFaceOpennessLevel}/10 ` +
+        `(${faceLevelMeaning(report.averageFaceOpennessLevel)}), ${arcLevelMeaning(report.averageArcLevel)} arc ` +
+        `${report.averageArcLevel}/10, and ${toLevel10(report.followThroughCompletion)}/10 far-shoulder finish.`;
   elements.trainerImprovement.textContent = formatTrainingImprovement(report);
   elements.trainerFeedbackList.replaceChildren(...report.feedback.map(message => {
     const item = document.createElement("li");
@@ -2997,6 +3009,7 @@ function startNewSmartTrainingSession(): void {
   elements.trainerSwingSpeed.textContent = "0 km/h";
   elements.trainerTiming.textContent = "--";
   elements.trainerAccuracy.textContent = "0%";
+  elements.trainingReportPlayerFeedback.value = "";
   updateShotTechniqueUi(null);
   elements.trainingSessionReport.hidden = true;
   elements.practiceStatus.textContent = "New training session ready.";
@@ -3051,6 +3064,8 @@ function loadTrainingSessionHistory(): TrainingSessionReport[] {
 function updateShotTechniqueUi(technique: ShotTechnique | null): void {
   if (!technique) {
     elements.trainerSpinLevel.textContent = "--";
+    elements.trainerShotStyle.textContent = "Waiting for shot";
+    elements.trainerShotStyleReason.textContent = "Spin, pace, arc, and landing depth determine the style.";
     elements.trainerSpinDetail.textContent = "Waiting for contact";
     elements.trainerBrushPath.textContent = "--";
     elements.trainerFaceDetail.textContent = "1 closed · 5 square · 10 open";
@@ -3076,6 +3091,8 @@ function updateShotTechniqueUi(technique: ShotTechnique | null): void {
   elements.trainerFollowThrough.textContent = `${technique.followThrough.label} ${finishLevel}/10`;
   elements.trainerFinishDetail.textContent = technique.followThrough.finishedAcrossFarShoulder
     ? "Finished across the far shoulder" : "Continue across to the far shoulder";
+  elements.trainerShotStyle.textContent = technique.shotStyleLabel;
+  elements.trainerShotStyleReason.textContent = shotStyleReason(technique);
   setTechniqueMeter(elements.trainerSpinMeter, spinLevel);
   setTechniqueMeter(elements.trainerFaceMeter, technique.racketFaceOpennessLevel);
   setTechniqueMeter(elements.trainerArcMeter, technique.arcLevel);
@@ -3114,9 +3131,23 @@ function formatSigned(value: number): string {
   return `${value > 0 ? "+" : ""}${value}`;
 }
 
+function shotStyleReason(technique: ShotTechnique): string {
+  const depth = technique.bounceDepthPastNetMeters === null
+    ? "landing unavailable" : `${technique.bounceDepthPastNetMeters.toFixed(1)} m past the net`;
+  if (technique.shotStyle === "DROP_SHOT") return `Slice, ${technique.ballSpeedKmh} km/h ball speed, ${depth}.`;
+  if (technique.shotStyle === "HEAVY_TOPSPIN") return `High ${technique.arcLevel}/10 arc, heavy spin, controlled pace, ${depth}.`;
+  if (technique.shotStyle === "TOPSPIN") return `Topspin rotation with a ${technique.brushDirection.toLowerCase()} path.`;
+  if (technique.shotStyle === "SLICE") return `Backspin from a ${technique.brushDirection.toLowerCase()} path.`;
+  if (technique.shotStyle === "SIDE_SPIN") return "Lateral brushing created side spin.";
+  return "Low-spin contact with no drop-shot or heavy-topspin pattern.";
+}
+
 function downloadLatestTrainingReport(): void {
   if (!lastCompletedTrainingReport) return;
-  const html = createTrainingReportHtml(lastCompletedTrainingReport);
+  const html = createTrainingReportHtml(lastCompletedTrainingReport, {
+    playerName: elements.trainingReportPlayerName.value.trim(),
+    playerFeedback: elements.trainingReportPlayerFeedback.value.trim()
+  });
   const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;

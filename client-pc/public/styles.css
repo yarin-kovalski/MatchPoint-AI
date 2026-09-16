@@ -878,6 +878,13 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 .trainer-kicker { display: block; color: #b9d58b; font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
 .smart-trainer h3 { margin: 4px 0 14px; color: #f3f3e8; font-size: 20px; }
 .trainer-session-state { padding: 5px 9px; border-radius: 999px; background: rgba(188,217,144,.12); color: #cfe5aa; font-size: 10px; white-space: nowrap; }
+.shot-identity { margin:0 0 10px; padding:11px 13px; border:1px solid #527064; border-radius:9px; background:linear-gradient(100deg,rgba(185,220,114,.1),rgba(8,19,20,.35)); }
+.shot-identity span,.shot-identity small { display:block; color:#91a8a0; font-size:9px; }
+.shot-identity strong { display:block; margin:2px 0; color:#e9f4d5; font-size:18px; }
+.report-personalization { display:grid; gap:8px; margin:12px 0; padding:11px; border:1px solid #344b45; border-radius:9px; background:rgba(8,19,20,.3); }
+.report-personalization label { color:#9fb4ab; font-size:10px; }
+.report-personalization input,.report-personalization textarea { display:block; width:100%; margin-top:4px; padding:8px 9px; border:1px solid #486159; border-radius:6px; background:#0d1b19; color:#eff3e9; font:inherit; resize:vertical; }
+.report-personalization input:focus,.report-personalization textarea:focus { outline:2px solid rgba(185,220,114,.35); border-color:#a9c978; }
 .trainer-live-grid, .trainer-session-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
 .trainer-live-grid > div { min-height: 66px; padding: 11px; border-radius: 9px; background: rgba(8,19,20,.46); }
 .trainer-session-grid { margin-top: 8px; }

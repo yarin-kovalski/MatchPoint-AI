@@ -103,6 +103,12 @@ export type TrainingSessionSummary = {
   wideMisses: number;
   longMisses: number;
   shortMisses: number;
+  regularShots: number;
+  topspinShots: number;
+  sliceShots: number;
+  dropShots: number;
+  heavyTopspinShots: number;
+  sideSpinShots: number;
   averageSpinLevel: number;
   averageTopspinLevel: number;
   averageSliceLevel: number;
@@ -169,7 +175,15 @@ export class SmartTrainingSession {
     let wideMisses = 0;
     let longMisses = 0;
     let shortMisses = 0;
+    let regularShots = 0;
+    let topspinShots = 0;
+    let sliceShots = 0;
+    let dropShots = 0;
+    let heavyTopspinShots = 0;
+    let sideSpinShots = 0;
     let techniqueShots = 0;
+    let topspinTechniqueShots = 0;
+    let sliceTechniqueShots = 0;
     let spinLevelTotal = 0;
     let topspinLevelTotal = 0;
     let sliceLevelTotal = 0;
@@ -206,8 +220,20 @@ export class SmartTrainingSession {
       if (shot.technique) {
         techniqueShots += 1;
         spinLevelTotal += shot.technique.spinLevel;
-        topspinLevelTotal += shot.technique.topspinLevel;
-        sliceLevelTotal += shot.technique.sliceLevel;
+        if (shot.technique.shotStyle === "TOPSPIN" || shot.technique.shotStyle === "HEAVY_TOPSPIN") {
+          topspinLevelTotal += shot.technique.topspinLevel;
+          topspinTechniqueShots += 1;
+        }
+        if (shot.technique.shotStyle === "SLICE" || shot.technique.shotStyle === "DROP_SHOT") {
+          sliceLevelTotal += shot.technique.sliceLevel;
+          sliceTechniqueShots += 1;
+        }
+        if (shot.technique.shotStyle === "REGULAR") regularShots += 1;
+        else if (shot.technique.shotStyle === "TOPSPIN") topspinShots += 1;
+        else if (shot.technique.shotStyle === "SLICE") sliceShots += 1;
+        else if (shot.technique.shotStyle === "DROP_SHOT") dropShots += 1;
+        else if (shot.technique.shotStyle === "HEAVY_TOPSPIN") heavyTopspinShots += 1;
+        else sideSpinShots += 1;
         faceOpennessTotal += shot.technique.racketFaceOpennessLevel;
         arcLevelTotal += shot.technique.arcLevel;
         if (shot.technique.followThrough.finishedAcrossFarShoulder) completeFinishes += 1;
@@ -235,9 +261,15 @@ export class SmartTrainingSession {
       wideMisses,
       longMisses,
       shortMisses,
+      regularShots,
+      topspinShots,
+      sliceShots,
+      dropShots,
+      heavyTopspinShots,
+      sideSpinShots,
       averageSpinLevel: average(spinLevelTotal, techniqueShots),
-      averageTopspinLevel: average(topspinLevelTotal, techniqueShots),
-      averageSliceLevel: average(sliceLevelTotal, techniqueShots),
+      averageTopspinLevel: average(topspinLevelTotal, topspinTechniqueShots),
+      averageSliceLevel: average(sliceLevelTotal, sliceTechniqueShots),
       averageFaceOpennessLevel: roundAverage(faceOpennessTotal, techniqueShots, 1),
       averageArcLevel: roundAverage(arcLevelTotal, techniqueShots, 1),
       followThroughCompletion: percentage(completeFinishes, techniqueShots)
@@ -295,6 +327,8 @@ export function classifyTrainingTiming(offsetMs: number | null, reason = ""): Tr
 function buildTrainingFeedback(summary: TrainingSessionSummary, improvement: TrainingImprovement | null): string[] {
   if (summary.attempts === 0) return ["Complete a few forehands and backhands to receive coaching feedback."];
   const feedback: string[] = [];
+  const classifiedShots = summary.regularShots + summary.topspinShots + summary.sliceShots +
+    summary.dropShots + summary.heavyTopspinShots + summary.sideSpinShots;
   if (improvement && improvement.hitRatioPoints > 0) {
     feedback.push(`Hit ratio improved by ${improvement.hitRatioPoints} percentage points from your previous session.`);
   } else if (improvement && improvement.targetAccuracyPoints > 0) {
@@ -332,7 +366,7 @@ function buildTrainingFeedback(summary: TrainingSessionSummary, improvement: Tra
   if (summary.averageSliceLevel > 0 && summary.averageSliceLevel < 40) {
     feedback.push("For a more controlled slice, keep a clear high-to-low path while driving through the ball.");
   }
-  if (summary.followThroughCompletion < 55) {
+  if (classifiedShots > 0 && summary.followThroughCompletion < 55) {
     feedback.push("Complete the finish across the body and over the far shoulder instead of stopping after contact.");
   }
   if (summary.hitRatio < 55) {

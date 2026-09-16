@@ -92,6 +92,7 @@
               <div><span class="trainer-kicker">Motion analysis</span><h3 id="smartTrainerTitle">Smart Trainer</h3></div>
               <span id="trainerSessionState" class="trainer-session-state">Session ready</span>
             </div>
+            <div class="shot-identity" aria-live="polite"><span>Detected shot style</span><strong id="trainerShotStyle">Waiting for shot</strong><small id="trainerShotStyleReason">Spin, pace, arc, and landing depth determine the style.</small></div>
             <div class="trainer-live-grid">
               <div><span>Detected stroke</span><strong id="trainerDetectedStroke">--</strong></div>
               <div><span>Swing speed</span><strong id="trainerSwingSpeed">0 km/h</strong></div>
@@ -109,10 +110,14 @@
               <div><span>Best streak</span><strong id="trainerBestStreak">0</strong></div>
             </div>
             <p class="trainer-target-note">Training accuracy measures distance from a safe deep-center aim zone. Visible shooting targets will arrive with Game mode.</p>
+            <div class="report-personalization">
+              <label>Player name<input id="trainingReportPlayerName" type="text" maxlength="80" autocomplete="name" placeholder="Enter player name"></label>
+              <label>Player session reflection<textarea id="trainingReportPlayerFeedback" maxlength="1200" rows="3" placeholder="What felt good? What do you want to improve next session?"></textarea></label>
+            </div>
             <div class="trainer-actions">
               <button id="finishTrainingSession" type="button">Finish session</button>
               <button id="newTrainingSession" type="button" class="secondary-button">New session</button>
-              <button id="downloadTrainingReport" type="button" class="report-download" disabled>Download report</button>
+              <button id="downloadTrainingReport" type="button" class="report-download" disabled>Download full report</button>
             </div>
             <section id="trainingSessionReport" class="training-session-report" aria-live="polite" hidden>
               <div class="report-heading"><strong>Session feedback</strong><span id="trainerImprovement">First recorded session</span></div>

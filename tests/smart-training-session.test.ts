@@ -4,6 +4,7 @@ import {
   calculateTrainingTargetAccuracy, classifyTrainingTiming, isSuccessfulTrainingReturn,
   SmartTrainingSession, TrainingStrokeEvidence
 } from "../client-pc/src/diagnostics/smartTrainingSession.js";
+import type { ShotTechnique } from "../client-pc/src/diagnostics/strokeTechniqueAnalysis.js";
 
 test("smart session aggregates stroke detection, speed, timing, ratio, accuracy, and streak", () => {
   const session = new SmartTrainingSession(1000);
@@ -20,6 +21,8 @@ test("smart session aggregates stroke detection, speed, timing, ratio, accuracy,
     averageSwingSpeedKmh: 60, peakSwingSpeedKmh: 72, targetAccuracy: 50,
     earlyHits: 1, onTimeHits: 1, lateHits: 1, noContact: 0, bestStreak: 2,
     netMisses: 0, wideMisses: 0, longMisses: 0, shortMisses: 0,
+    regularShots: 0, topspinShots: 0, sliceShots: 0, dropShots: 0,
+    heavyTopspinShots: 0, sideSpinShots: 0,
     averageSpinLevel: 0, averageTopspinLevel: 0, averageSliceLevel: 0,
     averageFaceOpennessLevel: 0, averageArcLevel: 0, followThroughCompletion: 0
   });
@@ -82,4 +85,28 @@ test("completed session compares progress and creates measured coaching", () => 
   assert.equal(report.improvement?.hitRatioPoints, 100);
   assert.equal(report.improvement?.targetAccuracyPoints, 80);
   assert.ok(report.feedback.some(message => message.includes("improved")));
+});
+
+test("topspin and slice averages use only their matching shot families", () => {
+  const session = new SmartTrainingSession();
+  const base = {
+    spinType:"FLAT", spinLevel:5, topspinLevel:0, sliceLevel:0,
+    racketFaceOpennessLevel:5, arcLevel:5,
+    followThrough:{ finishedAcrossFarShoulder:true }
+  } as unknown as ShotTechnique;
+  session.record({ timestamp:1, expectedStroke:"forehand", detectedStroke:"forehand", hit:true,
+    swingSpeedKmh:60, timingOffsetMs:0, placementAccuracy:80,
+    technique:{ ...base, shotStyle:"TOPSPIN", topspinLevel:80 } });
+  session.record({ timestamp:2, expectedStroke:"forehand", detectedStroke:"forehand", hit:true,
+    swingSpeedKmh:60, timingOffsetMs:0, placementAccuracy:80,
+    technique:{ ...base, shotStyle:"REGULAR" } });
+  session.record({ timestamp:3, expectedStroke:"backhand", detectedStroke:"backhand", hit:true,
+    swingSpeedKmh:60, timingOffsetMs:0, placementAccuracy:80,
+    technique:{ ...base, shotStyle:"DROP_SHOT", sliceLevel:60 } });
+  const summary=session.summary();
+  assert.equal(summary.averageTopspinLevel,80);
+  assert.equal(summary.averageSliceLevel,60);
+  assert.equal(summary.topspinShots,1);
+  assert.equal(summary.dropShots,1);
+  assert.equal(summary.regularShots,1);
 });

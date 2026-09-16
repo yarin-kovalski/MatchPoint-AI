@@ -158,3 +158,14 @@ Acceptance criteria:
 - A completed session can be downloaded as a styled standalone HTML report with session changes, coaching, and representative strong and focus shots.
 - The report states that far-shoulder completion is a phone-motion estimate because the current proof of concept does not track the player's body pose.
 - TypeScript builds and the complete automated regression suite pass.
+
+## Shot identity and professional report (2026-09-16)
+
+Acceptance criteria:
+
+- Every resolved contact is labeled as Regular, Topspin, Slice, Drop shot, Heavy topspin, or Side spin from measured spin, ball speed, arc, and predicted or actual landing depth.
+- A drop shot requires slice, reduced ball speed, and a first bounce near the net. Heavy topspin requires strong topspin, a high arc, reduced pace, and a deep landing.
+- Session totals separate in-court and out shots and calculate topspin level only from topspin-family shots and slice level only from slice-family shots.
+- The export shows complete overall analysis followed by equivalent forehand and backhand reports, shot-style distribution, the player's stronger side, and separate coaching for each side.
+- The player can enter a name and personal session reflection before downloading; both appear with the full session date and time.
+- The exported HTML is a clean, print-ready performance document with compact tables, restrained color, and clear measurement definitions.
