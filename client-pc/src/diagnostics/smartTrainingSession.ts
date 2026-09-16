@@ -81,6 +81,8 @@ export type TrainingShot = {
   placementAccuracy: number;
   missReason?: string;
   technique?: ShotTechnique | null;
+  returnOutcome?: TrainingReturnOutcome;
+  bouncePoint?: { x: number; z: number } | null;
 };
 
 export type TrainingSessionSummary = {

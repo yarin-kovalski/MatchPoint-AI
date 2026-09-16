@@ -13,6 +13,23 @@ export const TENNIS_COURT = {
   netWidth: 12.80
 } as const;
 
+export const TENNIS_FENCE = {
+  halfWidth: 9.25,
+  height: 4.8,
+  farBaselineGap: 2.35,
+  nearDistanceFromNet: 14.5
+} as const;
+
+export function tennisFenceBounds(netDepth: number): { left: number; right: number; far: number; near: number; height: number } {
+  return {
+    left: -TENNIS_FENCE.halfWidth,
+    right: TENNIS_FENCE.halfWidth,
+    far: netDepth - TENNIS_COURT.length / 2 - TENNIS_FENCE.farBaselineGap,
+    near: netDepth + TENNIS_FENCE.nearDistanceFromNet,
+    height: TENNIS_FENCE.height
+  };
+}
+
 const COURT_LEVEL = 0.006;
 const LINE_LEVEL = 0.010;
 const SURROUND_WIDTH = 21;
@@ -189,16 +206,17 @@ export function createAuthenticTennisNet(netDepth: number): THREE.Group {
 export function createCourtBackdrop(netDepth: number): THREE.Group {
   const group = new THREE.Group();
   group.name = "courtBackdrop";
-  const farZ = netDepth - TENNIS_COURT.length / 2 - 2.35;
-  const fenceX = 9.25;
-  const nearZ = netDepth + 14.5;
+  const bounds = tennisFenceBounds(netDepth);
+  const farZ = bounds.far;
+  const fenceX = bounds.right;
+  const nearZ = bounds.near;
   const farWidth = fenceX * 2;
   const sideLength = nearZ - farZ;
   const sideCenterZ = (nearZ + farZ) / 2;
   const fenceMaterial = createChainLinkMaterial();
-  const farFence = new THREE.Mesh(new THREE.PlaneGeometry(farWidth, 4.8), fenceMaterial);
+  const farFence = new THREE.Mesh(new THREE.PlaneGeometry(farWidth, TENNIS_FENCE.height), fenceMaterial);
   farFence.name = "farChainLinkFence";
-  farFence.position.set(0, 2.4, farZ);
+  farFence.position.set(0, TENNIS_FENCE.height / 2, farZ);
   group.add(farFence);
 
   const screenMaterial = new THREE.MeshStandardMaterial({
@@ -210,13 +228,13 @@ export function createCourtBackdrop(netDepth: number): THREE.Group {
   backScreen.position.set(0, 1.84, farZ - 0.035);
   group.add(backScreen);
   const structureMaterial = new THREE.MeshStandardMaterial({ color: 0x12191b, roughness: 0.34, metalness: 0.72 });
-  addFenceFrame(group, "far", farWidth, 4.8, new THREE.Vector3(0, 0, farZ), false, structureMaterial);
+  addFenceFrame(group, "far", farWidth, TENNIS_FENCE.height, new THREE.Vector3(0, 0, farZ), false, structureMaterial);
 
   for (const side of [-1, 1]) {
-    const fence = new THREE.Mesh(new THREE.PlaneGeometry(sideLength, 4.8), fenceMaterial);
+    const fence = new THREE.Mesh(new THREE.PlaneGeometry(sideLength, TENNIS_FENCE.height), fenceMaterial);
     fence.name = side < 0 ? "leftChainLinkFence" : "rightChainLinkFence";
     fence.rotation.y = Math.PI / 2;
-    fence.position.set(side * fenceX, 2.4, sideCenterZ);
+    fence.position.set(side * fenceX, TENNIS_FENCE.height / 2, sideCenterZ);
     group.add(fence);
     const screen = new THREE.Mesh(new THREE.PlaneGeometry(sideLength - 0.14, 3.65), screenMaterial.clone());
     screen.name = side < 0 ? "sideWindscreenLeft" : "sideWindscreenRight";
@@ -225,7 +243,7 @@ export function createCourtBackdrop(netDepth: number): THREE.Group {
     group.add(screen);
     // The far fence owns both shared corner posts. Side runs begin after that
     // post so no mesh or structural member is doubled at either rear corner.
-    addFenceFrame(group, side < 0 ? "left" : "right", sideLength, 4.8,
+    addFenceFrame(group, side < 0 ? "left" : "right", sideLength, TENNIS_FENCE.height,
       new THREE.Vector3(side * fenceX, 0, sideCenterZ), true, structureMaterial, true);
   }
 

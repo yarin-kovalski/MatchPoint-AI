@@ -181,6 +181,13 @@ export class BallController {
     if ((this.ball.hit || this.ball.state === "RETURNED") && !this.lastReturnResult) {
       for (const event of physics.events) {
         if (event.type === "net") this.returnTouchedNet = true;
+        if (event.type === "fence") {
+          this.lastReturnResult = "OUT";
+          this.onReturnLanded?.("OUT", null);
+          this.ball.state = "OUT";
+          this.resetAt = now + BALL_CONFIG.resetDelayMs;
+          break;
+        }
         if (event.type === "bounce") {
           this.lastReturnResult = judgeReturnBounce(event.point, this.returnTouchedNet);
           this.onReturnLanded?.(this.lastReturnResult, event.point.clone());

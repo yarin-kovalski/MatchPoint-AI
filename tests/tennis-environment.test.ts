@@ -4,7 +4,7 @@ import * as THREE from "three";
 import {
   configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createCourtBackdrop, createFeedOriginMarker,
   updateCourtBackdrop,
-  TENNIS_COURT
+  TENNIS_COURT, TENNIS_FENCE, tennisFenceBounds
 } from "../client-pc/src/scene/tennisEnvironment.js";
 
 test("authentic court creates regulation markings and shadow receiving surfaces", () => {
@@ -60,6 +60,10 @@ test("court backdrop adds transparent chain-link fencing and depth structure", (
   assert.ok(backdrop.getObjectByName("palmTree1"));
   assert.ok(backdrop.getObjectByName("courtsideBench"));
   assert.ok(backdrop.getObjectByName("courtsideUmbrella"));
+  const bounds = tennisFenceBounds(-5.5);
+  assert.equal((backdrop.getObjectByName("farChainLinkFence") as THREE.Mesh).position.z, bounds.far);
+  assert.equal((backdrop.getObjectByName("rightChainLinkFence") as THREE.Mesh).position.x, bounds.right);
+  assert.equal(TENNIS_FENCE.height, 4.8);
 });
 
 test("side fences share exact rear corners without duplicate posts", () => {

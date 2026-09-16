@@ -3,6 +3,7 @@ import test from "node:test";
 import { SmartTrainingSession } from "../client-pc/src/diagnostics/smartTrainingSession.js";
 import type { ShotTechnique } from "../client-pc/src/diagnostics/strokeTechniqueAnalysis.js";
 import { createTrainingReportHtml } from "../client-pc/src/diagnostics/trainingReportExport.js";
+import { courtPointToMap, createCourtMapSvg } from "../client-pc/src/diagnostics/courtVision.js";
 
 const technique: ShotTechnique = {
   spinType: "TOPSPIN", spinRateRadPerSecond: 38, spinRpm: 363, spinLevel: 69,
@@ -20,10 +21,11 @@ const technique: ShotTechnique = {
 test("download report contains overall and separate stroke analysis with player context", () => {
   const session = new SmartTrainingSession(1000);
   session.record({ timestamp: 1200, expectedStroke: "forehand", detectedStroke: "forehand",
-    hit: true, swingSpeedKmh: 72, timingOffsetMs: 0, placementAccuracy: 91, technique });
+    hit: true, swingSpeedKmh: 72, timingOffsetMs: 0, placementAccuracy: 91, technique,
+    returnOutcome: "IN", bouncePoint: { x: 1.2, z: -13.2 } });
   session.record({ timestamp: 1800, expectedStroke: "backhand", detectedStroke: "backhand",
     hit: false, swingSpeedKmh: 48, timingOffsetMs: 130, placementAccuracy: 0,
-    missReason: "OUT_LONG", technique: { ...technique, spinType: "SLICE", topspinLevel: 0,
+    missReason: "OUT_LONG", returnOutcome: "OUT_LONG", bouncePoint: { x: -2, z: -18.1 }, technique: { ...technique, spinType: "SLICE", topspinLevel: 0,
       sliceLevel: 62, shotStyle: "SLICE", shotStyleLabel: "Slice shot", racketFaceOpenDegrees: 27,
       racketFaceOpennessLevel: 9, racketFaceOpennessLabel: "Very open",
       followThrough: { ...technique.followThrough, score: 28, label: "Incomplete", finishedAcrossFarShoulder: false } } });
@@ -32,6 +34,11 @@ test("download report contains overall and separate stroke analysis with player 
   });
   assert.match(html, /Overall session analysis/);
   assert.match(html, /Forehand and backhand analysis/);
+  assert.match(html, /First-bounce placement map/);
+  assert.match(html, /1 in/);
+  assert.match(html, /1 out/);
+  assert.match(html, /court-map-marker is-in/);
+  assert.match(html, /court-map-marker is-out/);
   assert.match(html, /Forehand priorities/);
   assert.match(html, /Backhand priorities/);
   assert.match(html, /Topspin level \(spin shots only\)/);
@@ -42,4 +49,15 @@ test("download report contains overall and separate stroke analysis with player 
   assert.match(html, /Alex &amp; Sam/);
   assert.match(html, /Backhand felt &lt;late&gt;\./);
   assert.doesNotMatch(html, /<script/i);
+});
+
+test("court vision maps real world positions and keeps out balls beyond the court lines", () => {
+  const center = courtPointToMap(0, -5.5);
+  const wide = courtPointToMap(8.5, -12);
+  assert.ok(wide.x > center.x);
+  const svg = createCourtMapSvg([{ x: 0, z: -12, outcome: "IN" }, { x: 8.5, z: -12, outcome: "OUT_WIDE" }]);
+  assert.match(svg, /aria-label="Shot placement map"/);
+  assert.match(svg, /Shot 1: IN/);
+  assert.match(svg, /Shot 2: OUT WIDE/);
+  assert.doesNotMatch(svg, /NaN|Infinity/);
 });

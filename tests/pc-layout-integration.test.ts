@@ -71,6 +71,15 @@ test("smart trainer exposes live motion metrics and session feedback controls", 
   assert.match(css, /@keyframes trainer-meter-rise/);
 });
 
+test("court vision is bound to first-bounce data", () => {
+  for (const id of ["courtVision", "courtVisionMap", "courtVisionResult", "courtVisionDetail"]) {
+    assert.match(html, new RegExp(`id="${id}"`));
+    assert.match(main, new RegExp(`getElement(?:<[^>]+>)?\\("${id}"\\)`));
+  }
+  assert.match(main, /updateCourtVision\(result, firstBouncePoint\)/);
+  assert.match(css, /\.court-vision\s*\{/);
+});
+
 test("narrow fallback stacks panels without horizontal overflow", () => {
   assert.match(css, /@media \(max-width:\s*1000px\)/);
   assert.match(css, /@media \(max-width:\s*1000px\)[\s\S]*?\.app-shell\s*\{[^}]*flex-direction:\s*column/s);

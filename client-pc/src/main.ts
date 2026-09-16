@@ -50,6 +50,7 @@ import {
 import { createShotTechnique, emptyFollowThrough, FollowThroughAnalyzer } from "./diagnostics/strokeTechniqueAnalysis.js";
 import type { ShotTechnique } from "./diagnostics/strokeTechniqueAnalysis.js";
 import { createTrainingReportHtml } from "./diagnostics/trainingReportExport.js";
+import { createCourtMapSvg } from "./diagnostics/courtVision.js";
 import { adaptiveVisualSmoothingFactor, SensorResampler, updateVisualRacketQuaternion } from "./motion/sensorResampler.js";
 import { ForwardSwingFusion } from "./motion/forwardSwingFusion.js";
 import { stabilizeTrainingRacketOrigin } from "./motion/racketOriginStability.js";
@@ -318,6 +319,10 @@ const elements = {
   downloadTrainingReport: getElement<HTMLButtonElement>("downloadTrainingReport"),
   trainingReportPlayerName: getElement<HTMLInputElement>("trainingReportPlayerName"),
   trainingReportPlayerFeedback: getElement<HTMLTextAreaElement>("trainingReportPlayerFeedback"),
+  courtVision: getElement<HTMLElement>("courtVision"),
+  courtVisionMap: getElement("courtVisionMap"),
+  courtVisionResult: getElement("courtVisionResult"),
+  courtVisionDetail: getElement("courtVisionDetail"),
   trainingSessionReport: getElement("trainingSessionReport"),
   trainerImprovement: getElement("trainerImprovement"),
   trainerReportSummary: getElement("trainerReportSummary"),
@@ -768,6 +773,7 @@ const ballController = new BallController(onBallHit, onBallMiss, (result, firstB
   elements.ballResult.textContent = ({ IN: "IN! Nice shot!", NET: "NET - not enough clearance",
     OUT_WIDE: "OUT - wide", OUT_LONG: "OUT - long", SHORT: "SHORT - bounced on your side", OUT: "OUT" } as const)[result];
   finalizeReturnedTrainingShot(result, firstBouncePoint);
+  updateCourtVision(result, firstBouncePoint);
   const announcement = getElement("landingAnnouncement");
   announcement.textContent = elements.ballResult.textContent;
   announcement.hidden = false;
@@ -2896,7 +2902,9 @@ function finalizeReturnedTrainingShot(result: ReturnResult, bouncePoint: THREE.V
     timingOffsetMs: pending.timingOffsetMs,
     placementAccuracy: accuracy,
     missReason: success ? undefined : result,
-    technique
+    technique,
+    returnOutcome: result,
+    bouncePoint: bouncePoint ? { x: bouncePoint.x, z: bouncePoint.z } : null
   }, pending.detection.confidence);
   elements.practiceStatus.textContent = success
     ? `Successful return · ${accuracy}% deep-center accuracy`
@@ -3012,8 +3020,25 @@ function startNewSmartTrainingSession(): void {
   elements.trainingReportPlayerFeedback.value = "";
   updateShotTechniqueUi(null);
   elements.trainingSessionReport.hidden = true;
+  elements.courtVision.hidden = true;
   elements.practiceStatus.textContent = "New training session ready.";
   updateSmartTrainerSummary();
+}
+
+function updateCourtVision(result: ReturnResult, bouncePoint: THREE.Vector3 | null): void {
+  const bounce = bouncePoint ? [{ x: bouncePoint.x, z: bouncePoint.z, outcome: result }] : [];
+  elements.courtVisionMap.innerHTML = createCourtMapSvg(bounce, bouncePoint
+    ? `Latest shot first bounce: ${result.replace(/_/g, " ")}`
+    : "Shot contacted the fence before bouncing");
+  elements.courtVisionResult.textContent = result.replace(/_/g, " ");
+  elements.courtVisionResult.style.color = result === "IN" ? "#c8f268" : "#ff9b82";
+  elements.courtVisionDetail.textContent = bouncePoint
+    ? `First bounce · ${Math.abs(bouncePoint.x).toFixed(1)} m ${bouncePoint.x < 0 ? "left" : "right"}`
+    : "Fence contact before first bounce";
+  elements.courtVision.hidden = false;
+  elements.courtVision.classList.remove("is-new");
+  void elements.courtVision.offsetWidth;
+  elements.courtVision.classList.add("is-new");
 }
 
 function currentTrainingSwingSpeed(): number {

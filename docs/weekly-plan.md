@@ -169,3 +169,14 @@ Acceptance criteria:
 - The export shows complete overall analysis followed by equivalent forehand and backhand reports, shot-style distribution, the player's stronger side, and separate coaching for each side.
 - The player can enter a name and personal session reflection before downloading; both appear with the full session date and time.
 - The exported HTML is a clean, print-ready performance document with compact tables, restrained color, and clear measurement definitions.
+
+## Court vision and physical enclosure (2026-09-16)
+
+Acceptance criteria:
+
+- After every returned shot reaches its first bounce, a compact top-down court view shows the measured landing position and the in/out ruling.
+- The map uses the simulation's real court dimensions and can display wide, long, short, and in-court bounces without moving the marker into a false position.
+- The rear and side chain-link fences share their dimensions with the physics system. A ball below fence height reflects from the fence even when it crosses the plane between rendered frames.
+- Fence contact before a first bounce is recorded as an out shot; contact after a ruled bounce does not change that first-bounce ruling.
+- Downloaded session reports include a placement map of all recorded first-bounce locations, with separate in and out markers and totals.
+- TypeScript build, focused physics/map tests, and the complete automated test suite pass.

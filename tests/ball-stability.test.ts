@@ -5,6 +5,8 @@ import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
 import { assertBallVisualState } from "../client-pc/src/ball/ballVisualState.js";
 import { advanceBallFixedStep, createFixedStepPhysicsState } from "../client-pc/src/ball/fixedStepBallPhysics.js";
 import { BallSnapshot } from "../client-pc/src/ball/ballTypes.js";
+import { stepBallPhysics } from "../client-pc/src/ball/ballPhysics.js";
+import { tennisFenceBounds } from "../client-pc/src/scene/tennisEnvironment.js";
 
 function ball(): BallSnapshot {
   return {
@@ -48,4 +50,42 @@ test("active ball visual audit reports hidden and detached meshes", () => {
 test("behind-player bound remains beyond baseline calibrated contact", () => {
   assert.ok(BALL_CONFIG.bounds.zBehindPlayer > 5.75);
   assert.ok(BALL_CONFIG.bounds.zBehindPlayer > 4.91);
+});
+
+test("fast returned shots reflect from rear and side fences without tunneling", () => {
+  const bounds = tennisFenceBounds(BALL_CONFIG.launch.netDepth);
+  const rear = ball();
+  rear.state = "RETURNED";
+  rear.hit = true;
+  rear.position.set(0, 2, bounds.far + 0.12);
+  rear.velocity.set(0, 0, -35);
+  const rearEvents: string[] = [];
+  stepBallPhysics(rear, BALL_CONFIG.maximumStepSeconds, event => rearEvents.push(`${event.type}:${event.surface ?? ""}`));
+  assert.ok(rearEvents.includes("fence:far"));
+  assert.ok(rear.velocity.z > 0);
+  assert.ok(rear.position.z >= bounds.far + rear.physicsRadius);
+
+  const side = ball();
+  side.state = "RETURNED";
+  side.hit = true;
+  side.position.set(bounds.right - 0.12, 1.7, -10);
+  side.velocity.set(34, 0, -2);
+  const sideEvents: string[] = [];
+  stepBallPhysics(side, BALL_CONFIG.maximumStepSeconds, event => sideEvents.push(`${event.type}:${event.surface ?? ""}`));
+  assert.ok(sideEvents.includes("fence:right"));
+  assert.ok(side.velocity.x < 0);
+  assert.ok(side.position.x <= bounds.right - side.physicsRadius);
+});
+
+test("a lob above fence height is not falsely reflected", () => {
+  const bounds = tennisFenceBounds(BALL_CONFIG.launch.netDepth);
+  const lob = ball();
+  lob.state = "RETURNED";
+  lob.hit = true;
+  lob.position.set(0, bounds.height + lob.physicsRadius + 0.4, bounds.far + 0.12);
+  lob.velocity.set(0, 0, -35);
+  const events: string[] = [];
+  stepBallPhysics(lob, BALL_CONFIG.maximumStepSeconds, event => events.push(event.type));
+  assert.ok(!events.includes("fence"));
+  assert.ok(lob.velocity.z < 0);
 });

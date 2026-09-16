@@ -401,6 +401,11 @@
         <canvas id="sceneCanvas"></canvas>
         <div id="landingAnnouncement" class="landing-announcement" role="status" aria-live="polite" hidden></div>
         <div class="scene-topbar"><span>COURT 01 <span class="scene-location">/ HARD COURT</span></span><span id="frameBudget">-- FPS</span></div>
+        <aside id="courtVision" class="court-vision" aria-label="Latest shot landing" hidden>
+          <div class="court-vision-head"><span>COURT VISION</span><strong id="courtVisionResult">--</strong></div>
+          <div id="courtVisionMap" class="court-vision-map"></div>
+          <span id="courtVisionDetail" class="court-vision-detail">First bounce</span>
+        </aside>
         <div class="shot-feedback" id="shotFeedback" aria-live="polite" hidden>
           <span id="shotFeedbackType" class="shot-type"></span>
           <strong id="shotFeedbackSpeed" class="shot-speed"></strong>

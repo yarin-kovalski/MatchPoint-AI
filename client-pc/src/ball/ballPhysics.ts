@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { BALL_CONFIG } from "./ballConfig.js";
 import { netHeightAt, NET_HALF_WIDTH } from "./courtRules.js";
 import { BallSnapshot } from "./ballTypes.js";
+import { FenceSurface, resolveFenceCollision } from "./fenceCollision.js";
 
 export function calculateMagnusAcceleration(spin: THREE.Vector3, velocity: THREE.Vector3, output = new THREE.Vector3()): THREE.Vector3 {
   const acceleration = output.crossVectors(spin, velocity)
@@ -11,7 +12,11 @@ export function calculateMagnusAcceleration(spin: THREE.Vector3, velocity: THREE
   return acceleration;
 }
 
-export type BallPhysicsEvent = { type: "bounce" | "net"; point: THREE.Vector3 };
+export type BallPhysicsEvent = {
+  type: "bounce" | "net" | "fence";
+  point: THREE.Vector3;
+  surface?: FenceSurface;
+};
 
 export function stepBallPhysics(ball: BallSnapshot, deltaSeconds: number, onEvent?: (event: BallPhysicsEvent) => void): boolean {
   let remaining = Math.min(deltaSeconds, 0.1);
@@ -49,6 +54,8 @@ export function stepBallPhysics(ball: BallSnapshot, deltaSeconds: number, onEven
         }
       }
     }
+    const fenceCollision = resolveFenceCollision(ball, start, dt);
+    if (fenceCollision) onEvent?.({ type: "fence", point: fenceCollision.point, surface: fenceCollision.surface });
     if (ball.position.y < floor && ball.velocity.y < 0) {
       // Resolve at first floor contact, not the end of the render frame.
       const fraction = THREE.MathUtils.clamp((start.y - floor) / (start.y - ball.position.y), 0, 1);
