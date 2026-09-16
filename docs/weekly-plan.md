@@ -1,5 +1,13 @@
 # One-Week Execution Plan
 
+## Contact face, spin, and continuation response
+
+- [x] Use signed racket-face pitch at contact as a direct launch-arc control.
+- [x] Increase sensitivity to low-to-high and high-to-low brush paths for topspin and slice.
+- [x] Sample each new phone frame during the first 260 ms of follow-through and use continued motion to refine depth and spin.
+- [x] Update the live prediction and stored technique data so the bounce and session report describe the same result.
+- [x] Keep continuation bounded and preserve natural net, short, long, and wide outcomes.
+
 ## Expo SDK 57 Compatibility
 
 The physical iPhone confirms its Expo Go requires SDK 57. Restore SDK 57 and align dependencies using Expo install --fix. Keep the existing LAN detection, force Expo Go, and remove SDK 54 offline startup. No controller or game changes are in scope.

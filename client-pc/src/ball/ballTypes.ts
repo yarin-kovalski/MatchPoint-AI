@@ -16,6 +16,7 @@ export type BallSpeedPreset = "slow" | "normal" | "fast";
 
 export type EasyHitMotion = {
   valid: boolean;
+  sensorTimestamp?: number;
   angularSpeed: number;
   angularVelocityWorld?: THREE.Vector3;
   accelerationMagnitude: number;

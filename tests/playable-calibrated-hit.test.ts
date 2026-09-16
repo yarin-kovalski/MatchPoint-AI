@@ -258,6 +258,40 @@ test("Training tolerates a single motion channel dipping during an active forwar
   assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "training" }).accepted, false);
 });
 
+test("new post-contact sensor samples deepen a continuing slice and increase its spin", () => {
+  const controller = new BallController();
+  const profile = createDefaultTrajectoryProfile("forehand", "right");
+  const first = motion("forehand");
+  first.sensorTimestamp = 1000;
+  first.angularSpeed = 6;
+  first.motionUpwardScore = -0.65;
+  controller.launch("guaranteedForehand", "right", "normal", 0, "one-handed", undefined, profile);
+  controller.ball.bounceCount = 1;
+  controller.ball.contactDeadline = 1000;
+  controller.ball.secondBounceDeadline = 1800;
+  controller.ball.position.fromArray(profile.contactPointWorld);
+  controller.ball.previousPosition.copy(controller.ball.position);
+  controller.ball.velocity.set(0, 1, 4);
+  const racket = new THREE.Matrix4().compose(
+    controller.ball.position.clone(), new THREE.Quaternion(), new THREE.Vector3(0.01, 0.01, 0.01)
+  );
+  controller.update(0, 1000, racket, snapshot("forehand"), null, "easy", first, true, profile, true, "training");
+  assert.equal(controller.ball.hit, true);
+  assert.equal(controller.ball.spinType, "slice");
+  const initialHorizontalSpeed = Math.hypot(controller.ball.velocity.x, controller.ball.velocity.z);
+  const initialSpin = controller.ball.spinVector.length();
+  const initialBounceDepth = controller.lastResponse!.prediction.bouncePoint!.z;
+
+  const continued = motion("forehand");
+  continued.sensorTimestamp = 1020;
+  continued.angularSpeed = 6;
+  continued.motionUpwardScore = -0.65;
+  controller.update(0, 1020, racket, snapshot("forehand"), null, "easy", continued, true, profile, true, "training");
+  assert.ok(Math.hypot(controller.ball.velocity.x, controller.ball.velocity.z) > initialHorizontalSpeed);
+  assert.ok(controller.ball.spinVector.length() > initialSpin);
+  assert.ok(controller.lastResponse!.prediction.bouncePoint!.z < initialBounceDepth);
+});
+
 test("Training backhand mirrors forehand logic with its measured timing and forward allowance", () => {
   const forehand = motion("forehand");
   const backhand = motion("backhand");

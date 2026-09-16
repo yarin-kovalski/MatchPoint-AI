@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { normalizeMotionRotationRate } from "../virtucourt-mobile/deviceMotionGyro.js";
-import { solveTrainingReturn } from "../client-pc/src/ball/trainingReturn.js";
+import { solveTrainingReturn, trainingFollowThroughStep } from "../client-pc/src/ball/trainingReturn.js";
 import { judgeReturnBounce, netHeightAt } from "../client-pc/src/ball/courtRules.js";
 import { stepBallPhysics } from "../client-pc/src/ball/ballPhysics.js";
 import { BallController } from "../client-pc/src/ball/BallController.js";
@@ -164,6 +164,32 @@ test("first-bounce rulings agree at 30/60/120 FPS and stay final after the ball 
     controller.update(1 / fps, 2050, new THREE.Matrix4(), snapshot, null, "off", null, false);
     assert.deepEqual(results, [expected]);
   }
+});
+
+test("racket-face openness directly raises arc while a closed face lowers it", () => {
+  const closedMotion = motion(6), squareMotion = motion(6), openMotion = motion(6);
+  closedMotion.racketFaceNormal.set(0, -0.5, -0.866).normalize();
+  openMotion.racketFaceNormal.set(0, 0.5, -0.866).normalize();
+  const closed = solveTrainingReturn(start, closedMotion);
+  const square = solveTrainingReturn(start, squareMotion);
+  const open = solveTrainingReturn(start, openMotion);
+  assert.ok(closed.launchAngleDegrees < square.launchAngleDegrees - 12);
+  assert.ok(open.launchAngleDegrees > square.launchAngleDegrees + 15);
+  assert.ok(closed.prediction.apexPoint.y < square.prediction.apexPoint.y);
+  assert.ok(open.prediction.apexPoint.y > square.prediction.apexPoint.y);
+});
+
+test("continued slice follow-through adds bounded depth and backspin per new sensor sample", () => {
+  const continuing = motion(6, -0.6);
+  const stopped = motion(0.2, -0.05);
+  const activeStep = trainingFollowThroughStep(continuing, "slice", 100, 0.02);
+  const stoppedStep = trainingFollowThroughStep(stopped, "slice", 100, 0.02);
+  const duplicateStep = trainingFollowThroughStep(continuing, "slice", 100, 0);
+  assert.ok(activeStep.forwardSpeedDelta > 0);
+  assert.ok(activeStep.signedSpinDelta < 0);
+  assert.equal(stoppedStep.forwardSpeedDelta, 0);
+  assert.equal(duplicateStep.forwardSpeedDelta, 0);
+  assert.ok(activeStep.forwardSpeedDelta < 0.11);
 });
 
 test("separate swings reset their peak speed and expired Expo intent cannot hit", () => {

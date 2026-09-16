@@ -1778,6 +1778,7 @@ function createEasyHitMotion(): EasyHitMotion | null {
   const forwardSwing = forwardSwingFusion.snapshot(techniqueTimestamp, playerBasis) ?? undefined;
   return {
     valid: latestSensorFrame.valid,
+    sensorTimestamp: latestSensorFrame.timestamp,
     angularSpeed: latestSensorFrame.angularSpeed,
     angularVelocityWorld: latestSensorFrame.angularVelocityWorld,
     accelerationMagnitude: latestSensorFrame.accelerationMagnitude,

@@ -4,7 +4,7 @@ import { BALL_CONFIG } from "./ballConfig.js";
 import { getLaunchParameters } from "./ballLauncher.js";
 import { isBallOutOfBounds } from "./ballPhysics.js";
 import { advanceBallFixedStep, createFixedStepPhysicsState } from "./fixedStepBallPhysics.js";
-import { calculateOutgoingVelocity } from "./ballResponse.js";
+import { calculateOutgoingVelocity, predictReturnTrajectory } from "./ballResponse.js";
 import { estimateSecondBounceDelay, solveVelocity } from "./ballDelivery.js";
 import { interpolateRacketMatrix, sweepBallAgainstMovingRacket } from "./racketCollider.js";
 import { EasyTrajectoryAssistResult } from "./easyTrajectoryAssist.js";
@@ -13,7 +13,7 @@ import { TrajectoryCalibrationProfile } from "./trajectoryCalibration.js";
 import { evaluatePlayableCalibratedHit, PlayableHitDecision } from "./playableCalibratedHit.js";
 import { ContactLifecycle, isSuccessfulTennisOutcome, PhysicalImpactResolution, resolvePhysicalImpact } from "./contactRealism.js";
 import { judgeReturnBounce, ReturnResult } from "./courtRules.js";
-import { solveTrainingReturn } from "./trainingReturn.js";
+import { solveTrainingReturn, trainingFollowThroughStep } from "./trainingReturn.js";
 import { solveSpinFlight } from "./spinFlight.js";
 
 export function shouldEnterContactZone(ball: BallSnapshot, now: number, assistMode: AssistMode = "prototype"): boolean {
@@ -66,6 +66,8 @@ export class BallController {
   private sweptContact: { collision: RacketCollisionResult; timestamp: number } | null = null;
   private readonly sweptHistory: Array<{ collision: RacketCollisionResult; timestamp: number }> = [];
   private impactResolvedAt = 0;
+  private trainingImpactAt = 0;
+  private lastFollowThroughSensorTimestamp: number | null = null;
   readonly sweptDebug = {
     minimumSweptDistance: Number.POSITIVE_INFINITY,
     sweptPlaneCrossed: false,
@@ -134,6 +136,8 @@ export class BallController {
     this.lastPhysicalImpact = null;
     this.contactLifecycle = "APPROACHING";
     this.impactResolvedAt = 0;
+    this.trainingImpactAt = 0;
+    this.lastFollowThroughSensorTimestamp = null;
     this.hasPreviousColliderMatrix = false;
     this.sweptContact = null;
     this.sweptHistory.length = 0;
@@ -176,6 +180,7 @@ export class BallController {
       if (this.ball.state === "MISSED" && now >= this.resetAt) this.reset();
       return;
     }
+    this.applyTrainingFollowThrough(now, easyMotion ?? null);
     const physics = advanceBallFixedStep(this.ball, deltaSeconds, this.physicsState);
     const bounced = physics.bounced;
     if ((this.ball.hit || this.ball.state === "RETURNED") && !this.lastReturnResult) {
@@ -451,6 +456,8 @@ export class BallController {
     this.ball.spinType = physical.spinType === "TOPSPIN" ? "topspin" : physical.spinType === "SLICE" ? "slice" : "flat";
     this.ball.spinStrength = physical.spinRateRadiansPerSecond;
     this.ball.state = "RETURNED";
+    this.trainingImpactAt = now;
+    this.lastFollowThroughSensorTimestamp = motion.sensorTimestamp ?? null;
     this.lastResponse = response;
     this.lastPhysicalImpact = physical;
     if (!isSuccessfulTennisOutcome(physical.outcome)) {
@@ -483,6 +490,62 @@ export class BallController {
     this.hitDebug.rejectionReason = "none";
     this.finalResultEmitted = true;
     this.onHit?.(event);
+  }
+
+  private applyTrainingFollowThrough(now: number, motion: EasyHitMotion | null): void {
+    if (!motion || !this.ball.hit || this.ball.state !== "RETURNED" || this.lastReturnResult ||
+        this.trainingImpactAt <= 0 || motion.sensorTimestamp === undefined ||
+        motion.sensorTimestamp === this.lastFollowThroughSensorTimestamp) return;
+    const elapsedMs = now - this.trainingImpactAt;
+    const previousTimestamp = this.lastFollowThroughSensorTimestamp ?? motion.sensorTimestamp;
+    const sensorStepSeconds = (motion.sensorTimestamp - previousTimestamp) / 1000;
+    this.lastFollowThroughSensorTimestamp = motion.sensorTimestamp;
+    const step = trainingFollowThroughStep(
+      motion, this.ball.spinType, elapsedMs, sensorStepSeconds
+    );
+    if (step.continuity <= 0) return;
+
+    const horizontalDirection = new THREE.Vector3(this.ball.velocity.x, 0, this.ball.velocity.z);
+    if (horizontalDirection.lengthSq() <= 1e-8) return;
+    horizontalDirection.normalize();
+    this.ball.velocity.addScaledVector(horizontalDirection, step.forwardSpeedDelta)
+      .clampLength(0, BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
+    if (step.signedSpinDelta !== 0) {
+      const spinAxis = new THREE.Vector3().crossVectors(
+        new THREE.Vector3(0, 1, 0), horizontalDirection
+      ).normalize();
+      this.ball.spinVector.addScaledVector(spinAxis, step.signedSpinDelta);
+      this.ball.angularVelocity.copy(this.ball.spinVector);
+      this.ball.spinStrength = this.ball.spinVector.length();
+    }
+
+    const prediction = predictReturnTrajectory(
+      this.ball.position, this.ball.velocity, this.ball.spinVector
+    );
+    if (this.lastPhysicalImpact) {
+      this.lastPhysicalImpact.outgoingVelocity.copy(this.ball.velocity);
+      this.lastPhysicalImpact.assistedOutgoingVelocity.copy(this.ball.velocity);
+      this.lastPhysicalImpact.outgoingAngularVelocity.copy(this.ball.spinVector);
+      this.lastPhysicalImpact.spinRateRadiansPerSecond = this.ball.spinVector.length();
+      this.lastPhysicalImpact.prediction = prediction;
+      this.lastPhysicalImpact.launchAngleRadians = Math.atan2(
+        this.ball.velocity.y, Math.hypot(this.ball.velocity.x, this.ball.velocity.z)
+      );
+      this.lastPhysicalImpact.predictedNetClearance = prediction.netCrossingPoint
+        ? prediction.netCrossingPoint.y - BALL_CONFIG.launch.netHeight - this.ball.physicsRadius
+        : null;
+    }
+    if (this.lastHit) {
+      this.lastHit.outgoingVelocity.copy(this.ball.velocity);
+      this.lastHit.outgoingSpeed = this.ball.velocity.length();
+      this.lastHit.spinVector.copy(this.ball.spinVector);
+    }
+    if (this.lastResponse) {
+      this.lastResponse.velocity.copy(this.ball.velocity);
+      this.lastResponse.spinVector.copy(this.ball.spinVector);
+      this.lastResponse.speed = this.ball.velocity.length();
+      this.lastResponse.prediction = prediction;
+    }
   }
 
   private tryHit(now: number, stroke: StrokeDetectorSnapshot, contact: EstimatedRacketContact | null, assistMode: AssistMode = "prototype", easyMotion: EasyHitMotion | null = null): void {

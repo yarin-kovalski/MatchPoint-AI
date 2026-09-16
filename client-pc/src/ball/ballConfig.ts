@@ -129,6 +129,17 @@ export const BALL_CONFIG = {
       minimumAngularSpeed: 1.2, minimumAcceleration: 2.5, minimumForwardDriveScore: 0.18
     }
   },
+  trainingFollowThrough: {
+    measurementWindowMs: 260,
+    minimumAngularSpeed: 0.9,
+    fullAngularSpeed: 7,
+    maximumSensorStepSeconds: 0.05,
+    sliceForwardAcceleration: 5.2,
+    topspinForwardAcceleration: 3.8,
+    flatForwardAcceleration: 2.4,
+    sliceSpinAcceleration: 46,
+    topspinSpinAcceleration: 58
+  },
   sweptContact: {
     historyMs: 140,
     samplesPerFrame: 5,

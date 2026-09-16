@@ -3,6 +3,7 @@ import { BALL_CONFIG } from "./ballConfig.js";
 import type { EasyHitMotion } from "./ballTypes.js";
 import { predictReturnTrajectory } from "./ballResponse.js";
 import type { PhysicalSpinType } from "./contactRealism.js";
+import type { SpinType } from "../strokeDetection/strokeTypes.js";
 export { isReturnInCourt } from "./courtRules.js";
 
 /** Sensor-driven launch model, evaluated once at contact. No landing target. */
@@ -25,11 +26,11 @@ export function solveTrainingReturn(start: THREE.Vector3, motion: EasyHitMotion)
   const pathYaw = Math.atan2(lateralSpeed, Math.max(1, forwardSpeed));
   const yaw = THREE.MathUtils.clamp((faceYaw * 0.6 + pathYaw * 0.5 + lateralAcceleration * 0.012) * 0.9, -1.2, 1.2);
   const direction = new THREE.Vector3(Math.sin(yaw), 0, -Math.cos(yaw));
-  const brush = Math.sign(verticalPath) * Math.max(0, Math.abs(verticalPath) - 0.12) / 0.88;
+  const brush = Math.sign(verticalPath) * Math.max(0, Math.abs(verticalPath) - 0.06) / 0.94;
   const sideBrush = THREE.MathUtils.clamp((pathYaw - faceYaw) * 0.6 + lateralAcceleration / 80, -1, 1);
   // Backspin lift otherwise nearly cancels gravity with the demo's Magnus gain.
   // Keep a continuous slice response while retaining a low, slower launch.
-  const brushSpin = brush * (18 + 42 * power) * (brush < 0 ? 0.45 : 1);
+  const brushSpin = brush * (24 + 52 * power) * (brush < 0 ? 0.55 : 1);
   const spin = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), direction)
     .multiplyScalar(brushSpin);
   spin.y += sideBrush * (8 + 22 * power);
@@ -37,8 +38,16 @@ export function solveTrainingReturn(start: THREE.Vector3, motion: EasyHitMotion)
     : Math.abs(spin.y) > Math.abs(brushSpin) * 1.5 ? "SIDE_SPIN"
       : Math.abs(brushSpin) > Math.abs(spin.y) * 1.5 ? brush > 0 ? "TOPSPIN" : "SLICE" : "MIXED_SPIN";
   const horizontalSpeed = (5 + 17 * power) * (1 - Math.max(0, -brush) * 0.3);
-  const angle = THREE.MathUtils.degToRad(20 + Math.max(0, verticalPath) * 16 +
-    Math.min(0, verticalPath) * 5 + THREE.MathUtils.clamp(face.y, -0.7, 0.7) * 24);
+  // Face pitch is the primary launch-angle control: an open face raises the
+  // arc and a closed face drives it lower. Swing path still adds topspin/slice
+  // shape independently, so two strokes with the same face need not fly alike.
+  const faceOpenDegrees = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(face.y, -0.82, 0.82)));
+  const launchAngleDegrees = THREE.MathUtils.clamp(
+    18 + faceOpenDegrees * 0.72 + Math.max(0, verticalPath) * 15 + Math.min(0, verticalPath) * 6,
+    4,
+    50
+  );
+  const angle = THREE.MathUtils.degToRad(launchAngleDegrees);
   const rawVelocity = direction.clone().multiplyScalar(horizontalSpeed);
   rawVelocity.y = Math.tan(angle) * horizontalSpeed;
   rawVelocity.clampLength(0, BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
@@ -52,5 +61,44 @@ export function solveTrainingReturn(start: THREE.Vector3, motion: EasyHitMotion)
   }
   velocity.clampLength(0, BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
   return { velocity, rawVelocity, spin, spinType, power, verticalPath, headSpeed,
+    faceOpenDegrees, launchAngleDegrees,
     rawPrediction, prediction: predictReturnTrajectory(start, velocity, spin) };
+}
+
+export function trainingFollowThroughStep(
+  motion: EasyHitMotion,
+  spinType: SpinType,
+  elapsedMs: number,
+  sensorStepSeconds: number
+): { forwardSpeedDelta: number; signedSpinDelta: number; continuity: number } {
+  const config = BALL_CONFIG.trainingFollowThrough;
+  if (!motion.valid || elapsedMs < 0 || elapsedMs > config.measurementWindowMs ||
+      sensorStepSeconds <= 0 || motion.angularSpeed < config.minimumAngularSpeed) {
+    return { forwardSpeedDelta: 0, signedSpinDelta: 0, continuity: 0 };
+  }
+  const speedEvidence = THREE.MathUtils.smoothstep(
+    motion.angularSpeed, config.minimumAngularSpeed, config.fullAngularSpeed
+  );
+  const intentEvidence = THREE.MathUtils.clamp(
+    Math.max(0, motion.motionForwardScore) * 0.55 +
+    Math.abs(motion.motionUpwardScore ?? 0) * 0.3 + 0.15,
+    0,
+    1
+  );
+  const windowTaper = 1 - THREE.MathUtils.smoothstep(
+    elapsedMs, config.measurementWindowMs * 0.55, config.measurementWindowMs
+  );
+  const continuity = speedEvidence * intentEvidence * windowTaper;
+  const seconds = Math.min(sensorStepSeconds, config.maximumSensorStepSeconds);
+  const forwardAcceleration = spinType === "slice"
+    ? config.sliceForwardAcceleration
+    : spinType === "topspin" ? config.topspinForwardAcceleration : config.flatForwardAcceleration;
+  const spinAcceleration = spinType === "slice"
+    ? -config.sliceSpinAcceleration
+    : spinType === "topspin" ? config.topspinSpinAcceleration : 0;
+  return {
+    forwardSpeedDelta: forwardAcceleration * continuity * seconds,
+    signedSpinDelta: spinAcceleration * continuity * seconds,
+    continuity
+  };
 }
