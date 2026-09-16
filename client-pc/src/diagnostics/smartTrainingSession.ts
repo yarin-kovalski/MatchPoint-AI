@@ -106,8 +106,8 @@ export type TrainingSessionSummary = {
   averageSpinLevel: number;
   averageTopspinLevel: number;
   averageSliceLevel: number;
-  averageUnderBallScore: number;
-  averageArcHeightMeters: number;
+  averageFaceOpennessLevel: number;
+  averageArcLevel: number;
   followThroughCompletion: number;
 };
 
@@ -116,7 +116,7 @@ export type TrainingImprovement = {
   targetAccuracyPoints: number;
   averageSpeedKmh: number;
   spinLevelPoints: number;
-  underBallPoints: number;
+  faceOpennessPoints: number;
   followThroughPoints: number;
 };
 
@@ -173,8 +173,8 @@ export class SmartTrainingSession {
     let spinLevelTotal = 0;
     let topspinLevelTotal = 0;
     let sliceLevelTotal = 0;
-    let underBallTotal = 0;
-    let arcHeightTotal = 0;
+    let faceOpennessTotal = 0;
+    let arcLevelTotal = 0;
     let completeFinishes = 0;
 
     for (const shot of this.shots) {
@@ -208,8 +208,8 @@ export class SmartTrainingSession {
         spinLevelTotal += shot.technique.spinLevel;
         topspinLevelTotal += shot.technique.topspinLevel;
         sliceLevelTotal += shot.technique.sliceLevel;
-        underBallTotal += shot.technique.underBallScore;
-        arcHeightTotal += shot.technique.apexHeightMeters;
+        faceOpennessTotal += shot.technique.racketFaceOpennessLevel;
+        arcLevelTotal += shot.technique.arcLevel;
         if (shot.technique.followThrough.finishedAcrossFarShoulder) completeFinishes += 1;
       }
     }
@@ -238,8 +238,8 @@ export class SmartTrainingSession {
       averageSpinLevel: average(spinLevelTotal, techniqueShots),
       averageTopspinLevel: average(topspinLevelTotal, techniqueShots),
       averageSliceLevel: average(sliceLevelTotal, techniqueShots),
-      averageUnderBallScore: average(underBallTotal, techniqueShots),
-      averageArcHeightMeters: roundAverage(arcHeightTotal, techniqueShots, 2),
+      averageFaceOpennessLevel: roundAverage(faceOpennessTotal, techniqueShots, 1),
+      averageArcLevel: roundAverage(arcLevelTotal, techniqueShots, 1),
       followThroughCompletion: percentage(completeFinishes, techniqueShots)
     };
   }
@@ -251,7 +251,7 @@ export class SmartTrainingSession {
       targetAccuracyPoints: summary.targetAccuracy - previous.targetAccuracy,
       averageSpeedKmh: round(summary.averageSwingSpeedKmh - previous.averageSwingSpeedKmh, 1),
       spinLevelPoints: summary.averageSpinLevel - previous.averageSpinLevel,
-      underBallPoints: summary.averageUnderBallScore - previous.averageUnderBallScore,
+      faceOpennessPoints: round(summary.averageFaceOpennessLevel - previous.averageFaceOpennessLevel, 1),
       followThroughPoints: summary.followThroughCompletion - previous.followThroughCompletion
     } : null;
     return {
@@ -322,8 +322,12 @@ function buildTrainingFeedback(summary: TrainingSessionSummary, improvement: Tra
   if (summary.unknownStrokes > Math.ceil(summary.attempts * 0.25)) {
     feedback.push("Make the preparation path clearer so the phone can distinguish forehand from backhand.");
   }
-  if (summary.averageTopspinLevel > 0 && summary.averageUnderBallScore < 38) {
-    feedback.push("For heavier topspin, let the racket head drop farther below the ball before brushing low to high.");
+  if (summary.averageFaceOpennessLevel >= 7.5) {
+    feedback.push("Your racket face is very open at contact. Bring it closer to square to control launch and depth.");
+  } else if (summary.averageFaceOpennessLevel > 0 && summary.averageFaceOpennessLevel <= 3.5) {
+    feedback.push("Your racket face is closed at contact. Open it slightly to create safer net clearance.");
+  } else if (summary.averageTopspinLevel > 0 && summary.averageFaceOpennessLevel >= 4 && summary.averageFaceOpennessLevel <= 6.5) {
+    feedback.push("Your contact face is controlled. Keep it near square while the racket brushes low to high for topspin.");
   }
   if (summary.averageSliceLevel > 0 && summary.averageSliceLevel < 40) {
     feedback.push("For a more controlled slice, keep a clear high-to-low path while driving through the ball.");

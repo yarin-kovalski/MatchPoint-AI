@@ -61,9 +61,13 @@ test("smart trainer exposes live motion metrics and session feedback controls", 
   for (const id of [
     "trainerDetectedStroke", "trainerSwingSpeed", "trainerTiming", "trainerAccuracy",
     "trainerHitRatio", "trainerStrokeCounts", "trainerAverageSpeed", "trainerBestStreak",
-    "finishTrainingSession", "newTrainingSession", "trainingSessionReport", "trainerReportBreakdown", "trainerFeedbackList"
+    "trainerSpinMeter", "trainerFaceMeter", "trainerArcMeter", "trainerFinishMeter",
+    "finishTrainingSession", "newTrainingSession", "downloadTrainingReport",
+    "trainingSessionReport", "trainerReportBreakdown", "trainerFeedbackList"
   ]) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(html, /Visible shooting targets will arrive with Game mode/);
+  assert.match(html, /1 closed .* 5 square .* 10 open/);
+  assert.match(css, /@keyframes trainer-meter-rise/);
 });
 
 test("narrow fallback stacks panels without horizontal overflow", () => {

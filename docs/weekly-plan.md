@@ -151,7 +151,8 @@ Outcome correction:
 Acceptance criteria:
 
 - Every returned shot reports spin type and intensity, including topspin and slice levels derived from the physical impact model.
-- The trainer explains the racket's low-to-high or high-to-low path, estimates how well the player got under the ball, and reports launch angle, apex, and net clearance.
+- The trainer explains the racket's low-to-high or high-to-low path and measures signed racket-face openness at the exact contact frame.
+- Spin, face openness, arc, and finish use animated ten-segment meters. Face level defines 1 as very closed, 5 as square, and 10 as very open; arc defines 1-3 as low, 4-7 as medium, and 8-10 as high.
 - Forehand and backhand follow-through are evaluated with mirrored, handedness-aware cross-body logic and an explicit far-shoulder finish result.
 - The live panel and completed-session summary show technique measurements alongside outcome, timing, speed, and accuracy.
 - A completed session can be downloaded as a styled standalone HTML report with session changes, coaching, and representative strong and focus shots.

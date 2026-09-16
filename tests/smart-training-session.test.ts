@@ -21,7 +21,7 @@ test("smart session aggregates stroke detection, speed, timing, ratio, accuracy,
     earlyHits: 1, onTimeHits: 1, lateHits: 1, noContact: 0, bestStreak: 2,
     netMisses: 0, wideMisses: 0, longMisses: 0, shortMisses: 0,
     averageSpinLevel: 0, averageTopspinLevel: 0, averageSliceLevel: 0,
-    averageUnderBallScore: 0, averageArcHeightMeters: 0, followThroughCompletion: 0
+    averageFaceOpennessLevel: 0, averageArcLevel: 0, followThroughCompletion: 0
   });
 });
 

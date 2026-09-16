@@ -884,6 +884,19 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 .trainer-session-grid > div { padding: 9px 4px; border-bottom: 1px solid #344745; }
 .trainer-live-grid span, .trainer-session-grid span { display: block; color: #91a8a0; font-size: 10px; }
 .trainer-live-grid strong, .trainer-session-grid strong { display: block; margin-top: 4px; color: #f1f3e6; font-size: 17px; font-variant-numeric: tabular-nums; }
+.trainer-live-grid .technique-card { min-height: 118px; }
+.technique-card small { display:block; min-height:28px; margin-top:3px; color:#78938a; font-size:9px; line-height:1.35; }
+.technique-meter { display:grid; grid-template-columns:repeat(10,1fr); align-items:end; gap:3px; height:24px; margin-top:7px; padding:4px; border:1px solid #2d4941; border-radius:6px; background:#081512; overflow:hidden; }
+.technique-meter i { display:block; height:42%; border-radius:2px; background:#243b35; transform-origin:bottom; transition:height .28s ease,background .28s ease,box-shadow .28s ease; }
+.technique-meter i:nth-child(2n) { height:58%; }
+.technique-meter i:nth-child(3n) { height:76%; }
+.technique-meter i.is-active { height:100%; background:#75d69b; box-shadow:0 0 7px rgba(117,214,155,.45); }
+.technique-meter i.is-active:nth-child(n+4) { background:#b9dc72; box-shadow:0 0 7px rgba(185,220,114,.45); }
+.technique-meter i.is-active:nth-child(n+8) { background:#f1c75b; box-shadow:0 0 8px rgba(241,199,91,.5); }
+.technique-meter.meter-pulse i.is-active { animation:trainer-meter-rise .5s cubic-bezier(.2,.85,.3,1.25) both; }
+.technique-meter.meter-pulse i:nth-child(2){animation-delay:25ms}.technique-meter.meter-pulse i:nth-child(3){animation-delay:50ms}.technique-meter.meter-pulse i:nth-child(4){animation-delay:75ms}.technique-meter.meter-pulse i:nth-child(5){animation-delay:100ms}.technique-meter.meter-pulse i:nth-child(6){animation-delay:125ms}.technique-meter.meter-pulse i:nth-child(7){animation-delay:150ms}.technique-meter.meter-pulse i:nth-child(8){animation-delay:175ms}.technique-meter.meter-pulse i:nth-child(9){animation-delay:200ms}.technique-meter.meter-pulse i:nth-child(10){animation-delay:225ms}
+@keyframes trainer-meter-rise { 0%{transform:scaleY(.12);filter:brightness(2)} 72%{transform:scaleY(1.12)} 100%{transform:scaleY(1);filter:brightness(1)} }
+@media (prefers-reduced-motion:reduce){.technique-meter.meter-pulse i.is-active{animation:none}}
 .trainer-target-note { margin: 12px 0; color: #9fb0aa; font-size: 11px; line-height: 1.5; }
 .trainer-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .trainer-actions button { min-height: 40px; }
