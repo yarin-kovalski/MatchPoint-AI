@@ -888,12 +888,15 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 .trainer-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .trainer-actions button { min-height: 40px; }
 .trainer-actions .secondary-button { background: transparent; border: 1px solid #60706d; color: #d5ded6; }
+.trainer-actions .report-download { grid-column: 1 / -1; background: linear-gradient(135deg,#bddc83,#91bd6d); color:#132018; }
+.trainer-actions .report-download:disabled { opacity:.42; cursor:not-allowed; }
 .training-session-report { margin-top: 14px; padding: 14px; border-left: 3px solid #cfe59d; border-radius: 4px 10px 10px 4px; background: rgba(7,17,18,.55); }
 .training-session-report[hidden] { display: none; }
 .report-heading strong { color: #f0f3df; }
 .report-heading span { color: #b9d58b; font-size: 10px; text-align: right; }
 .training-session-report p { color: #d7dfd8; font-size: 12px; line-height: 1.5; }
 .training-session-report .trainer-report-breakdown { color: #9fb4ab; }
+.training-session-report .trainer-technique-summary { padding:10px; border-radius:8px; background:rgba(189,220,131,.08); color:#d8e8bd; }
 .training-session-report ul { margin: 8px 0 0; padding-left: 18px; color: #b8c7c0; font-size: 12px; line-height: 1.55; }
 .player-status { color: #a4b8ae; font-size: 11px; line-height: 1.6; margin-top: 18px; }
 .developer-panel { border-color: #354446; }

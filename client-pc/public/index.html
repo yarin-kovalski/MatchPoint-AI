@@ -97,6 +97,10 @@
               <div><span>Swing speed</span><strong id="trainerSwingSpeed">0 km/h</strong></div>
               <div><span>Hit timing</span><strong id="trainerTiming">--</strong></div>
               <div><span>Target accuracy</span><strong id="trainerAccuracy">0%</strong></div>
+              <div><span>Spin level</span><strong id="trainerSpinLevel">--</strong></div>
+              <div><span>Brush path</span><strong id="trainerBrushPath">--</strong></div>
+              <div><span>Shot arc</span><strong id="trainerShotArc">--</strong></div>
+              <div><span>Ending of shot</span><strong id="trainerFollowThrough">--</strong></div>
             </div>
             <div class="trainer-session-grid">
               <div><span>Hit / miss</span><strong id="trainerHitRatio">0 / 0</strong></div>
@@ -108,11 +112,13 @@
             <div class="trainer-actions">
               <button id="finishTrainingSession" type="button">Finish session</button>
               <button id="newTrainingSession" type="button" class="secondary-button">New session</button>
+              <button id="downloadTrainingReport" type="button" class="report-download" disabled>Download report</button>
             </div>
             <section id="trainingSessionReport" class="training-session-report" aria-live="polite" hidden>
               <div class="report-heading"><strong>Session feedback</strong><span id="trainerImprovement">First recorded session</span></div>
               <p id="trainerReportSummary"></p>
               <p id="trainerReportBreakdown" class="trainer-report-breakdown"></p>
+              <p id="trainerTechniqueSummary" class="trainer-technique-summary"></p>
               <ul id="trainerFeedbackList"></ul>
             </section>
           </section>

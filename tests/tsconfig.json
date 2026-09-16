@@ -39,6 +39,8 @@
     "racket-origin-stability.test.ts",
     "training-miss-diagnostics.test.ts",
     "smart-training-session.test.ts",
+    "stroke-technique-analysis.test.ts",
+    "training-report-export.test.ts",
     "../client-pc/src/ball/validatedTrajectoryPreset.ts",
     "../client-pc/src/diagnostics/**/*.ts",
     "../client-pc/src/motion/**/*.ts",

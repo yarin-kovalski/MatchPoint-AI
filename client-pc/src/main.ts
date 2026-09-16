@@ -20,6 +20,7 @@ import { canLaunchPracticeFeed, FeedVariationLevel, FeedVariationResult, generat
 import { createArchetypeFeed, FeedArchetype } from "./ball/feedArchetypes.js";
 import { solveSpinFlight } from "./ball/spinFlight.js";
 import type { ReturnResult } from "./ball/courtRules.js";
+import type { PhysicalImpactResolution } from "./ball/contactRealism.js";
 import {
   configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createCourtBackdrop,
   updateCourtBackdrop,
@@ -46,6 +47,9 @@ import {
   isSuccessfulTrainingReturn, SmartTrainingSession, TrainingSessionReport,
   TrainingStrokeDetection, TrainingStrokeEvidence
 } from "./diagnostics/smartTrainingSession.js";
+import { createShotTechnique, FollowThroughAnalyzer } from "./diagnostics/strokeTechniqueAnalysis.js";
+import type { ShotTechnique } from "./diagnostics/strokeTechniqueAnalysis.js";
+import { createTrainingReportHtml } from "./diagnostics/trainingReportExport.js";
 import { adaptiveVisualSmoothingFactor, SensorResampler, updateVisualRacketQuaternion } from "./motion/sensorResampler.js";
 import { ForwardSwingFusion } from "./motion/forwardSwingFusion.js";
 import { stabilizeTrainingRacketOrigin } from "./motion/racketOriginStability.js";
@@ -290,12 +294,18 @@ const elements = {
   trainerSwingSpeed: getElement("trainerSwingSpeed"),
   trainerTiming: getElement("trainerTiming"),
   trainerAccuracy: getElement("trainerAccuracy"),
+  trainerSpinLevel: getElement("trainerSpinLevel"),
+  trainerBrushPath: getElement("trainerBrushPath"),
+  trainerShotArc: getElement("trainerShotArc"),
+  trainerFollowThrough: getElement("trainerFollowThrough"),
   trainerHitRatio: getElement("trainerHitRatio"),
   trainerStrokeCounts: getElement("trainerStrokeCounts"),
   trainerAverageSpeed: getElement("trainerAverageSpeed"),
   trainerBestStreak: getElement("trainerBestStreak"),
+  trainerTechniqueSummary: getElement("trainerTechniqueSummary"),
   finishTrainingSession: getElement<HTMLButtonElement>("finishTrainingSession"),
   newTrainingSession: getElement<HTMLButtonElement>("newTrainingSession"),
+  downloadTrainingReport: getElement<HTMLButtonElement>("downloadTrainingReport"),
   trainingSessionReport: getElement("trainingSessionReport"),
   trainerImprovement: getElement("trainerImprovement"),
   trainerReportSummary: getElement("trainerReportSummary"),
@@ -431,17 +441,20 @@ let contactFlashUntil = 0;
 let assistMode: AssistMode = "easy";
 let playerAssistLevel: PlayerAssistLevel = "training";
 const trainingSessionCalibration = new TrainingSessionCalibration();
-const TRAINING_HISTORY_KEY = "matchpoint.smart-training-history.v2";
+const TRAINING_HISTORY_KEY = "matchpoint.smart-training-history.v3";
 const smartTrainingSession = new SmartTrainingSession();
 const trainingStrokeEvidence = new TrainingStrokeEvidence();
+const followThroughAnalyzer = new FollowThroughAnalyzer();
 let trainingSessionHistory = loadTrainingSessionHistory();
 let smartTrainingSessionFinalized = false;
+let lastCompletedTrainingReport: TrainingSessionReport | null = trainingSessionHistory.at(-1) ?? null;
 let pendingReturnedTrainingShot: {
   ballId: string;
   expectedStroke: CalibrationStrokeType;
   detection: TrainingStrokeDetection;
   swingSpeedKmh: number;
   timingOffsetMs: number | null;
+  impact: PhysicalImpactResolution | null;
 } | null = null;
 let ballSpeedPreset: BallSpeedPreset = "normal";
 let activeLaunchPreset: LaunchPreset = "easyForehand";
@@ -1004,6 +1017,12 @@ socket.on("continuous_orientation", (payload: unknown) => {
         confidence: latestStrokeSnapshot.confidence,
         forehandCandidateScore: latestStrokeSnapshot.scores.forehandCandidateScore,
         backhandCandidateScore: latestStrokeSnapshot.scores.backhandCandidateScore,
+        angularSpeed: processedFrame.angularSpeed
+      });
+      if (pendingReturnedTrainingShot) followThroughAnalyzer.observe({
+        relativeQuaternion: processedFrame.relativePhoneQuaternion,
+        sidewaysScore: processedFrame.motionSidewaysScore,
+        upwardScore: processedFrame.motionUpwardScore,
         angularSpeed: processedFrame.angularSpeed
       });
       const expectedStroke = ballController.ball.lockedStrokeType;
@@ -2500,6 +2519,8 @@ function wireBallControls(): void {
   elements.playCalibratedBackhand.addEventListener("click", () => playCalibratedStroke("backhand"));
   elements.finishTrainingSession.addEventListener("click", finishSmartTrainingSession);
   elements.newTrainingSession.addEventListener("click", startNewSmartTrainingSession);
+  elements.downloadTrainingReport.addEventListener("click", downloadLatestTrainingReport);
+  elements.downloadTrainingReport.disabled = lastCompletedTrainingReport === null;
   elements.stopPractice.addEventListener("click", () => {
     elements.calibratedPracticeLoopToggle.checked = false;
     selectedPracticeStroke = null;
@@ -2644,6 +2665,7 @@ function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibra
   latestEasySwingIntent = null;
   peakSwingSpeedKmh = 0;
   trainingStrokeEvidence.reset();
+  followThroughAnalyzer.reset();
   pendingReturnedTrainingShot = null;
   trainingClosestStringBedDistance = Number.POSITIVE_INFINITY;
   trainingStrikeZoneEntryAt = null;
@@ -2736,8 +2758,15 @@ function onBallHit(event: BallHitEvent): void {
       expectedStroke: event.expectedStrokeType,
       detection,
       swingSpeedKmh: currentTrainingSwingSpeed(),
-      timingOffsetMs: ballController.lastPlayableDecision?.timingOffsetMs ?? null
+      timingOffsetMs: ballController.lastPlayableDecision?.timingOffsetMs ?? null,
+      impact: ballController.lastPhysicalImpact
     };
+    followThroughAnalyzer.start(
+      latestSensorFrame?.relativePhoneQuaternion ?? event.racketQuaternion,
+      event.expectedStrokeType,
+      event.handedness,
+      event.backhandStyle
+    );
     showPendingTrainingContact(pendingReturnedTrainingShot);
   }
   if (currentFeedVariation) {
@@ -2780,6 +2809,7 @@ function onBallMiss(event: BallMissEvent): void {
       placementAccuracy: 0,
       missReason: ballController.lastPlayableDecision?.reason ?? event.reason
     }, detection.confidence);
+    followThroughAnalyzer.reset();
   }
   if (playerAssistLevel === "training") {
     lastTrainingMissReasons = classifyTrainingMiss({
@@ -2820,6 +2850,8 @@ function finalizeReturnedTrainingShot(result: ReturnResult, bouncePoint: THREE.V
   const accuracy = success
     ? calculateTrainingTargetAccuracy(bouncePoint, BALL_CONFIG.launch.netDepth)
     : 0;
+  const technique = createShotTechnique(pending.impact, followThroughAnalyzer.finish());
+  followThroughAnalyzer.reset();
   if (success) {
     practiceHits += 1;
     geometryMissStreak = 0;
@@ -2839,7 +2871,8 @@ function finalizeReturnedTrainingShot(result: ReturnResult, bouncePoint: THREE.V
     swingSpeedKmh: pending.swingSpeedKmh,
     timingOffsetMs: pending.timingOffsetMs,
     placementAccuracy: accuracy,
-    missReason: success ? undefined : result
+    missReason: success ? undefined : result,
+    technique
   }, pending.detection.confidence);
   elements.practiceStatus.textContent = success
     ? `Successful return · ${accuracy}% deep-center accuracy`
@@ -2857,6 +2890,10 @@ function showPendingTrainingContact(pending: NonNullable<typeof pendingReturnedT
     early: "Early", "on-time": "On time", late: "Late", "no-contact": "No contact"
   } as const)[timing];
   elements.trainerAccuracy.textContent = "Waiting for bounce";
+  elements.trainerSpinLevel.textContent = "Analyzing impact";
+  elements.trainerBrushPath.textContent = "Tracking racket path";
+  elements.trainerShotArc.textContent = "Waiting for flight";
+  elements.trainerFollowThrough.textContent = "Finish over far shoulder";
   elements.trainerSessionState.textContent = "Contact detected";
 }
 
@@ -2873,6 +2910,7 @@ function recordSmartTrainingShot(
     early: "Early", "on-time": "On time", late: "Late", "no-contact": "No contact"
   } as const)[timing];
   elements.trainerAccuracy.textContent = `${shot.placementAccuracy}%`;
+  updateShotTechniqueUi(shot.technique ?? null);
   elements.trainerSessionState.textContent = `${summary.attempts} shot${summary.attempts === 1 ? "" : "s"}`;
   elements.trainingSessionReport.hidden = true;
   updateSmartTrainerSummary();
@@ -2903,6 +2941,8 @@ function finishSmartTrainingSession(): void {
   const report = smartTrainingSession.finish(previous);
   trainingSessionHistory = [...trainingSessionHistory, report].slice(-20);
   smartTrainingSessionFinalized = true;
+  lastCompletedTrainingReport = report;
+  elements.downloadTrainingReport.disabled = false;
   localStorage.setItem(TRAINING_HISTORY_KEY, JSON.stringify(trainingSessionHistory));
   elements.trainerSessionState.textContent = "Session complete";
   elements.trainerReportSummary.textContent =
@@ -2913,6 +2953,10 @@ function finishSmartTrainingSession(): void {
     `Timing: ${report.earlyHits} early, ${report.onTimeHits} on time, ${report.lateHits} late, ${report.noContact} without contact. ` +
     `Misses: ${report.netMisses} net, ${report.wideMisses} wide, ${report.longMisses} long, ${report.shortMisses} short. ` +
     `Best in-court streak: ${report.bestStreak}.`;
+  elements.trainerTechniqueSummary.textContent =
+    `Technique: ${report.averageTopspinLevel}% topspin, ${report.averageSliceLevel}% slice, ` +
+    `${report.averageUnderBallScore}% under-ball path, ${report.averageArcHeightMeters} m average apex, and ` +
+    `${report.followThroughCompletion}% of finishes completed over the far shoulder.`;
   elements.trainerImprovement.textContent = formatTrainingImprovement(report);
   elements.trainerFeedbackList.replaceChildren(...report.feedback.map(message => {
     const item = document.createElement("li");
@@ -2927,12 +2971,14 @@ function startNewSmartTrainingSession(): void {
   smartTrainingSessionFinalized = false;
   pendingReturnedTrainingShot = null;
   trainingStrokeEvidence.reset();
+  followThroughAnalyzer.reset();
   practiceAttempts = practiceHits = practiceMisses = 0;
   elements.trainerSessionState.textContent = "Session ready";
   elements.trainerDetectedStroke.textContent = "--";
   elements.trainerSwingSpeed.textContent = "0 km/h";
   elements.trainerTiming.textContent = "--";
   elements.trainerAccuracy.textContent = "0%";
+  updateShotTechniqueUi(null);
   elements.trainingSessionReport.hidden = true;
   elements.practiceStatus.textContent = "New training session ready.";
   updateSmartTrainerSummary();
@@ -2954,10 +3000,13 @@ function formatTrainingImprovement(report: TrainingSessionReport): string {
   if (!report.improvement) return "First recorded session";
   const hitChange = report.improvement.hitRatioPoints;
   const accuracyChange = report.improvement.targetAccuracyPoints;
-  if (hitChange === 0 && accuracyChange === 0) return "Matched previous session";
+  if (hitChange === 0 && accuracyChange === 0 && report.improvement.underBallPoints === 0 &&
+      report.improvement.followThroughPoints === 0) return "Matched previous session";
   const parts = [
     `${hitChange >= 0 ? "+" : ""}${hitChange} hit-ratio points`,
-    `${accuracyChange >= 0 ? "+" : ""}${accuracyChange} accuracy points`
+    `${accuracyChange >= 0 ? "+" : ""}${accuracyChange} accuracy points`,
+    `${report.improvement.underBallPoints >= 0 ? "+" : ""}${report.improvement.underBallPoints} under-ball`,
+    `${report.improvement.followThroughPoints >= 0 ? "+" : ""}${report.improvement.followThroughPoints} finish`
   ];
   return parts.join(" · ");
 }
@@ -2969,11 +3018,41 @@ function loadTrainingSessionHistory(): TrainingSessionReport[] {
     return parsed.filter((entry): entry is TrainingSessionReport =>
       typeof entry === "object" && entry !== null &&
       Number.isFinite((entry as TrainingSessionReport).attempts) &&
-      Array.isArray((entry as TrainingSessionReport).feedback)
+      Array.isArray((entry as TrainingSessionReport).feedback) &&
+      Array.isArray((entry as TrainingSessionReport).shots) &&
+      Number.isFinite((entry as TrainingSessionReport).followThroughCompletion)
     ).slice(-20);
   } catch {
     return [];
   }
+}
+
+function updateShotTechniqueUi(technique: ShotTechnique | null): void {
+  if (!technique) {
+    elements.trainerSpinLevel.textContent = "--";
+    elements.trainerBrushPath.textContent = "--";
+    elements.trainerShotArc.textContent = "--";
+    elements.trainerFollowThrough.textContent = "--";
+    return;
+  }
+  const spinLabel = technique.spinType.toLowerCase().replace(/_/g, " ");
+  elements.trainerSpinLevel.textContent = `${spinLabel} ${technique.spinLevel}% · ${technique.spinRpm} rpm`;
+  elements.trainerBrushPath.textContent = `${technique.brushDirection} · under ball ${technique.underBallScore}%`;
+  elements.trainerShotArc.textContent = `${technique.launchAngleDegrees}° · apex ${technique.apexHeightMeters} m`;
+  elements.trainerFollowThrough.textContent =
+    `${technique.followThrough.label} ${technique.followThrough.score}%` +
+    (technique.followThrough.finishedAcrossFarShoulder ? " · far shoulder" : " · finish across body");
+}
+
+function downloadLatestTrainingReport(): void {
+  if (!lastCompletedTrainingReport) return;
+  const html = createTrainingReportHtml(lastCompletedTrainingReport);
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `matchpoint-session-${new Date(lastCompletedTrainingReport.endedAt).toISOString().slice(0, 10)}.html`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function updatePhysicalContactFeedback(): void {

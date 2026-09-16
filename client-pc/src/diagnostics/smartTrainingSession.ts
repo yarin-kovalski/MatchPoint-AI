@@ -1,3 +1,5 @@
+import type { ShotTechnique } from "./strokeTechniqueAnalysis.js";
+
 export type TrainingStroke = "forehand" | "backhand";
 export type DetectedTrainingStroke = TrainingStroke | "unknown";
 export type TrainingTiming = "early" | "on-time" | "late" | "no-contact";
@@ -78,6 +80,7 @@ export type TrainingShot = {
   timingOffsetMs: number | null;
   placementAccuracy: number;
   missReason?: string;
+  technique?: ShotTechnique | null;
 };
 
 export type TrainingSessionSummary = {
@@ -100,12 +103,21 @@ export type TrainingSessionSummary = {
   wideMisses: number;
   longMisses: number;
   shortMisses: number;
+  averageSpinLevel: number;
+  averageTopspinLevel: number;
+  averageSliceLevel: number;
+  averageUnderBallScore: number;
+  averageArcHeightMeters: number;
+  followThroughCompletion: number;
 };
 
 export type TrainingImprovement = {
   hitRatioPoints: number;
   targetAccuracyPoints: number;
   averageSpeedKmh: number;
+  spinLevelPoints: number;
+  underBallPoints: number;
+  followThroughPoints: number;
 };
 
 export type TrainingSessionReport = TrainingSessionSummary & {
@@ -114,6 +126,7 @@ export type TrainingSessionReport = TrainingSessionSummary & {
   durationSeconds: number;
   improvement: TrainingImprovement | null;
   feedback: string[];
+  shots: TrainingShot[];
 };
 
 export class SmartTrainingSession {
@@ -156,6 +169,13 @@ export class SmartTrainingSession {
     let wideMisses = 0;
     let longMisses = 0;
     let shortMisses = 0;
+    let techniqueShots = 0;
+    let spinLevelTotal = 0;
+    let topspinLevelTotal = 0;
+    let sliceLevelTotal = 0;
+    let underBallTotal = 0;
+    let arcHeightTotal = 0;
+    let completeFinishes = 0;
 
     for (const shot of this.shots) {
       if (shot.hit) {
@@ -183,6 +203,15 @@ export class SmartTrainingSession {
         else if (reason.includes("LONG")) longMisses += 1;
         else if (reason.includes("SHORT")) shortMisses += 1;
       }
+      if (shot.technique) {
+        techniqueShots += 1;
+        spinLevelTotal += shot.technique.spinLevel;
+        topspinLevelTotal += shot.technique.topspinLevel;
+        sliceLevelTotal += shot.technique.sliceLevel;
+        underBallTotal += shot.technique.underBallScore;
+        arcHeightTotal += shot.technique.apexHeightMeters;
+        if (shot.technique.followThrough.finishedAcrossFarShoulder) completeFinishes += 1;
+      }
     }
 
     const attempts = this.shots.length;
@@ -205,7 +234,13 @@ export class SmartTrainingSession {
       netMisses,
       wideMisses,
       longMisses,
-      shortMisses
+      shortMisses,
+      averageSpinLevel: average(spinLevelTotal, techniqueShots),
+      averageTopspinLevel: average(topspinLevelTotal, techniqueShots),
+      averageSliceLevel: average(sliceLevelTotal, techniqueShots),
+      averageUnderBallScore: average(underBallTotal, techniqueShots),
+      averageArcHeightMeters: roundAverage(arcHeightTotal, techniqueShots, 2),
+      followThroughCompletion: percentage(completeFinishes, techniqueShots)
     };
   }
 
@@ -214,7 +249,10 @@ export class SmartTrainingSession {
     const improvement = previous ? {
       hitRatioPoints: summary.hitRatio - previous.hitRatio,
       targetAccuracyPoints: summary.targetAccuracy - previous.targetAccuracy,
-      averageSpeedKmh: round(summary.averageSwingSpeedKmh - previous.averageSwingSpeedKmh, 1)
+      averageSpeedKmh: round(summary.averageSwingSpeedKmh - previous.averageSwingSpeedKmh, 1),
+      spinLevelPoints: summary.averageSpinLevel - previous.averageSpinLevel,
+      underBallPoints: summary.averageUnderBallScore - previous.averageUnderBallScore,
+      followThroughPoints: summary.followThroughCompletion - previous.followThroughCompletion
     } : null;
     return {
       ...summary,
@@ -222,7 +260,10 @@ export class SmartTrainingSession {
       endedAt,
       durationSeconds: Math.max(0, Math.round((endedAt - this.startedAt) / 1000)),
       improvement,
-      feedback: buildTrainingFeedback(summary, improvement)
+      feedback: buildTrainingFeedback(summary, improvement),
+      shots: this.shots.map(shot => ({ ...shot, technique: shot.technique ? {
+        ...shot.technique, followThrough: { ...shot.technique.followThrough }
+      } : shot.technique }))
     };
   }
 }
@@ -281,6 +322,15 @@ function buildTrainingFeedback(summary: TrainingSessionSummary, improvement: Tra
   if (summary.unknownStrokes > Math.ceil(summary.attempts * 0.25)) {
     feedback.push("Make the preparation path clearer so the phone can distinguish forehand from backhand.");
   }
+  if (summary.averageTopspinLevel > 0 && summary.averageUnderBallScore < 38) {
+    feedback.push("For heavier topspin, let the racket head drop farther below the ball before brushing low to high.");
+  }
+  if (summary.averageSliceLevel > 0 && summary.averageSliceLevel < 40) {
+    feedback.push("For a more controlled slice, keep a clear high-to-low path while driving through the ball.");
+  }
+  if (summary.followThroughCompletion < 55) {
+    feedback.push("Complete the finish across the body and over the far shoulder instead of stopping after contact.");
+  }
   if (summary.hitRatio < 55) {
     feedback.push("Prioritize clean contact over power for the next session.");
   } else if (summary.hitRatio >= 80) {
@@ -291,6 +341,14 @@ function buildTrainingFeedback(summary: TrainingSessionSummary, improvement: Tra
 
 function percentage(part: number, total: number): number {
   return total === 0 ? 0 : Math.round(part / total * 100);
+}
+
+function average(total: number, count: number): number {
+  return count === 0 ? 0 : Math.round(total / count);
+}
+
+function roundAverage(total: number, count: number, decimals: number): number {
+  return count === 0 ? 0 : round(total / count, decimals);
 }
 
 function finiteNonNegative(value: number): number {

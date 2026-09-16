@@ -19,7 +19,9 @@ test("smart session aggregates stroke detection, speed, timing, ratio, accuracy,
     forehands: 1, backhands: 1, unknownStrokes: 1,
     averageSwingSpeedKmh: 60, peakSwingSpeedKmh: 72, targetAccuracy: 50,
     earlyHits: 1, onTimeHits: 1, lateHits: 1, noContact: 0, bestStreak: 2,
-    netMisses: 0, wideMisses: 0, longMisses: 0, shortMisses: 0
+    netMisses: 0, wideMisses: 0, longMisses: 0, shortMisses: 0,
+    averageSpinLevel: 0, averageTopspinLevel: 0, averageSliceLevel: 0,
+    averageUnderBallScore: 0, averageArcHeightMeters: 0, followThroughCompletion: 0
   });
 });
 

@@ -145,3 +145,15 @@ Outcome correction:
 - Only `IN` is a successful shot. `NET`, `SHORT`, `OUT_WIDE`, `OUT_LONG`, `OUT`, and no-contact outcomes are misses.
 - Target accuracy uses the physical first-bounce point for successful shots; every failed return receives zero placement accuracy.
 - Stroke type comes from strict motion-state classification when available, with a sensor-evidence fallback based on the strongest forehand/backhand preparation-side score across the feed. The expected feed side is never used as the detected side.
+
+## Advanced stroke technique report (2026-09-16)
+
+Acceptance criteria:
+
+- Every returned shot reports spin type and intensity, including topspin and slice levels derived from the physical impact model.
+- The trainer explains the racket's low-to-high or high-to-low path, estimates how well the player got under the ball, and reports launch angle, apex, and net clearance.
+- Forehand and backhand follow-through are evaluated with mirrored, handedness-aware cross-body logic and an explicit far-shoulder finish result.
+- The live panel and completed-session summary show technique measurements alongside outcome, timing, speed, and accuracy.
+- A completed session can be downloaded as a styled standalone HTML report with session changes, coaching, and representative strong and focus shots.
+- The report states that far-shoulder completion is a phone-motion estimate because the current proof of concept does not track the player's body pose.
+- TypeScript builds and the complete automated regression suite pass.

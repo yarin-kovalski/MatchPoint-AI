@@ -177,3 +177,5 @@ Mitigation:
 - Build, 245 application tests, 6 project-board tests, and served asset checks pass. The configured in-app browser remains unavailable, so live phone-to-PC visual verification must be completed on the target PC.
 - Old v1 session reports counted accepted racket contact before landing. The corrected trainer uses a new v2 local-storage key so those invalid reports cannot affect improvement comparisons.
 - Sensor-evidence stroke classification reports a confidence value and stays `Uncertain` when lateral preparation evidence is insufficient; it does not copy the requested feed type.
+- Spin, brushing path, arc, and far-shoulder finish are phone-sensor and simulated-impact estimates. The far-shoulder score mirrors forehand/backhand direction by handedness and combines cross-body movement, upward finish, and orientation travel; it does not claim camera-based body-pose verification.
+- Downloaded session reports are self-contained local HTML with representative strong and focus shots. They contain measured summaries and no external scripts; players can open them in a browser or print them to PDF.
