@@ -8,6 +8,13 @@
 - [x] Update the live prediction and stored technique data so the bounce and session report describe the same result.
 - [x] Keep continuation bounded and preserve natural net, short, long, and wide outcomes.
 
+## Forehand contact reliability
+
+- [x] Replay the recorded human forehand through the Training intent and contact gates.
+- [x] Keep a proven valid swing usable across a brief rejected packet or natural follow-through slowdown.
+- [x] Expand the Training timing and string-reach envelope while retaining finite physical limits.
+- [x] Reject stationary, expired, backward, wrong-side, and clearly unreachable attempts.
+
 ## Expo SDK 57 Compatibility
 
 The physical iPhone confirms its Expo Go requires SDK 57. Restore SDK 57 and align dependencies using Expo install --fix. Keep the existing LAN detection, force Expo Go, and remove SDK 54 offline startup. No controller or game changes are in scope.

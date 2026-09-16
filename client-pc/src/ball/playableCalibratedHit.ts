@@ -81,12 +81,17 @@ export function evaluatePlayableCalibratedHit(input: {
     (input.assistLevel ?? "training") === "training"
     ? assist.minimumForwardDriveScore * 0.45
     : assist.minimumForwardDriveScore;
-  const enoughMotion = (input.assistLevel ?? "training") === "training"
-    ? (input.motion?.angularSpeed ?? 0) >= assist.minimumAngularSpeed ||
+  const trainingMode = (input.assistLevel ?? "training") === "training";
+  const latchedPeakAngularSpeed = input.motion?.swingIntent?.peakAngularSpeed ?? 0;
+  const enoughMotion = trainingMode
+    ? Math.max(input.motion?.angularSpeed ?? 0, latchedPeakAngularSpeed) >= assist.minimumAngularSpeed ||
       (input.motion?.accelerationMagnitude ?? 0) >= assist.minimumAcceleration
     : (input.motion?.angularSpeed ?? 0) >= assist.minimumAngularSpeed &&
       (input.motion?.accelerationMagnitude ?? 0) >= assist.minimumAcceleration;
-  if (!input.motion?.valid || !input.motion.swingIntent?.active ||
+  const trustedLatchedSwing = trainingMode && input.motion?.swingIntent?.active === true &&
+    input.motion.swingIntent.confidence >= BALL_CONFIG.easySwingIntent.minimumConfidence &&
+    latchedPeakAngularSpeed >= BALL_CONFIG.easySwingIntent.minimumAngularSpeed;
+  if ((!input.motion?.valid && !trustedLatchedSwing) || !input.motion?.swingIntent?.active ||
       input.now > input.motion.swingIntent.expiresAt ||
       input.now - input.motion.swingIntent.startedAt < BALL_CONFIG.playableCalibratedHit.minimumActiveSwingMs ||
       !enoughMotion ||

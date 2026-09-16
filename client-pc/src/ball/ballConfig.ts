@@ -100,7 +100,7 @@ export const BALL_CONFIG = {
     fullSwingPreparationScore: 0.65,
     minimumConfidence: 0.35,
     maximumFaceAngleRadians: 1.55,
-    activeWindowMs: 480
+    activeWindowMs: 620
   },
   playableCalibratedHit: {
     windowBeforeMs: 220,
@@ -113,13 +113,13 @@ export const BALL_CONFIG = {
     minimumActiveSwingMs: 24,
     // 0.85 m is the measured half-diagonal of the string bed. The remaining
     // allowance covers the tennis ball and one phone/render sampling interval.
-    maximumAssistedContactDistance: 1.08,
+    maximumAssistedContactDistance: 1.20,
     maximumCorrection: { lateral: 0.30, vertical: 0.27, depth: 0.32 },
     practiceResetMs: 1700
   },
   playerAssist: {
     training: {
-      windowBeforeMs: 380, windowAfterMs: 340,
+      windowBeforeMs: 450, windowAfterMs: 400,
       directionAnchorStrength: 0.68,
       minimumAngularSpeed: 0.9, minimumAcceleration: 1.8, minimumForwardDriveScore: 0.09
     },

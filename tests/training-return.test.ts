@@ -199,7 +199,7 @@ test("separate swings reset their peak speed and expired Expo intent cannot hit"
   const slow = detector.update({ ...common, timestamp: 2000, angularSpeed: 3 }, "forehand");
   assert.equal(slow.peakAngularSpeed, 3); assert.equal(slow.startedAt, 2000);
   const sample = motion(); sample.swingIntent = slow;
-  const decision = evaluatePlayableCalibratedHit({ now: 2500, contactTime: 2500, bounceCount: 1,
+  const decision = evaluatePlayableCalibratedHit({ now: 2630, contactTime: 2630, bounceCount: 1,
     alreadyHit: false, expectedStrokeType: "forehand", profile: createDefaultTrajectoryProfile("forehand", "right"), motion: sample });
   assert.equal(decision.accepted, false);
 });

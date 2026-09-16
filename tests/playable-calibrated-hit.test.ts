@@ -68,7 +68,7 @@ test("calibrated opportunity rejects early, late, wrong-side, and duplicate cont
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 779, assistLevel: "realistic" }).reason, "SWING_TOO_EARLY");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1181, assistLevel: "realistic" }).reason, "SWING_TOO_LATE");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, motion: motion("backhand") }).reason, "WRONG_STROKE_SIDE");
-  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.2 }).reason, "RACKET_TOO_FAR");
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.25 }).reason, "RACKET_TOO_FAR");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.04 }).accepted, true);
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, alreadyHit: true }).reason, "CONTACT_ALREADY_USED");
 });
@@ -246,7 +246,7 @@ test("20-swing calibration ranks misses and backward swings remain rejected", ()
 });
 
 
-test("Training tolerates a single motion channel dipping during an active forward swing", () => {
+test("Training tolerates sensor channels dipping after a proven active forward swing", () => {
   const profile = createDefaultTrajectoryProfile("forehand", "right");
   const moving = motion("forehand");
   moving.accelerationMagnitude = 0.5;
@@ -255,7 +255,58 @@ test("Training tolerates a single motion channel dipping during an active forwar
   assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "training" }).accepted, true);
   assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "realistic" }).accepted, false);
   moving.angularSpeed = 0.2;
+  assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "training" }).accepted, true);
+  moving.swingIntent = { ...moving.swingIntent!, active: false };
   assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "training" }).accepted, false);
+});
+
+test("Training keeps a proven forehand through a transient rejected packet and follow-through slowdown", () => {
+  const profile = createDefaultTrajectoryProfile("forehand", "right");
+  const latched = motion("forehand");
+  latched.valid = false;
+  latched.angularSpeed = 0.2;
+  latched.accelerationMagnitude = 0.4;
+  latched.swingIntent = { ...latched.swingIntent!, confidence: 0.82, peakAngularSpeed: 5.2, expiresAt: 1450 };
+  const input = { now: 1200, contactTime: 1000, bounceCount: 1, alreadyHit: false,
+    expectedStrokeType: "forehand" as const, profile, motion: latched, ballToRacketDistance: 1.16 };
+  assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "training" }).accepted, true);
+  assert.equal(evaluatePlayableCalibratedHit({ ...input, assistLevel: "realistic" }).accepted, false);
+});
+
+test("forgiving forehand grid accepts human timing and reach but keeps hard safety boundaries", () => {
+  const profile = createDefaultTrajectoryProfile("forehand", "right");
+  let accepted = 0;
+  let attempts = 0;
+  for (const offset of [-440, -300, -120, 0, 180, 390]) {
+    for (const distance of [0.72, 0.94, 1.08, 1.18]) {
+      const sample = motion("forehand");
+      if ((attempts % 4) === 0) {
+        sample.valid = false;
+        sample.angularSpeed = 0.3;
+        sample.accelerationMagnitude = 0.5;
+      }
+      sample.swingIntent = { ...sample.swingIntent!, startedAt: 400, expiresAt: 1500,
+        confidence: 0.85, peakAngularSpeed: 5 };
+      const decision = evaluatePlayableCalibratedHit({
+        now: 1000 + offset, contactTime: 1000, bounceCount: 1, alreadyHit: false,
+        expectedStrokeType: "forehand", profile, motion: sample,
+        ballToRacketDistance: distance, assistLevel: "training"
+      });
+      accepted += Number(decision.accepted);
+      attempts += 1;
+    }
+  }
+  assert.equal(accepted, attempts);
+  assert.equal(evaluatePlayableCalibratedHit({
+    now: 1000, contactTime: 1000, bounceCount: 1, alreadyHit: false,
+    expectedStrokeType: "forehand", profile, motion: motion("backhand"),
+    ballToRacketDistance: 0.5, assistLevel: "training"
+  }).reason, "WRONG_STROKE_SIDE");
+  assert.equal(evaluatePlayableCalibratedHit({
+    now: 1000, contactTime: 1000, bounceCount: 1, alreadyHit: false,
+    expectedStrokeType: "forehand", profile, motion: motion("forehand"),
+    ballToRacketDistance: 1.21, assistLevel: "training"
+  }).reason, "RACKET_TOO_FAR");
 });
 
 test("new post-contact sensor samples deepen a continuing slice and increase its spin", () => {

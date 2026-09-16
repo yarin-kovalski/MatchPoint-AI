@@ -428,6 +428,7 @@ let latestPacket: BrokeredMotionPacket | null = null;
 let previousPacket: BrokeredMotionPacket | null = null;
 let latestOrientationPacket: BrokeredContinuousOrientationPacket | null = null;
 let latestSensorFrame: NormalizedSensorFrame | null = null;
+let latestValidSensorFrame: NormalizedSensorFrame | null = null;
 let latestVisualPoseValid = false;
 let latestStrokeSnapshot: StrokeDetectorSnapshot | null = null;
 let lastContactEvent: EstimatedRacketContact | null = null;
@@ -1029,6 +1030,7 @@ socket.on("continuous_orientation", (payload: unknown) => {
     });
   }
   if (processedFrame.valid) {
+    latestValidSensorFrame = processedFrame;
     if (!hasIncomingTelemetryQuaternion || incomingTelemetryQuaternion.angleTo(processedFrame.relativePhoneQuaternion) > 1e-5) {
       incomingTelemetryQuaternion.copy(processedFrame.relativePhoneQuaternion);
       hasIncomingTelemetryQuaternion = true;
@@ -1565,6 +1567,7 @@ function beginCalibration(currentPhoneQuaternion: THREE.Quaternion): void {
   forwardSwingFusion.reset();
   sensorResampler.reset();
   latestSensorFrame = null;
+  latestValidSensorFrame = null;
   latestVisualPoseValid = false;
   hasCalibrationBaseline = true;
   isCalibrated = false;
@@ -1690,9 +1693,10 @@ function updateProceduralPosition(): void {
   const latchedTrainingSwing = trainingSwingIntent.active &&
     Date.now() <= trainingSwingIntent.expiresAt;
   const easyMotionContact = assistMode === "easy" && ballController.ball.active &&
-    ballController.ball.bounceCount === 1 && latestSensorFrame?.valid === true &&
-    (latchedTrainingSwing || latestSensorFrame.angularSpeed >= BALL_CONFIG.easyAssist.minimumAngularSpeed) &&
-    ballController.ball.position.distanceTo(ballController.ball.contactTarget) <= 1.0;
+    ballController.ball.bounceCount === 1 &&
+    (latestSensorFrame?.valid === true || latchedTrainingSwing) &&
+    (latchedTrainingSwing || (latestSensorFrame?.angularSpeed ?? 0) >= BALL_CONFIG.easyAssist.minimumAngularSpeed) &&
+    ballController.ball.position.distanceTo(ballController.ball.contactTarget) <= 1.15;
 
   if (!easyMotionContact && stabilizeTrainingRacketOrigin(
     proceduralPositionPivot.position,
@@ -1768,6 +1772,9 @@ function createEasyHitMotion(): EasyHitMotion | null {
     Date.now(),
     expectedStroke
   );
+  const techniqueFrame = latestSensorFrame.valid
+    ? latestSensorFrame
+    : swingIntent.active ? latestValidSensorFrame ?? latestSensorFrame : latestSensorFrame;
   const playerBasis = (activeCalibrationProfile ?? trajectoryProfiles[expectedStroke] ??
     createDefaultTrajectoryProfile(expectedStroke, strokeStateMachine.getHandedness())).playerBasisAtCalibration;
   // Keep the technique at the swing peak. The contact assist may resolve a few
@@ -1777,20 +1784,20 @@ function createEasyHitMotion(): EasyHitMotion | null {
     : latestSensorFrame.timestamp;
   const forwardSwing = forwardSwingFusion.snapshot(techniqueTimestamp, playerBasis) ?? undefined;
   return {
-    valid: latestSensorFrame.valid,
-    sensorTimestamp: latestSensorFrame.timestamp,
-    angularSpeed: latestSensorFrame.angularSpeed,
-    angularVelocityWorld: latestSensorFrame.angularVelocityWorld,
-    accelerationMagnitude: latestSensorFrame.accelerationMagnitude,
-    racketQuaternion: latestSensorFrame.mappedRacketQuaternion,
-    racketFaceNormal: latestSensorFrame.racketFaceNormal,
-    racketForwardVector: latestSensorFrame.racketForwardVector,
-    racketUpVector: latestSensorFrame.racketUpVector,
-    racketSideVector: latestSensorFrame.racketSideVector,
-    racketFaceAngle: latestSensorFrame.racketFaceAngleToCourtRadians,
-    motionForwardScore: latestSensorFrame.motionForwardScore,
-    motionUpwardScore: latestSensorFrame.motionUpwardScore,
-    motionSidewaysScore: latestSensorFrame.motionSidewaysScore,
+    valid: techniqueFrame.valid || swingIntent.active,
+    sensorTimestamp: techniqueFrame.timestamp,
+    angularSpeed: techniqueFrame.angularSpeed,
+    angularVelocityWorld: techniqueFrame.angularVelocityWorld,
+    accelerationMagnitude: techniqueFrame.accelerationMagnitude,
+    racketQuaternion: techniqueFrame.mappedRacketQuaternion,
+    racketFaceNormal: techniqueFrame.racketFaceNormal,
+    racketForwardVector: techniqueFrame.racketForwardVector,
+    racketUpVector: techniqueFrame.racketUpVector,
+    racketSideVector: techniqueFrame.racketSideVector,
+    racketFaceAngle: techniqueFrame.racketFaceAngleToCourtRadians,
+    motionForwardScore: techniqueFrame.motionForwardScore,
+    motionUpwardScore: techniqueFrame.motionUpwardScore,
+    motionSidewaysScore: techniqueFrame.motionSidewaysScore,
     handedness: strokeStateMachine.getHandedness(),
     backhandStyle: strokeStateMachine.getBackhandStyle(),
     swingIntent,
