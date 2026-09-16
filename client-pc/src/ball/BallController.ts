@@ -83,7 +83,7 @@ export class BallController {
   constructor(
     private readonly onHit?: (event: BallHitEvent) => void,
     private readonly onMiss?: (event: BallMissEvent) => void,
-    private readonly onReturnLanded?: (result: ReturnResult) => void
+    private readonly onReturnLanded?: (result: ReturnResult, firstBouncePoint: THREE.Vector3 | null) => void
   ) {}
 
   launch(
@@ -183,7 +183,7 @@ export class BallController {
         if (event.type === "net") this.returnTouchedNet = true;
         if (event.type === "bounce") {
           this.lastReturnResult = judgeReturnBounce(event.point, this.returnTouchedNet);
-          this.onReturnLanded?.(this.lastReturnResult);
+          this.onReturnLanded?.(this.lastReturnResult, event.point.clone());
           this.ball.state = "OUT";
           this.resetAt = now + BALL_CONFIG.resetDelayMs;
           break;
@@ -276,7 +276,7 @@ export class BallController {
     if (isBallOutOfBounds(this.ball, now) && this.ball.state !== "OUT") {
       if (!this.ball.hit) this.emitMiss(now, "ball left world bounds", stroke, contact, colliderWorldMatrix);
       else {
-        if (!this.lastReturnResult) { this.lastReturnResult = "OUT"; this.onReturnLanded?.("OUT"); }
+        if (!this.lastReturnResult) { this.lastReturnResult = "OUT"; this.onReturnLanded?.("OUT", null); }
         this.ball.state = "OUT"; this.resetAt = now + BALL_CONFIG.resetDelayMs;
       }
     }

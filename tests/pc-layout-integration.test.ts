@@ -57,6 +57,15 @@ test("player mode exposes simple play controls and keeps advanced tools collapse
   assert.match(html, /Developer \/ Advanced/);
 });
 
+test("smart trainer exposes live motion metrics and session feedback controls", () => {
+  for (const id of [
+    "trainerDetectedStroke", "trainerSwingSpeed", "trainerTiming", "trainerAccuracy",
+    "trainerHitRatio", "trainerStrokeCounts", "trainerAverageSpeed", "trainerBestStreak",
+    "finishTrainingSession", "newTrainingSession", "trainingSessionReport", "trainerReportBreakdown", "trainerFeedbackList"
+  ]) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /Visible shooting targets will arrive with Game mode/);
+});
+
 test("narrow fallback stacks panels without horizontal overflow", () => {
   assert.match(css, /@media \(max-width:\s*1000px\)/);
   assert.match(css, /@media \(max-width:\s*1000px\)[\s\S]*?\.app-shell\s*\{[^}]*flex-direction:\s*column/s);

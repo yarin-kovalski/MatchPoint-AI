@@ -145,7 +145,11 @@ test("first-bounce rulings agree at 30/60/120 FPS and stay final after the ball 
   const snapshot = new StrokeStateMachine().getSnapshot(0);
   for (const fps of [30, 60, 120]) for (const [x, expected] of [[4.10, "IN"], [4.23, "OUT_WIDE"]] as const) {
     const results: string[] = [];
-    const controller = new BallController(undefined, undefined, result => results.push(result));
+    const bouncePoints: Array<THREE.Vector3 | null> = [];
+    const controller = new BallController(undefined, undefined, (result, point) => {
+      results.push(result);
+      bouncePoints.push(point);
+    });
     const target = new THREE.Vector3(x, BALL_CONFIG.courtHeight + controller.ball.physicsRadius, -12);
     controller.ball.position.copy(start);
     controller.ball.velocity.copy(solveSpinFlight(start, target, 1.4, new THREE.Vector3()));
@@ -154,6 +158,8 @@ test("first-bounce rulings agree at 30/60/120 FPS and stay final after the ball 
       controller.update(1 / fps, i * 1000 / fps, new THREE.Matrix4(), snapshot, null, "off", null, false);
     }
     assert.deepEqual(results, [expected], `${fps} FPS, target ${x}`);
+    assert.ok(bouncePoints[0], "the trainer should receive the physical first-bounce point");
+    assert.ok(Math.abs(bouncePoints[0]!.x - x) < 0.15);
     controller.ball.position.set(30, 0.2, -40);
     controller.update(1 / fps, 2050, new THREE.Matrix4(), snapshot, null, "off", null, false);
     assert.deepEqual(results, [expected]);

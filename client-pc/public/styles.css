@@ -873,6 +873,28 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 .player-scoreboard > div:nth-child(-n+4) { padding: 10px 4px; }
 .player-scoreboard > div:nth-child(-n+4) strong { font-size: 24px; }
 .player-scoreboard > div:nth-child(7), .player-scoreboard > div:nth-child(9), .player-scoreboard > div:nth-child(13) { grid-column: 1 / -1; }
+.smart-trainer { margin-top: 18px; padding: 18px; border: 1px solid #405452; border-radius: 14px; background: linear-gradient(145deg, rgba(29,48,46,.96), rgba(17,31,32,.98)); box-shadow: inset 0 1px rgba(255,255,255,.04); }
+.smart-trainer-heading, .report-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.trainer-kicker { display: block; color: #b9d58b; font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+.smart-trainer h3 { margin: 4px 0 14px; color: #f3f3e8; font-size: 20px; }
+.trainer-session-state { padding: 5px 9px; border-radius: 999px; background: rgba(188,217,144,.12); color: #cfe5aa; font-size: 10px; white-space: nowrap; }
+.trainer-live-grid, .trainer-session-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+.trainer-live-grid > div { min-height: 66px; padding: 11px; border-radius: 9px; background: rgba(8,19,20,.46); }
+.trainer-session-grid { margin-top: 8px; }
+.trainer-session-grid > div { padding: 9px 4px; border-bottom: 1px solid #344745; }
+.trainer-live-grid span, .trainer-session-grid span { display: block; color: #91a8a0; font-size: 10px; }
+.trainer-live-grid strong, .trainer-session-grid strong { display: block; margin-top: 4px; color: #f1f3e6; font-size: 17px; font-variant-numeric: tabular-nums; }
+.trainer-target-note { margin: 12px 0; color: #9fb0aa; font-size: 11px; line-height: 1.5; }
+.trainer-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.trainer-actions button { min-height: 40px; }
+.trainer-actions .secondary-button { background: transparent; border: 1px solid #60706d; color: #d5ded6; }
+.training-session-report { margin-top: 14px; padding: 14px; border-left: 3px solid #cfe59d; border-radius: 4px 10px 10px 4px; background: rgba(7,17,18,.55); }
+.training-session-report[hidden] { display: none; }
+.report-heading strong { color: #f0f3df; }
+.report-heading span { color: #b9d58b; font-size: 10px; text-align: right; }
+.training-session-report p { color: #d7dfd8; font-size: 12px; line-height: 1.5; }
+.training-session-report .trainer-report-breakdown { color: #9fb4ab; }
+.training-session-report ul { margin: 8px 0 0; padding-left: 18px; color: #b8c7c0; font-size: 12px; line-height: 1.55; }
 .player-status { color: #a4b8ae; font-size: 11px; line-height: 1.6; margin-top: 18px; }
 .developer-panel { border-color: #354446; }
 .developer-panel > summary { color: #a7b9ae; font-size: 12px; font-weight: 500; }

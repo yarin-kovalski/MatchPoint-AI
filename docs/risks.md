@@ -169,3 +169,11 @@ Mitigation:
 
 - Fence corner coordinates and ownership are covered by regression tests, including the absence of duplicate side corner posts.
 - Palm motion is deliberately subtle and affects crown pivots only. Verify its preferred strength on the target display; automated browser capture remains unavailable in this workspace.
+
+## Smart Trainer measurement limits (2026-09-16)
+
+- Training target accuracy measures predicted first-bounce distance from a fixed deep-center aim zone. It is a repeatable placement metric; visible selectable targets and point scoring remain planned for Game mode.
+- Improvement is compared with the previous completed session and the latest 20 reports are retained in browser local storage. Clearing browser data clears that history.
+- Build, 245 application tests, 6 project-board tests, and served asset checks pass. The configured in-app browser remains unavailable, so live phone-to-PC visual verification must be completed on the target PC.
+- Old v1 session reports counted accepted racket contact before landing. The corrected trainer uses a new v2 local-storage key so those invalid reports cannot affect improvement comparisons.
+- Sensor-evidence stroke classification reports a confidence value and stays `Uncertain` when lateral preparation evidence is insufficient; it does not copy the requested feed type.

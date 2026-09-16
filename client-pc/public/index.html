@@ -87,6 +87,35 @@
             <div><span>Launch</span><strong id="playerLaunchTendency">--</strong></div>
             <div><span>Contact quality</span><strong id="playerContactQuality">--</strong></div>
           </div>
+          <section class="smart-trainer" aria-labelledby="smartTrainerTitle">
+            <div class="smart-trainer-heading">
+              <div><span class="trainer-kicker">Motion analysis</span><h3 id="smartTrainerTitle">Smart Trainer</h3></div>
+              <span id="trainerSessionState" class="trainer-session-state">Session ready</span>
+            </div>
+            <div class="trainer-live-grid">
+              <div><span>Detected stroke</span><strong id="trainerDetectedStroke">--</strong></div>
+              <div><span>Swing speed</span><strong id="trainerSwingSpeed">0 km/h</strong></div>
+              <div><span>Hit timing</span><strong id="trainerTiming">--</strong></div>
+              <div><span>Target accuracy</span><strong id="trainerAccuracy">0%</strong></div>
+            </div>
+            <div class="trainer-session-grid">
+              <div><span>Hit / miss</span><strong id="trainerHitRatio">0 / 0</strong></div>
+              <div><span>Forehand / backhand</span><strong id="trainerStrokeCounts">0 / 0</strong></div>
+              <div><span>Average speed</span><strong id="trainerAverageSpeed">0 km/h</strong></div>
+              <div><span>Best streak</span><strong id="trainerBestStreak">0</strong></div>
+            </div>
+            <p class="trainer-target-note">Training accuracy measures distance from a safe deep-center aim zone. Visible shooting targets will arrive with Game mode.</p>
+            <div class="trainer-actions">
+              <button id="finishTrainingSession" type="button">Finish session</button>
+              <button id="newTrainingSession" type="button" class="secondary-button">New session</button>
+            </div>
+            <section id="trainingSessionReport" class="training-session-report" aria-live="polite" hidden>
+              <div class="report-heading"><strong>Session feedback</strong><span id="trainerImprovement">First recorded session</span></div>
+              <p id="trainerReportSummary"></p>
+              <p id="trainerReportBreakdown" class="trainer-report-breakdown"></p>
+              <ul id="trainerFeedbackList"></ul>
+            </section>
+          </section>
           <p id="practiceStatus" class="player-status">Ready for a validated feed.</p>
         </section>
 

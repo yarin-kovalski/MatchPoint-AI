@@ -19,6 +19,7 @@ import {
 import { canLaunchPracticeFeed, FeedVariationLevel, FeedVariationResult, generateSafeFeedVariation } from "./ball/feedVariation.js";
 import { createArchetypeFeed, FeedArchetype } from "./ball/feedArchetypes.js";
 import { solveSpinFlight } from "./ball/spinFlight.js";
+import type { ReturnResult } from "./ball/courtRules.js";
 import {
   configureAuthenticRenderer, createAuthenticCourt, createAuthenticTennisNet, createCourtBackdrop,
   updateCourtBackdrop,
@@ -40,6 +41,11 @@ import {
   classifyTrainingMiss, emptyTrainingMissBreakdown, TrainingMissReason
 } from "./diagnostics/trainingMissDiagnostics.js";
 import { TrainingSessionCalibration } from "./diagnostics/trainingSessionCalibration.js";
+import {
+  calculateTrainingTargetAccuracy, classifyTrainingTiming, DetectedTrainingStroke,
+  isSuccessfulTrainingReturn, SmartTrainingSession, TrainingSessionReport,
+  TrainingStrokeDetection, TrainingStrokeEvidence
+} from "./diagnostics/smartTrainingSession.js";
 import { adaptiveVisualSmoothingFactor, SensorResampler, updateVisualRacketQuaternion } from "./motion/sensorResampler.js";
 import { ForwardSwingFusion } from "./motion/forwardSwingFusion.js";
 import { stabilizeTrainingRacketOrigin } from "./motion/racketOriginStability.js";
@@ -99,7 +105,7 @@ type BrokeredMotionPacket = {
   interval: number | null;
 };
 
-type StrokeType = "forehand" | "backhand" | "Forehand" | "Backhand";
+type StrokeType = "forehand" | "backhand" | "Forehand" | "Backhand" | "unknown";
 
 type BrokeredContinuousOrientationPacket = {
   angularVelocityRadPerSecond?: { x: number; y: number; z: number } | null;
@@ -279,6 +285,22 @@ const elements = {
   playerPowerLevel: getElement("playerPowerLevel"),
   playerLaunchTendency: getElement("playerLaunchTendency"),
   playerContactQuality: getElement("playerContactQuality"),
+  trainerSessionState: getElement("trainerSessionState"),
+  trainerDetectedStroke: getElement("trainerDetectedStroke"),
+  trainerSwingSpeed: getElement("trainerSwingSpeed"),
+  trainerTiming: getElement("trainerTiming"),
+  trainerAccuracy: getElement("trainerAccuracy"),
+  trainerHitRatio: getElement("trainerHitRatio"),
+  trainerStrokeCounts: getElement("trainerStrokeCounts"),
+  trainerAverageSpeed: getElement("trainerAverageSpeed"),
+  trainerBestStreak: getElement("trainerBestStreak"),
+  finishTrainingSession: getElement<HTMLButtonElement>("finishTrainingSession"),
+  newTrainingSession: getElement<HTMLButtonElement>("newTrainingSession"),
+  trainingSessionReport: getElement("trainingSessionReport"),
+  trainerImprovement: getElement("trainerImprovement"),
+  trainerReportSummary: getElement("trainerReportSummary"),
+  trainerReportBreakdown: getElement("trainerReportBreakdown"),
+  trainerFeedbackList: getElement("trainerFeedbackList"),
   contactPhysicsDebug: getElement("contactPhysicsDebug"),
   ballVisualInvariant: getElement("ballVisualInvariant"),
   performanceTelemetry: getElement("performanceTelemetry"),
@@ -409,6 +431,18 @@ let contactFlashUntil = 0;
 let assistMode: AssistMode = "easy";
 let playerAssistLevel: PlayerAssistLevel = "training";
 const trainingSessionCalibration = new TrainingSessionCalibration();
+const TRAINING_HISTORY_KEY = "matchpoint.smart-training-history.v2";
+const smartTrainingSession = new SmartTrainingSession();
+const trainingStrokeEvidence = new TrainingStrokeEvidence();
+let trainingSessionHistory = loadTrainingSessionHistory();
+let smartTrainingSessionFinalized = false;
+let pendingReturnedTrainingShot: {
+  ballId: string;
+  expectedStroke: CalibrationStrokeType;
+  detection: TrainingStrokeDetection;
+  swingSpeedKmh: number;
+  timingOffsetMs: number | null;
+} | null = null;
 let ballSpeedPreset: BallSpeedPreset = "normal";
 let activeLaunchPreset: LaunchPreset = "easyForehand";
 let lastBallFrameAt = performance.now();
@@ -703,9 +737,10 @@ ballTrail.frustumCulled = false;
 scene.add(ballTrail);
 
 let landingAnnouncementTimer: ReturnType<typeof setTimeout> | undefined;
-const ballController = new BallController(onBallHit, onBallMiss, result => {
+const ballController = new BallController(onBallHit, onBallMiss, (result, firstBouncePoint) => {
   elements.ballResult.textContent = ({ IN: "IN! Nice shot!", NET: "NET - not enough clearance",
     OUT_WIDE: "OUT - wide", OUT_LONG: "OUT - long", SHORT: "SHORT - bounced on your side", OUT: "OUT" } as const)[result];
+  finalizeReturnedTrainingShot(result, firstBouncePoint);
   const announcement = getElement("landingAnnouncement");
   announcement.textContent = elements.ballResult.textContent;
   announcement.hidden = false;
@@ -964,6 +999,13 @@ socket.on("continuous_orientation", (payload: unknown) => {
     peakSwingSpeedKmh = Math.max(peakSwingSpeedKmh, estimatedRacketSpeedKmh);
     if (isCalibrated) {
       processStrokeFrame(processedFrame);
+      if (latestStrokeSnapshot) trainingStrokeEvidence.observe({
+        lockedStrokeType: latestStrokeSnapshot.lockedStrokeType,
+        confidence: latestStrokeSnapshot.confidence,
+        forehandCandidateScore: latestStrokeSnapshot.scores.forehandCandidateScore,
+        backhandCandidateScore: latestStrokeSnapshot.scores.backhandCandidateScore,
+        angularSpeed: processedFrame.angularSpeed
+      });
       const expectedStroke = ballController.ball.lockedStrokeType;
       latestEasySwingIntent = easySwingIntentDetector.update({
         // The hit window uses PC epoch time. Keep intent age in the same clock
@@ -2335,6 +2377,7 @@ function isPlayableCalibratedHitEnabled(): boolean {
 }
 
 function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
+  if (smartTrainingSessionFinalized) startNewSmartTrainingSession();
   const selectedLevel = elements.feedVariationLevel.value as FeedVariationLevel;
   const level = playerAssistLevel === "training" || forceValidatedBaseNext ? "off" : selectedLevel;
   forceValidatedBaseNext = false;
@@ -2455,6 +2498,8 @@ function wireBallControls(): void {
   elements.analyzeStrokeExamples.addEventListener("click", analyzeStrokeExamples);
   elements.playCalibratedForehand.addEventListener("click", () => playCalibratedStroke("forehand"));
   elements.playCalibratedBackhand.addEventListener("click", () => playCalibratedStroke("backhand"));
+  elements.finishTrainingSession.addEventListener("click", finishSmartTrainingSession);
+  elements.newTrainingSession.addEventListener("click", startNewSmartTrainingSession);
   elements.stopPractice.addEventListener("click", () => {
     elements.calibratedPracticeLoopToggle.checked = false;
     selectedPracticeStroke = null;
@@ -2463,6 +2508,7 @@ function wireBallControls(): void {
     ballMesh.visible = false;
     elements.playableCountdown.textContent = "READY";
     elements.practiceStatus.textContent = "Practice stopped.";
+    if (smartTrainingSession.summary().attempts > 0) finishSmartTrainingSession();
   });
   elements.launchForehandBall.addEventListener("click", () => launchBall("easyForehand"));
   elements.launchBackhandBall.addEventListener("click", () => launchBall("easyBackhand"));
@@ -2596,6 +2642,9 @@ function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibra
   previewTrajectoryActive = preview;
   easySwingIntentDetector.reset();
   latestEasySwingIntent = null;
+  peakSwingSpeedKmh = 0;
+  trainingStrokeEvidence.reset();
+  pendingReturnedTrainingShot = null;
   trainingClosestStringBedDistance = Number.POSITIVE_INFINITY;
   trainingStrikeZoneEntryAt = null;
   trainingClosestStrikeZoneMetric = Number.POSITIVE_INFINITY;
@@ -2654,13 +2703,9 @@ function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibra
 }
 
 function onBallHit(event: BallHitEvent): void {
-  if (playerAssistLevel === "training") {
-    const report = trainingSessionCalibration.record(true, event.expectedStrokeType);
-    if (report) console.info("Training 20-swing calibration", report);
-  }
   contactMarker.position.copy(event.contactPointWorld);
   contactMarker.visible = true;
-  elements.ballResult.textContent = "HIT";
+  elements.ballResult.textContent = "CONTACT - tracking landing";
   elements.outgoingBallSpeed.textContent = `${event.outgoingSpeed.toFixed(1)} m/s`;
   elements.diagnosticResult.textContent =
     `HIT | expected ${event.expectedStrokeType} | detected ${event.detectedStrokeType} | ` +
@@ -2681,9 +2726,19 @@ function onBallHit(event: BallHitEvent): void {
   }
   contactFlashUntil = performance.now() + 150;
   if (selectedPracticeStroke) {
-    practiceHits += 1;
-    geometryMissStreak = 0;
-    practiceRelaunchAt = performance.now() + BALL_CONFIG.playableCalibratedHit.practiceResetMs;
+    const strictType = normalizeStrokeType(event.detectedStrokeType);
+    const evidence = trainingStrokeEvidence.resolve();
+    const detection: TrainingStrokeDetection = strictType
+      ? { strokeType: strictType, confidence: event.confidence, source: "strict-state-machine" }
+      : evidence;
+    pendingReturnedTrainingShot = {
+      ballId: event.ballId,
+      expectedStroke: event.expectedStrokeType,
+      detection,
+      swingSpeedKmh: currentTrainingSwingSpeed(),
+      timingOffsetMs: ballController.lastPlayableDecision?.timingOffsetMs ?? null
+    };
+    showPendingTrainingContact(pendingReturnedTrainingShot);
   }
   if (currentFeedVariation) {
     elements.feedVariationDebug.textContent +=
@@ -2714,6 +2769,17 @@ function onBallMiss(event: BallMissEvent): void {
       geometryMissStreak = 0;
       elements.practiceStatus.textContent = "Stability fallback: validated base feed";
     }
+    const detection = trainingStrokeEvidence.resolve();
+    recordSmartTrainingShot({
+      timestamp: Date.now(),
+      expectedStroke: ballController.ball.expectedStrokeType,
+      detectedStroke: detection.strokeType,
+      hit: false,
+      swingSpeedKmh: currentTrainingSwingSpeed(),
+      timingOffsetMs: ballController.lastPlayableDecision?.timingOffsetMs ?? null,
+      placementAccuracy: 0,
+      missReason: ballController.lastPlayableDecision?.reason ?? event.reason
+    }, detection.confidence);
   }
   if (playerAssistLevel === "training") {
     lastTrainingMissReasons = classifyTrainingMiss({
@@ -2744,6 +2810,170 @@ function onBallMiss(event: BallMissEvent): void {
   motionRecorder.recordBallResult({ type: "miss", event });
   window.setTimeout(() => finishRealHitAttempt("MISS", event.reason), 0);
   console.info("Ball miss", event);
+}
+
+function finalizeReturnedTrainingShot(result: ReturnResult, bouncePoint: THREE.Vector3 | null): void {
+  const pending = pendingReturnedTrainingShot;
+  if (!pending || pending.ballId !== ballController.ball.id) return;
+  pendingReturnedTrainingShot = null;
+  const success = isSuccessfulTrainingReturn(result);
+  const accuracy = success
+    ? calculateTrainingTargetAccuracy(bouncePoint, BALL_CONFIG.launch.netDepth)
+    : 0;
+  if (success) {
+    practiceHits += 1;
+    geometryMissStreak = 0;
+  } else {
+    practiceMisses += 1;
+  }
+  practiceRelaunchAt = performance.now() + BALL_CONFIG.playableCalibratedHit.practiceResetMs;
+  if (playerAssistLevel === "training") {
+    const report = trainingSessionCalibration.record(success, pending.expectedStroke, success ? null : result);
+    if (report) console.info("Training 20-swing calibration", report);
+  }
+  recordSmartTrainingShot({
+    timestamp: Date.now(),
+    expectedStroke: pending.expectedStroke,
+    detectedStroke: pending.detection.strokeType,
+    hit: success,
+    swingSpeedKmh: pending.swingSpeedKmh,
+    timingOffsetMs: pending.timingOffsetMs,
+    placementAccuracy: accuracy,
+    missReason: success ? undefined : result
+  }, pending.detection.confidence);
+  elements.practiceStatus.textContent = success
+    ? `Successful return · ${accuracy}% deep-center accuracy`
+    : `${result.replace(/_/g, " ")} counts as a missed shot`;
+  if (currentFeedVariation) elements.feedVariationDebug.textContent += `\nLanding: ${result} | accuracy ${accuracy}%`;
+}
+
+function showPendingTrainingContact(pending: NonNullable<typeof pendingReturnedTrainingShot>): void {
+  const timing = classifyTrainingTiming(pending.timingOffsetMs);
+  elements.trainerDetectedStroke.textContent = formatDetectedStroke(
+    pending.detection.strokeType, pending.detection.confidence
+  );
+  elements.trainerSwingSpeed.textContent = `${Math.round(pending.swingSpeedKmh)} km/h`;
+  elements.trainerTiming.textContent = ({
+    early: "Early", "on-time": "On time", late: "Late", "no-contact": "No contact"
+  } as const)[timing];
+  elements.trainerAccuracy.textContent = "Waiting for bounce";
+  elements.trainerSessionState.textContent = "Contact detected";
+}
+
+function recordSmartTrainingShot(
+  shot: Parameters<SmartTrainingSession["record"]>[0],
+  detectionConfidence = 0
+): void {
+  smartTrainingSessionFinalized = false;
+  const summary = smartTrainingSession.record(shot);
+  const timing = classifyTrainingTiming(shot.timingOffsetMs, shot.missReason);
+  elements.trainerDetectedStroke.textContent = formatDetectedStroke(shot.detectedStroke, detectionConfidence);
+  elements.trainerSwingSpeed.textContent = `${Math.round(shot.swingSpeedKmh)} km/h`;
+  elements.trainerTiming.textContent = ({
+    early: "Early", "on-time": "On time", late: "Late", "no-contact": "No contact"
+  } as const)[timing];
+  elements.trainerAccuracy.textContent = `${shot.placementAccuracy}%`;
+  elements.trainerSessionState.textContent = `${summary.attempts} shot${summary.attempts === 1 ? "" : "s"}`;
+  elements.trainingSessionReport.hidden = true;
+  updateSmartTrainerSummary();
+}
+
+function updateSmartTrainerSummary(): void {
+  const summary = smartTrainingSession.summary();
+  elements.trainerHitRatio.textContent = `${summary.hits} / ${summary.misses} (${summary.hitRatio}%)`;
+  elements.trainerStrokeCounts.textContent = `${summary.forehands} / ${summary.backhands}`;
+  elements.trainerAverageSpeed.textContent = `${Math.round(summary.averageSwingSpeedKmh)} km/h`;
+  elements.trainerBestStreak.textContent = String(summary.bestStreak);
+}
+
+function finishSmartTrainingSession(): void {
+  if (smartTrainingSessionFinalized) return;
+  if (pendingReturnedTrainingShot) {
+    elements.trainerSessionState.textContent = "Waiting for landing";
+    elements.practiceStatus.textContent = "The current shot must land before the session can finish.";
+    return;
+  }
+  const summary = smartTrainingSession.summary();
+  if (summary.attempts === 0) {
+    elements.trainerSessionState.textContent = "No shots yet";
+    elements.practiceStatus.textContent = "Play at least one feed before finishing the session.";
+    return;
+  }
+  const previous = trainingSessionHistory.at(-1) ?? null;
+  const report = smartTrainingSession.finish(previous);
+  trainingSessionHistory = [...trainingSessionHistory, report].slice(-20);
+  smartTrainingSessionFinalized = true;
+  localStorage.setItem(TRAINING_HISTORY_KEY, JSON.stringify(trainingSessionHistory));
+  elements.trainerSessionState.textContent = "Session complete";
+  elements.trainerReportSummary.textContent =
+    `${report.hits}/${report.attempts} successful in-court shots (${report.hitRatio}%), ${report.targetAccuracy}% target accuracy, ` +
+    `${report.averageSwingSpeedKmh} km/h average and ${report.peakSwingSpeedKmh} km/h peak swing speed.`;
+  elements.trainerReportBreakdown.textContent =
+    `Detected strokes: ${report.forehands} forehand, ${report.backhands} backhand, ${report.unknownStrokes} uncertain. ` +
+    `Timing: ${report.earlyHits} early, ${report.onTimeHits} on time, ${report.lateHits} late, ${report.noContact} without contact. ` +
+    `Misses: ${report.netMisses} net, ${report.wideMisses} wide, ${report.longMisses} long, ${report.shortMisses} short. ` +
+    `Best in-court streak: ${report.bestStreak}.`;
+  elements.trainerImprovement.textContent = formatTrainingImprovement(report);
+  elements.trainerFeedbackList.replaceChildren(...report.feedback.map(message => {
+    const item = document.createElement("li");
+    item.textContent = message;
+    return item;
+  }));
+  elements.trainingSessionReport.hidden = false;
+}
+
+function startNewSmartTrainingSession(): void {
+  smartTrainingSession.reset();
+  smartTrainingSessionFinalized = false;
+  pendingReturnedTrainingShot = null;
+  trainingStrokeEvidence.reset();
+  practiceAttempts = practiceHits = practiceMisses = 0;
+  elements.trainerSessionState.textContent = "Session ready";
+  elements.trainerDetectedStroke.textContent = "--";
+  elements.trainerSwingSpeed.textContent = "0 km/h";
+  elements.trainerTiming.textContent = "--";
+  elements.trainerAccuracy.textContent = "0%";
+  elements.trainingSessionReport.hidden = true;
+  elements.practiceStatus.textContent = "New training session ready.";
+  updateSmartTrainerSummary();
+}
+
+function currentTrainingSwingSpeed(): number {
+  const contactIsFresh = lastContactEvent && Math.abs(Date.now() - lastContactEvent.timestamp) <= 1800;
+  if (contactIsFresh && lastContactEvent) return Math.max(0, lastContactEvent.estimatedSpeed);
+  return Math.max(0, peakSwingSpeedKmh, targetSwingSpeedKmh);
+}
+
+function formatDetectedStroke(stroke: DetectedTrainingStroke, confidence = 0): string {
+  if (stroke === "unknown") return "Uncertain";
+  const label = stroke[0].toUpperCase() + stroke.slice(1);
+  return confidence > 0 ? `${label} ${Math.round(confidence * 100)}%` : label;
+}
+
+function formatTrainingImprovement(report: TrainingSessionReport): string {
+  if (!report.improvement) return "First recorded session";
+  const hitChange = report.improvement.hitRatioPoints;
+  const accuracyChange = report.improvement.targetAccuracyPoints;
+  if (hitChange === 0 && accuracyChange === 0) return "Matched previous session";
+  const parts = [
+    `${hitChange >= 0 ? "+" : ""}${hitChange} hit-ratio points`,
+    `${accuracyChange >= 0 ? "+" : ""}${accuracyChange} accuracy points`
+  ];
+  return parts.join(" · ");
+}
+
+function loadTrainingSessionHistory(): TrainingSessionReport[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(TRAINING_HISTORY_KEY) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is TrainingSessionReport =>
+      typeof entry === "object" && entry !== null &&
+      Number.isFinite((entry as TrainingSessionReport).attempts) &&
+      Array.isArray((entry as TrainingSessionReport).feedback)
+    ).slice(-20);
+  } catch {
+    return [];
+  }
 }
 
 function updatePhysicalContactFeedback(): void {

@@ -38,6 +38,7 @@
     "feed-comfort-camera.test.ts",
     "racket-origin-stability.test.ts",
     "training-miss-diagnostics.test.ts",
+    "smart-training-session.test.ts",
     "../client-pc/src/ball/validatedTrajectoryPreset.ts",
     "../client-pc/src/diagnostics/**/*.ts",
     "../client-pc/src/motion/**/*.ts",

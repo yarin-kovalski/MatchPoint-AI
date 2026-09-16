@@ -127,3 +127,21 @@ Acceptance criteria:
 - Tree crowns and palm fronds move gently with time-based wind while trunks and fence remain stable.
 - Decorative geometry stays outside the playable court and does not affect training physics or phone sensor handling.
 - Build, scene tests, and the full regression suite pass.
+
+## Smart Training sessions (2026-09-16)
+
+Acceptance criteria:
+
+- Training shows detected forehand/backhand, per-shot swing speed, early/on-time/late contact, hit/miss ratio, and placement accuracy.
+- Training accuracy uses a consistent deep-center aim zone without adding visible Game-mode targets.
+- Session summaries include averages, peak speed, stroke counts, timing distribution, accuracy, and best streak.
+- Completing a session produces concise coaching feedback based on the measured weakness.
+- The latest 20 completed reports persist locally and the next report compares hit ratio, accuracy, and speed against the previous session.
+- Game mode remains a future extension for visible shooting targets, points, and ranks.
+
+Outcome correction:
+
+- Racket contact is provisional. A shot enters the session record only after the outgoing ball receives its first-bounce ruling.
+- Only `IN` is a successful shot. `NET`, `SHORT`, `OUT_WIDE`, `OUT_LONG`, `OUT`, and no-contact outcomes are misses.
+- Target accuracy uses the physical first-bounce point for successful shots; every failed return receives zero placement accuracy.
+- Stroke type comes from strict motion-state classification when available, with a sensor-evidence fallback based on the strongest forehand/backhand preparation-side score across the feed. The expected feed side is never used as the detected side.
