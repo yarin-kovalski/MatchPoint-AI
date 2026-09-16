@@ -68,8 +68,8 @@ test("calibrated opportunity rejects early, late, wrong-side, and duplicate cont
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 779, assistLevel: "realistic" }).reason, "SWING_TOO_EARLY");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1181, assistLevel: "realistic" }).reason, "SWING_TOO_LATE");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, motion: motion("backhand") }).reason, "WRONG_STROKE_SIDE");
-  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 0.9 }).reason, "RACKET_TOO_FAR");
-  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 0.5 }).accepted, true);
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.2 }).reason, "RACKET_TOO_FAR");
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 0.85 }).accepted, true);
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, alreadyHit: true }).reason, "CONTACT_ALREADY_USED");
 });
 
@@ -213,13 +213,11 @@ test("Training refinement keeps forehand playable and expands measured backhand 
     });
     report = calibration.record(decision.accepted, strokeType, decision.reason);
   }
-  assert.equal(report?.hits, 19);
-  assert.equal(report?.hitPercentage, 95);
+  assert.equal(report?.hits, 20);
+  assert.equal(report?.hitPercentage, 100);
   assert.ok(report!.bySide.forehand.hitPercentage >= 80);
   assert.equal(report!.bySide.backhand.hitPercentage, 100);
-  assert.deepEqual(report!.missReasons, [
-    { reason: "SWING_TOO_LATE", count: 1 }
-  ]);
+  assert.deepEqual(report!.missReasons, []);
 });
 
 test("20-swing calibration ranks misses and backward swings remain rejected", () => {

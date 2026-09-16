@@ -191,3 +191,9 @@ Acceptance criteria:
 - Timing and swing intent alone cannot create contact: the simulated string-bed center must also be within assisted racket reach of the physical ball.
 - Correct forehand and backhand recordings remain playable, while the false-contact pattern visible in the supplied recording becomes a miss.
 - PC build and the full automated regression suite pass.
+
+Training forgiveness refinement:
+
+- The contact-time allowance expands by 40 ms on each side while timing feedback continues to use the original measured offset.
+- Assisted reach covers the full elliptical string bed plus ball radius and a small motion-sampling allowance; it remains bounded well below the separation seen in the false-hit recording.
+- Unlocked stroke-side evidence may classify slightly earlier, but ambiguous and opposite-side motion still cannot inherit the feed type or produce a hit.

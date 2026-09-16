@@ -81,7 +81,7 @@ export function detectedEasySwingSide(snapshot: StrokeDetectorSnapshot | null): 
   const forehand = snapshot.scores.forehandCandidateScore;
   const backhand = snapshot.scores.backhandCandidateScore;
   const strongest = Math.max(forehand, backhand);
-  if (strongest < 0.4 || Math.abs(forehand - backhand) < 0.1) return null;
+  if (strongest < 0.36 || Math.abs(forehand - backhand) < 0.08) return null;
   return forehand > backhand ? "forehand" : "backhand";
 }
 

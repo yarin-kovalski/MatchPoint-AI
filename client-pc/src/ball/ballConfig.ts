@@ -111,13 +111,15 @@ export const BALL_CONFIG = {
     maximumFaceAngleRadians: 1.55,
     snapDurationMs: 60,
     minimumActiveSwingMs: 40,
-    maximumAssistedContactDistance: 0.72,
+    // 0.85 m is the measured half-diagonal of the string bed. The remaining
+    // allowance covers the tennis ball and one phone/render sampling interval.
+    maximumAssistedContactDistance: 0.92,
     maximumCorrection: { lateral: 0.22, vertical: 0.20, depth: 0.24 },
     practiceResetMs: 1700
   },
   playerAssist: {
     training: {
-      windowBeforeMs: 280, windowAfterMs: 240,
+      windowBeforeMs: 320, windowAfterMs: 280,
       directionAnchorStrength: 0.68,
       minimumAngularSpeed: 0.9, minimumAcceleration: 1.8, minimumForwardDriveScore: 0.09
     },
