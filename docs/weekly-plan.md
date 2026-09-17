@@ -253,3 +253,10 @@ Acceptance criteria:
 - [x] Expand the near-racket distance and timing gates modestly while keeping stationary, backward, expired, and clearly distant attempts as misses.
 - [x] Keep outgoing speed, spin, slice, racket face, arc, direction, and follow-through driven by the measured phone motion.
 - [x] Keep Realistic mode's strict motion-side classification unchanged.
+
+## Playable soft slice and contact refinement (2026-09-17)
+
+- [x] Give detected slice shots a modest phone-speed floor so a soft high-to-low swing can cross the net.
+- [x] Protect slice net clearance against noisy closed-face readings without removing face-driven arc and depth changes.
+- [x] Preserve power progression: harder slices travel deeper and can still finish long.
+- [x] Extend the Training swing latch, timing window, and near-racket gate while retaining stationary, backward, expired, and clearly distant misses.

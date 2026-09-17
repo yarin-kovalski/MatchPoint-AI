@@ -70,7 +70,7 @@ test("signed swing path creates distinct topspin, slice and flat arcs and reboun
   assert.ok(top.spin.x < -10); assert.ok(slice.spin.x > 10);
   assert.ok(top.velocity.y > flat.velocity.y); assert.ok(slice.velocity.y < flat.velocity.y);
   assert.notEqual(top.prediction.bouncePoint?.z, slice.prediction.bouncePoint?.z);
-  assert.equal(flight(slice.velocity, slice.spin).result, "SHORT");
+  assert.equal(flight(slice.velocity, slice.spin).result, "IN");
   assert.equal(flight(top.velocity, top.spin).result, "IN");
   assert.ok(slice.prediction.apexPoint.y < flat.prediction.apexPoint.y);
   assert.ok(slice.prediction.bouncePoint!.z > flat.prediction.bouncePoint!.z);
@@ -179,6 +179,23 @@ test("a 25 km/h phone slice clears the net and lands in without making every sli
   assert.ok(overhitFlight.bounce.z < playableFlight.bounce.z);
 });
 
+test("a soft slice clears the net even with a closed phone face", () => {
+  const closedSliceMotion = motion(16 / 3.2, -0.55);
+  const closedRadians = THREE.MathUtils.degToRad(-25);
+  closedSliceMotion.racketFaceNormal.set(0, Math.sin(closedRadians), -Math.cos(closedRadians));
+  const soft = solveTrainingReturn(start, closedSliceMotion);
+  const softFlight = flight(soft.velocity, soft.spin);
+  assert.equal(soft.spinType, "SLICE");
+  assert.equal(softFlight.touchedNet, false);
+  assert.equal(softFlight.result, "IN");
+
+  const harder = solveTrainingReturn(start, motion(30 / 3.2, -0.55));
+  const harderFlight = flight(harder.velocity, harder.spin);
+  assert.ok(harder.velocity.length() > soft.velocity.length());
+  assert.ok(harderFlight.bounce.z < softFlight.bounce.z);
+  assert.equal(harderFlight.result, "OUT_LONG");
+});
+
 test("racket-face openness directly raises arc while a closed face lowers it", () => {
   const closedMotion = motion(6), squareMotion = motion(6), openMotion = motion(6);
   closedMotion.racketFaceNormal.set(0, -0.5, -0.866).normalize();
@@ -212,7 +229,8 @@ test("separate swings reset their peak speed and expired Expo intent cannot hit"
   const slow = detector.update({ ...common, timestamp: 2000, angularSpeed: 3 }, "forehand");
   assert.equal(slow.peakAngularSpeed, 3); assert.equal(slow.startedAt, 2000);
   const sample = motion(); sample.swingIntent = slow;
-  const decision = evaluatePlayableCalibratedHit({ now: 2630, contactTime: 2630, bounceCount: 1,
+  const expiredAt = slow.expiresAt + 1;
+  const decision = evaluatePlayableCalibratedHit({ now: expiredAt, contactTime: expiredAt, bounceCount: 1,
     alreadyHit: false, expectedStrokeType: "forehand", profile: createDefaultTrajectoryProfile("forehand", "right"), motion: sample });
   assert.equal(decision.accepted, false);
 });

@@ -41,27 +41,44 @@ export function solveTrainingReturn(start: THREE.Vector3, motion: EasyHitMotion)
   // speed than a real racket head. Slice also stays airborne under backspin,
   // so compress its forward transfer to keep an ordinary 25 km/h phone swing
   // playable while preserving deeper and long outcomes for faster swings.
-  const horizontalSpeed = (5 + 17 * power) * (1 - Math.max(0, -brush) * 0.67);
+  const measuredHorizontalSpeed = (5 + 17 * power) * (1 - Math.max(0, -brush) * 0.67);
+  // A deliberate high-to-low swing should produce a playable slice even when
+  // the phone reports modest handle speed. Preserve measured variation above
+  // this floor; it only prevents soft slices from dying before the net.
+  const horizontalSpeed = spinType === "SLICE"
+    ? Math.max(measuredHorizontalSpeed, 9.8)
+    : measuredHorizontalSpeed;
   // Face pitch is the primary launch-angle control: an open face raises the
   // arc and a closed face drives it lower. Swing path still adds topspin/slice
   // shape independently, so two strokes with the same face need not fly alike.
   const faceOpenDegrees = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(face.y, -0.82, 0.82)));
-  const launchAngleDegrees = THREE.MathUtils.clamp(
+  const measuredLaunchAngleDegrees = THREE.MathUtils.clamp(
     18 + faceOpenDegrees * 0.72 + Math.max(0, verticalPath) * 15 + Math.min(0, verticalPath) * 6,
     4,
     50
   );
+  // Slice keeps the face-angle relationship, with a small Training floor so a
+  // closed phone face does not drive every backspin shot into the net.
+  const launchAngleDegrees = spinType === "SLICE"
+    ? Math.max(12, measuredLaunchAngleDegrees)
+    : measuredLaunchAngleDegrees;
   const angle = THREE.MathUtils.degToRad(launchAngleDegrees);
   const rawVelocity = direction.clone().multiplyScalar(horizontalSpeed);
   rawVelocity.y = Math.tan(angle) * horizontalSpeed;
   rawVelocity.clampLength(0, BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
   const velocity = rawVelocity.clone();
   const rawPrediction = predictReturnTrajectory(start, velocity, spin);
-  // Help marginal net clearance only; never adjust power, lateral aim or depth.
+  // Help marginal net clearance. Slice permits a larger vertical-only correction
+  // because phone face noise otherwise makes the entire shot family unplayable.
   const crossing = rawPrediction.netCrossingPoint;
   if (crossing && crossing.y < BALL_CONFIG.launch.netHeight + 0.15) {
     const seconds = (BALL_CONFIG.launch.netDepth - start.z) / velocity.z;
-    velocity.y += THREE.MathUtils.clamp((BALL_CONFIG.launch.netHeight + 0.15 - crossing.y) / seconds, 0, 0.6);
+    const maximumLiftCorrection = spinType === "SLICE" ? 2.2 : 0.6;
+    velocity.y += THREE.MathUtils.clamp(
+      (BALL_CONFIG.launch.netHeight + 0.15 - crossing.y) / seconds,
+      0,
+      maximumLiftCorrection
+    );
   }
   velocity.clampLength(0, BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
   return { velocity, rawVelocity, spin, spinType, power, verticalPath, headSpeed,

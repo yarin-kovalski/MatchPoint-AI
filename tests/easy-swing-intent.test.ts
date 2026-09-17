@@ -112,7 +112,7 @@ test("a fast orientation-led swing remains active through follow-through and kee
   }, "forehand");
   assert.equal(followThrough.active, true);
   assert.equal(followThrough.peakSourceTimestamp, 4_200);
-  assert.equal(detector.getSnapshot(10_621, "forehand").active, false);
+  assert.equal(detector.getSnapshot(10_000 + BALL_CONFIG.easySwingIntent.activeWindowMs + 1, "forehand").active, false);
 });
 
 test("Easy feeds intersect the measured reach envelopes during the real swing windows", () => {

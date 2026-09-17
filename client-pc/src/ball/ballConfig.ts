@@ -100,7 +100,7 @@ export const BALL_CONFIG = {
     fullSwingPreparationScore: 0.65,
     minimumConfidence: 0.35,
     maximumFaceAngleRadians: 1.55,
-    activeWindowMs: 620
+    activeWindowMs: 760
   },
   playableCalibratedHit: {
     windowBeforeMs: 220,
@@ -114,13 +114,13 @@ export const BALL_CONFIG = {
     // 0.85 m is the measured half-diagonal of the string bed. The remaining
     // allowance covers the ball, phone-at-handle offset and brief render/network
     // lag. This is still a near-racket gate, not an automatic court-wide hit.
-    maximumAssistedContactDistance: 1.32,
+    maximumAssistedContactDistance: 1.40,
     maximumCorrection: { lateral: 0.30, vertical: 0.27, depth: 0.32 },
     practiceResetMs: 1700
   },
   playerAssist: {
     training: {
-      windowBeforeMs: 510, windowAfterMs: 460,
+      windowBeforeMs: 560, windowAfterMs: 520,
       directionAnchorStrength: 0.68,
       minimumAngularSpeed: 0.9, minimumAcceleration: 1.8, minimumForwardDriveScore: 0.09
     },

@@ -68,7 +68,7 @@ test("calibrated opportunity rejects early, late, wrong-side, and duplicate cont
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 779, assistLevel: "realistic" }).reason, "SWING_TOO_EARLY");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1181, assistLevel: "realistic" }).reason, "SWING_TOO_LATE");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, motion: motion("backhand"), assistLevel: "realistic" }).reason, "WRONG_STROKE_SIDE");
-  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.33 }).reason, "RACKET_TOO_FAR");
+  assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.41 }).reason, "RACKET_TOO_FAR");
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, ballToRacketDistance: 1.25 }).accepted, true);
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, alreadyHit: true }).reason, "CONTACT_ALREADY_USED");
 });
@@ -318,7 +318,7 @@ test("forgiving forehand grid accepts human timing, feed-side labeling and near 
   assert.equal(evaluatePlayableCalibratedHit({
     now: 1000, contactTime: 1000, bounceCount: 1, alreadyHit: false,
     expectedStrokeType: "forehand", profile, motion: motion("forehand"),
-    ballToRacketDistance: 1.33, assistLevel: "training"
+    ballToRacketDistance: 1.41, assistLevel: "training"
   }).reason, "RACKET_TOO_FAR");
 });
 
