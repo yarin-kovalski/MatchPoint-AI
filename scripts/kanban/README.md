@@ -1,5 +1,7 @@
 # MatchPoint AI Kanban Automation
 
+This board was reconstructed retrospectively from the repository's Git history as an accurate project record. Trello card creation timestamps do not represent the original implementation dates; each card's start, due date, and `History` checklist preserve the evidence-backed development timeline.
+
 This directory synchronizes `board.json` with the existing Trello board:
 
 - Board: MatchPoint AI — Final Project

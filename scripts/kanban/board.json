@@ -5,9 +5,9 @@
     "prefs_background": "blue"
   },
   "git": {
-    "lastProcessedCommit": "5a574260f4fb8eed81b735cd0ba5dbf4360d96d4"
+    "lastProcessedCommit": "dbb3f192a95bbc75dbc5c9f5b3c1f6a2c5887bc7"
   },
-  "lists": ["Backlog", "To Do", "In Progress", "Done", "Cancelled / Parked"],
+  "lists": ["Backlog", "To Do", "In Progress", "Testing", "Done", "Cancelled / Parked"],
   "labels": [
     { "name": "Product & Research", "color": "blue" },
     { "name": "Realtime & Server", "color": "green" },
@@ -25,8 +25,7 @@
       "list": "To Do",
       "name": "Record the final gameplay video",
       "labels": ["Docs & Course"],
-      "due": "2026-09-30T18:00:00+03:00",
-      "desc": "The repository documents a required final gameplay demonstration, but no commit proves that the final course video has been recorded. September 30 is used as a working completion date immediately before the stated October 1 submission deadline.",
+      "desc": "The repository documents a required final gameplay demonstration, but no commit proves that the final course video has been recorded. Record the phone controller, PC trainer, motion feedback, and the tested slice behavior in one clear demonstration.",
       "checklist": []
     },
     {
@@ -34,8 +33,7 @@
       "list": "To Do",
       "name": "Write the Moodle submission PDF",
       "labels": ["Docs & Course"],
-      "due": "2026-09-30T18:00:00+03:00",
-      "desc": "The graded submission still needs a PDF that explains the project and includes the final kanban-board screenshot. This remains future course work; no screenshot or PDF is claimed to exist yet.",
+      "desc": "The graded submission still needs a PDF that explains the project and includes the video link, GitHub repository link, and final Kanban screenshot. No screenshot or PDF is claimed to exist yet.",
       "checklist": []
     },
     {
@@ -43,7 +41,6 @@
       "list": "To Do",
       "name": "Package the final source archive",
       "labels": ["Infra & Deploy", "Docs & Course"],
-      "due": "2026-09-30T18:00:00+03:00",
       "desc": "A historical ZIP exists in the August startup commit, but the current Phase D.1 work is newer. A fresh archive must be generated from the approved final source rather than presenting the older ZIP as complete.",
       "checklist": []
     },
@@ -52,17 +49,63 @@
       "list": "To Do",
       "name": "Invite the instructor to the repository",
       "labels": ["Infra & Deploy", "Docs & Course"],
-      "due": "2026-09-30T18:00:00+03:00",
       "desc": "Repository access is a submission action outside the code history. It must be completed and verified against the correct instructor account before the October 1 deadline.",
       "checklist": []
     },
     {
       "key": "BALL-D1-READABILITY",
-      "list": "In Progress",
-      "name": "Improve ball readability and racket-aligned delivery",
+      "list": "Testing",
+      "name": "Make feeds and racket contact playable",
       "labels": ["Ball Physics", "3D Racket & Scene", "Docs & Course"],
-      "desc": "Phase D.1 separates physical and visual ball radii, derives delivery from the transformed string bed, adds procedural felt and seams, and improves camera readability. The work exists in the current worktree but has no commit yet, so no historical start or due date is invented.",
-      "checklist": []
+      "start": "2026-08-05T09:00:00+03:00",
+      "due": "2026-09-17T18:00:00+03:00",
+      "desc": "Early feeds and exact collision rules made ordinary swings miss too often. This work moved feeds into natural reach, added bounded assistance near the real contact zone, tuned power for phone motion, and repeatedly refined direction and difficulty while preserving shot attributes.",
+      "checklist": [
+        "8ac90d0 2026-08-05 fix(ball): prevent contact guide from crashing Three.js scene",
+        "2adff8a 2026-08-05 fix(ball): align readable one-bounce delivery with racket [BALL-D1-READABILITY]",
+        "dac83a5 2026-08-05 fix(ball): tune playable mirrored one-bounce deliveries [BALL-D1-READABILITY]",
+        "6606734 2026-08-05 fix(ball): redesign easy feeds for reliable racket contact [BALL-D1-READABILITY]",
+        "bc1a343 2026-08-05 fix(ball): add bounded easy-mode motion-assisted hits [BALL-D1-READABILITY]",
+        "a58e043 2026-08-05 fix(ball): move easy feeds closer along player depth",
+        "a5c400f 2026-08-05 fix(ball): align easy feeds with stationary reach volume",
+        "90ba271 2026-08-05 fix(ball): move easy contact into natural arm reach",
+        "5588382 2026-08-06 fix(ball): make easy feeds enter the comfortable reach core",
+        "4657b96 2026-08-06 feat(ball): add deterministic high-assist easy training feed",
+        "37ef0a7 2026-08-06 fix(diagnostics): expose and gate real hit recording controls",
+        "1a38580 2026-08-06 fix(ball): enforce forehand parity in calibrated play",
+        "bee33d4 2026-08-06 feat(ball): add safe varied player practice mode",
+        "28c13c5 2026-08-07 perf(player): refine baseline positioning and feed rendering",
+        "8e9f438 2026-09-12 fix ball movement",
+        "036e6ba 2026-09-13 fix shot directions",
+        "30bcd34 2026-09-13 improve shot",
+        "e2b857b 2026-09-13 improve the racket shot",
+        "4180ece 2026-09-13 improve ball movement",
+        "8e77fc8 2026-09-13 IMPROVE BALL SPEAD AND MOVEMENT",
+        "057a41c 2026-09-13 set the shot direction and dificult level",
+        "3b10422 2026-09-14 fix dificult level of shots and success message",
+        "b5ee62d 2026-09-14 improve shot detection",
+        "d6c732d 2026-09-16 fix shot dificult",
+        "6ed135b 2026-09-16 improve shot speed",
+        "95404da 2026-09-16 improve shot hardness",
+        "8622f42 2026-09-16 make the shot easier",
+        "87b4f11 2026-09-17 improve player contact"
+      ]
+    },
+    {
+      "key": "SHOT-TRAJECTORY-SENSORS",
+      "list": "Testing",
+      "name": "Validate sensor-driven spin and slice trajectories",
+      "labels": ["Ball Physics", "Motion Analytics", "Stroke Detection"],
+      "start": "2026-09-16T09:00:00+03:00",
+      "due": "2026-09-17T18:00:00+03:00",
+      "desc": "Racket-face openness, brush direction, follow-through, topspin, and slice must produce distinct arcs and depths. Drop-slice and deep-slice profiles were calibrated from phone samples and the temporary calibration controls were removed; final real-phone acceptance is still required.",
+      "checklist": [
+        "f5532a8 2026-09-16 fix shot spin and high",
+        "abcb367 2026-09-16 improve Open faces treatment",
+        "012d694 2026-09-16 Verified trajectory behavior",
+        "e538683 2026-09-17 calibrated the drop shot and deep slice",
+        "dbb3f19 2026-09-17 remove calibration slice and improve slice shot"
+      ]
     },
     {
       "key": "PRODUCT-PHASED-PLAN",
@@ -201,7 +244,93 @@
       "start": "2026-08-05T20:49:02+03:00",
       "due": "2026-08-05T20:49:02+03:00",
       "desc": "The existing Trello board was upgraded with stable card identities, idempotent synchronization, conservative Git-history matching, conflict and orphan protection, GitHub Actions automation, and repository-secret authentication.",
-      "checklist": ["5a57426 2026-08-05 feat(kanban): automate idempotent Trello synchronization [KANBAN-AUTOMATION] [DONE]"]
+      "checklist": [
+        "5a57426 2026-08-05 feat(kanban): automate idempotent Trello synchronization [KANBAN-AUTOMATION] [DONE]",
+        "19cb7cb 2026-08-05 fix(kanban): register automation work and resolve keyed history [KANBAN-AUTOMATION]"
+      ]
+    },
+    {
+      "key": "GAMEPLAY-VISUAL-REALISM",
+      "list": "Done",
+      "name": "Build a realistic outdoor tennis court",
+      "labels": ["3D Racket & Scene", "Product & Research"],
+      "start": "2026-08-07T09:00:00+03:00",
+      "due": "2026-09-15T18:00:00+03:00",
+      "desc": "The prototype scene was upgraded into a readable outdoor court with more authentic court materials, net, lighting, fencing, sunset environment, and moving scenery. Follow-up work corrected environmental motion without changing gameplay rules.",
+      "checklist": [
+        "84fbbc5 2026-08-07 feat(gameplay): improve tennis authenticity and court visuals [BALL-D3-AUTHENTICITY-AND-VISUALS]",
+        "7e00943 2026-08-17 feat(visuals): upgrade court net and lighting realism",
+        "851d110 2026-09-15 improve vizualization of the settings",
+        "0be0733 2026-09-15 fix settingss motion"
+      ]
+    },
+    {
+      "key": "STROKE-HIGH-SPEED-FIDELITY",
+      "list": "Done",
+      "name": "Stabilize fast swings and stroke-side detection",
+      "labels": ["Stroke Detection", "Motion Analytics", "Mobile Sensors"],
+      "start": "2026-08-07T09:00:00+03:00",
+      "due": "2026-09-16T18:00:00+03:00",
+      "desc": "Fast phone motion could appear to freeze or register on the wrong side. The motion pipeline and gameplay tracking were tuned for high-speed swings, racket speed, calibration, and false backhand prevention.",
+      "checklist": [
+        "bd6aa15 2026-08-07 feat(gameplay): stabilize ball physics and high-speed stroke tracking [BALL-D4-STABILITY-AND-STROKE-FIDELITY]",
+        "7edb32e 2026-09-12 improve racket speed and vizualization",
+        "411e0c9 2026-09-13 improve racket caliberation",
+        "15c2ae6 2026-09-16 fix false backhand shot"
+      ]
+    },
+    {
+      "key": "DOCS-KNOWN-GOOD-RECOVERY",
+      "list": "Done",
+      "name": "Document the known-good recovery point",
+      "labels": ["Docs & Course", "Infra & Deploy"],
+      "start": "2026-08-12T09:00:00+03:00",
+      "due": "2026-08-12T18:00:00+03:00",
+      "desc": "A recovery guide records the verified gameplay baseline so later experiments can be compared with a known working state without discarding unrelated work.",
+      "checklist": ["0819f44 2026-08-12 docs: record known-good gameplay recovery point"]
+    },
+    {
+      "key": "EXPO-SDK-LAN-STARTUP",
+      "list": "Done",
+      "name": "Harden Expo LAN and SDK startup",
+      "labels": ["Mobile Sensors", "Infra & Deploy", "Realtime & Server"],
+      "start": "2026-08-17T09:00:00+03:00",
+      "due": "2026-09-12T18:00:00+03:00",
+      "desc": "Expo Go needed a reliable LAN address and compatible SDK without conflicting CLI flags. The startup flow was corrected, the mobile package was migrated from SDK 54 to 57, and Metro startup was repaired.",
+      "checklist": [
+        "132e18e 2026-08-17 fix(expo): force offline LAN address for Expo Go",
+        "c7e9c6e 2026-08-17 fix(expo): remove conflicting LAN startup flag",
+        "9aa1083 2026-08-17 setup 17_8",
+        "dae409c 2026-09-11 change sdk version from 54 to 57",
+        "b46986f 2026-09-11 move form 54 sdk to 57 version",
+        "c9fb167 2026-09-12 fix Expo Metro startup"
+      ]
+    },
+    {
+      "key": "SMART-TRAINER-ANALYTICS",
+      "list": "Done",
+      "name": "Add session coaching and professional reports",
+      "labels": ["Motion Analytics", "Stroke Detection", "Docs & Course"],
+      "start": "2026-09-15T09:00:00+03:00",
+      "due": "2026-09-16T18:00:00+03:00",
+      "desc": "The application evolved from a motion game into a smart trainer. Training and future game modes, backhand parity, stroke type, speed, timing, hit ratio, accuracy, spin and slice levels, arc, racket face, finish quality, improvement, self-review, and a downloadable session report were added.",
+      "checklist": [
+        "60ae82e 2026-09-15 set training mode and game mode, improve backhand shots",
+        "f6e0c39 2026-09-16 improve report features",
+        "873c7dd 2026-09-16 add downloaded report option and speen/slice features",
+        "7bb7191 2026-09-16 add spin and deture level graph",
+        "998abb6 2026-09-16 add self review and improve the session report and detection of the features"
+      ]
+    },
+    {
+      "key": "COURT-VISION-BOUNCE-MAP",
+      "list": "Done",
+      "name": "Add court vision and bounce-location feedback",
+      "labels": ["3D Racket & Scene", "Motion Analytics", "Ball Physics"],
+      "start": "2026-09-16T09:00:00+03:00",
+      "due": "2026-09-16T18:00:00+03:00",
+      "desc": "Players needed immediate spatial feedback about where each ball landed. A persistent compact court view and report visualization were added to mark bounce locations and reinforce in/out analysis.",
+      "checklist": ["a39350f 2026-09-16 add court vision when hitting"]
     },
     {
       "key": "PARK-MEDIAPIPE-POSE",
@@ -216,11 +345,11 @@
     {
       "key": "PARK-COACHING-ARCADE",
       "list": "Cancelled / Parked",
-      "name": "Park the full coaching and arcade expansion",
+      "name": "Defer scored game mode and shooting targets",
       "labels": ["Product & Research", "Motion Analytics", "Docs & Course"],
       "start": "2026-06-20T09:00:00+03:00",
       "due": "2026-06-20T18:00:00+03:00",
-      "desc": "Session statistics, target scoring, improvement advice, early/perfect/late feedback, wall gameplay, and animated ball deformation were intentionally left outside the verified prototype. The phased plan prioritized transport, motion classification, and fair racket-ball interaction instead of implying that the larger coaching product was complete.",
+      "desc": "The smart training analysis is now implemented, but scored game-mode targets and the larger arcade loop remain deliberately postponed until the trainer behavior and final course submission are verified.",
       "checklist": ["7d6c979 2026-06-20 MatchPoint start"]
     },
     {
