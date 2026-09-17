@@ -87,6 +87,29 @@
             <div><span>Launch</span><strong id="playerLaunchTendency">--</strong></div>
             <div><span>Contact quality</span><strong id="playerContactQuality">--</strong></div>
           </div>
+          <section class="slice-calibration" aria-labelledby="sliceCalibrationTitle">
+            <div class="slice-calibration-heading">
+              <div><span class="trainer-kicker">Personal shot model</span><h3 id="sliceCalibrationTitle">Slice calibration</h3></div>
+              <strong id="sliceCalibrationReadiness">Not calibrated</strong>
+            </div>
+            <p>Record three drop slices and three deep slices. Use your normal high-to-low backward cut with the racket face open. Only learned slice shots are changed.</p>
+            <label>Feed side
+              <select id="sliceCalibrationStroke">
+                <option value="forehand">Forehand</option>
+                <option value="backhand">Backhand</option>
+              </select>
+            </label>
+            <div class="slice-calibration-actions">
+              <button id="calibrateDropSlice" type="button">Record 3 drop slices</button>
+              <button id="calibrateDeepSlice" type="button">Record 3 deep slices</button>
+              <button id="resetSliceCalibration" type="button" class="secondary-button">Reset</button>
+            </div>
+            <div class="slice-calibration-progress" aria-live="polite">
+              <span>Drop <strong id="dropSliceCalibrationCount">0/3</strong></span>
+              <span>Deep <strong id="deepSliceCalibrationCount">0/3</strong></span>
+            </div>
+            <p id="sliceCalibrationStatus" class="player-status">Choose a slice type to begin.</p>
+          </section>
           <section class="smart-trainer" aria-labelledby="smartTrainerTitle">
             <div class="smart-trainer-heading">
               <div><span class="trainer-kicker">Motion analysis</span><h3 id="smartTrainerTitle">Smart Trainer</h3></div>

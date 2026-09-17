@@ -141,6 +141,13 @@ export const BALL_CONFIG = {
     sliceSpinAcceleration: 46,
     topspinSpinAcceleration: 58
   },
+  calibratedSlice: {
+    dropDepthPastNetMeters: 2.1,
+    deepDepthPastNetMeters: 9.0,
+    minimumNetClearanceMeters: 0.16,
+    dropSpeedRange: [7.5, 15] as const,
+    deepSpeedRange: [9, 20] as const
+  },
   sweptContact: {
     historyMs: 140,
     samplesPerFrame: 5,

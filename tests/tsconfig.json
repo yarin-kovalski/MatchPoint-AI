@@ -28,6 +28,7 @@
     "feed-variation.test.ts",
     "contact-realism.test.ts",
     "contact-position-calibration.test.ts",
+    "slice-shot-calibration.test.ts",
     "tennis-environment.test.ts",
     "court-positioning.test.ts",
     "ball-stability.test.ts",

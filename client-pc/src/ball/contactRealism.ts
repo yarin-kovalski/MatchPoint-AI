@@ -73,6 +73,7 @@ export type PhysicalImpactResolution = {
   upwardRacketHeadSpeed: number;
   lateralRacketHeadSpeed: number;
   invalidDirectionReason: InvalidDirectionReason;
+  calibratedSliceIntent?: "drop" | "deep";
 };
 
 const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1);

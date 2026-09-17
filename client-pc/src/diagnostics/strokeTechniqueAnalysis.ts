@@ -39,6 +39,7 @@ export type ShotTechnique = {
   bounceDepthPastNetMeters: number | null;
   shotStyle: TrainingShotStyle;
   shotStyleLabel: string;
+  calibratedSliceIntent?: "drop" | "deep";
   followThrough: FollowThroughResult;
 };
 
@@ -134,7 +135,7 @@ export function createShotTechnique(
   const bounceZ = actualBounce?.z ?? impact.prediction.bouncePoint?.z ?? null;
   const bounceDepthPastNetMeters = bounceZ === null
     ? null : round(Math.max(0, BALL_CONFIG.launch.netDepth - bounceZ), 2);
-  const shotStyle = classifyTrainingShotStyle({
+  const measuredShotStyle = classifyTrainingShotStyle({
     spinType: impact.spinType,
     spinLevel: Math.max(1, Math.round(spinLevel / 10)),
     verticalPath,
@@ -142,6 +143,8 @@ export function createShotTechnique(
     arcLevel,
     bounceDepthPastNetMeters
   });
+  const shotStyle: TrainingShotStyle = impact.calibratedSliceIntent === "drop" ? "DROP_SHOT"
+    : impact.calibratedSliceIntent === "deep" ? "SLICE" : measuredShotStyle;
   return {
     spinType: impact.spinType,
     spinRateRadPerSecond: round(spinRate, 1),
@@ -164,7 +167,9 @@ export function createShotTechnique(
     ballSpeedKmh,
     bounceDepthPastNetMeters,
     shotStyle,
-    shotStyleLabel: trainingShotStyleLabel(shotStyle),
+    shotStyleLabel: impact.calibratedSliceIntent === "deep" ? "Deep slice"
+      : trainingShotStyleLabel(shotStyle),
+    calibratedSliceIntent: impact.calibratedSliceIntent,
     followThrough
   };
 }

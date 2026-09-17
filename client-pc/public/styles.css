@@ -717,6 +717,24 @@ body {
 .player-scoreboard strong { margin-top: 3px; color: #efffe9; font-size: 0.78rem; }
 .player-status { margin: 10px 0 0; color: #dfffb2; font-size: 0.76rem; }
 
+.slice-calibration {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid rgba(195, 240, 154, 0.28);
+  border-radius: 18px;
+  background: rgba(7, 24, 22, 0.62);
+}
+.slice-calibration-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.slice-calibration-heading h3 { margin: 3px 0 0; font-size: 1.12rem; }
+.slice-calibration-heading > strong { color: #dfffa8; font-size: 0.72rem; text-align: right; }
+.slice-calibration > p { color: #aec2bb; font-size: 0.76rem; line-height: 1.5; }
+.slice-calibration > label { display: grid; gap: 5px; color: #a9bcb6; font-size: 0.72rem; }
+.slice-calibration-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.slice-calibration-actions button:last-child { grid-column: 1 / -1; }
+.slice-calibration-progress { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.slice-calibration-progress span { padding: 8px 10px; border-radius: 10px; background: rgba(8, 20, 19, 0.72); color: #9db2ab; font-size: 0.72rem; }
+.slice-calibration-progress strong { display: block; margin-top: 2px; color: #f4f4e8; font-size: 0.92rem; }
+
 .developer-panel {
   margin-top: 14px;
   border-top: 1px solid rgba(184, 255, 44, 0.24);

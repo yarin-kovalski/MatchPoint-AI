@@ -88,6 +88,20 @@ test("smart trainer exposes live motion metrics and session feedback controls", 
   assert.match(main, /strokeType: event\.expectedStrokeType, confidence: 1, source: "feed-side"/);
 });
 
+test("player can record exactly three drop and three deep slice examples", () => {
+  for (const id of [
+    "sliceCalibrationStroke", "calibrateDropSlice", "calibrateDeepSlice", "resetSliceCalibration",
+    "dropSliceCalibrationCount", "deepSliceCalibrationCount", "sliceCalibrationReadiness", "sliceCalibrationStatus"
+  ]) {
+    assert.match(html, new RegExp(`id="${id}"`));
+    assert.ok(main.includes(`("${id}")`), `${id} must remain bound`);
+  }
+  assert.match(html, /Record 3 drop slices/);
+  assert.match(html, /Record 3 deep slices/);
+  assert.match(main, /features\.shotShape !== "SLICE"/);
+  assert.match(main, /classifyCalibratedSlice\(motion, sliceCalibrationData\)/);
+});
+
 test("court vision is bound to first-bounce data", () => {
   for (const id of ["courtVision", "courtVisionMap", "courtVisionResult"]) {
     assert.match(html, new RegExp(`id="${id}"`));

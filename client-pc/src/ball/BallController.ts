@@ -420,6 +420,7 @@ export class BallController {
     });
     const trainingReturn = solveTrainingReturn(calibratedPoint, motion);
     physical.spinType = trainingReturn.spinType;
+    physical.calibratedSliceIntent = trainingReturn.calibratedSliceIntent;
     physical.outcome = trainingReturn.spinType === "TOPSPIN" ? "TOPSPIN_HIT"
       : trainingReturn.spinType === "SLICE" ? "SLICE_HIT" : trainingReturn.spinType === "FLAT" ? "FLAT_HIT" : "VALID_HIT";
     physical.outgoingVelocity.copy(trainingReturn.velocity);

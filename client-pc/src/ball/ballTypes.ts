@@ -34,6 +34,9 @@ export type EasyHitMotion = {
   swingIntent?: EasySwingIntentSnapshot;
   forwardSwing?: ForwardSwingSnapshot;
   playabilityAssistStrength?: number;
+  /** Learned only from the player's explicit three-shot slice calibrations. */
+  calibratedSliceIntent?: "drop" | "deep";
+  calibratedSliceConfidence?: number;
 };
 
 export type HitDebugSnapshot = {

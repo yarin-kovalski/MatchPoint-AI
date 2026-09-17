@@ -260,3 +260,13 @@ Acceptance criteria:
 - [x] Protect slice net clearance against noisy closed-face readings without removing face-driven arc and depth changes.
 - [x] Preserve power progression: harder slices travel deeper and can still finish long.
 - [x] Extend the Training swing latch, timing window, and near-racket gate while retaining stationary, backward, expired, and clearly distant misses.
+
+## Personal drop/deep slice calibration (2026-09-17)
+
+- [x] Provide separate three-ball recording flows for a short drop slice and a deep slice, with selectable forehand or backhand feeds.
+- [x] Save the complete contact sensor snapshot plus stable pre-impact motion features for every accepted example.
+- [x] Count only real high-to-low slice contacts; flat, topspin, mixed, missed, or distant attempts do not consume an example.
+- [x] Activate the learned classifier only after all three examples of both slice types are present.
+- [x] Use the learned motion profiles to choose short or deep slice shaping while preserving measured spin, face, direction, speed variation, and follow-through.
+- [x] Solve the calibrated drop slice to a safe 2.1 m depth past the net and the deep slice to 9.0 m past the net, including explicit net-clearance scoring.
+- [x] Guarantee through regression tests that calibrated slice intent cannot change flat or topspin trajectories.

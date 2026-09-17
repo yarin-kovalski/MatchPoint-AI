@@ -45,9 +45,10 @@ export function solveTrainingReturn(start: THREE.Vector3, motion: EasyHitMotion)
   // A deliberate high-to-low swing should produce a playable slice even when
   // the phone reports modest handle speed. Preserve measured variation above
   // this floor; it only prevents soft slices from dying before the net.
-  const horizontalSpeed = spinType === "SLICE"
+  let horizontalSpeed = spinType === "SLICE"
     ? Math.max(measuredHorizontalSpeed, 9.8)
     : measuredHorizontalSpeed;
+  const calibratedSliceIntent = spinType === "SLICE" ? motion.calibratedSliceIntent : undefined;
   // Face pitch is the primary launch-angle control: an open face raises the
   // arc and a closed face drives it lower. Swing path still adds topspin/slice
   // shape independently, so two strokes with the same face need not fly alike.
@@ -59,18 +60,25 @@ export function solveTrainingReturn(start: THREE.Vector3, motion: EasyHitMotion)
   );
   // Slice keeps the face-angle relationship, with a small Training floor so a
   // closed phone face does not drive every backspin shot into the net.
-  const launchAngleDegrees = spinType === "SLICE"
+  let launchAngleDegrees = spinType === "SLICE"
     ? Math.max(12, measuredLaunchAngleDegrees)
     : measuredLaunchAngleDegrees;
   const angle = THREE.MathUtils.degToRad(launchAngleDegrees);
   const rawVelocity = direction.clone().multiplyScalar(horizontalSpeed);
   rawVelocity.y = Math.tan(angle) * horizontalSpeed;
   rawVelocity.clampLength(0, BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
-  const velocity = rawVelocity.clone();
-  const rawPrediction = predictReturnTrajectory(start, velocity, spin);
+  const rawPrediction = predictReturnTrajectory(start, rawVelocity, spin);
+  const calibrated = calibratedSliceIntent
+    ? solveCalibratedSliceVelocity(start, direction, spin, calibratedSliceIntent, horizontalSpeed, launchAngleDegrees)
+    : null;
+  const velocity = calibrated?.velocity ?? rawVelocity.clone();
+  if (calibrated) {
+    horizontalSpeed = calibrated.horizontalSpeed;
+    launchAngleDegrees = calibrated.launchAngleDegrees;
+  }
   // Help marginal net clearance. Slice permits a larger vertical-only correction
   // because phone face noise otherwise makes the entire shot family unplayable.
-  const crossing = rawPrediction.netCrossingPoint;
+  const crossing = predictReturnTrajectory(start, velocity, spin).netCrossingPoint;
   if (crossing && crossing.y < BALL_CONFIG.launch.netHeight + 0.15) {
     const seconds = (BALL_CONFIG.launch.netDepth - start.z) / velocity.z;
     const maximumLiftCorrection = spinType === "SLICE" ? 2.2 : 0.6;
@@ -82,8 +90,57 @@ export function solveTrainingReturn(start: THREE.Vector3, motion: EasyHitMotion)
   }
   velocity.clampLength(0, BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
   return { velocity, rawVelocity, spin, spinType, power, verticalPath, headSpeed,
-    faceOpenDegrees, launchAngleDegrees,
+    faceOpenDegrees, launchAngleDegrees, calibratedSliceIntent,
     rawPrediction, prediction: predictReturnTrajectory(start, velocity, spin) };
+}
+
+function solveCalibratedSliceVelocity(
+  start: THREE.Vector3,
+  direction: THREE.Vector3,
+  spin: THREE.Vector3,
+  intent: "drop" | "deep",
+  measuredHorizontalSpeed: number,
+  measuredLaunchAngleDegrees: number
+): { velocity: THREE.Vector3; horizontalSpeed: number; launchAngleDegrees: number } {
+  const config = BALL_CONFIG.calibratedSlice;
+  const targetDepth = intent === "drop" ? config.dropDepthPastNetMeters : config.deepDepthPastNetMeters;
+  const targetZ = BALL_CONFIG.launch.netDepth - targetDepth;
+  const speedRange = intent === "drop" ? config.dropSpeedRange : config.deepSpeedRange;
+  const angleCenter = intent === "drop"
+    ? THREE.MathUtils.clamp(measuredLaunchAngleDegrees, 12, 19)
+    : THREE.MathUtils.clamp(measuredLaunchAngleDegrees, 13, 21);
+  let best: { velocity: THREE.Vector3; horizontalSpeed: number; launchAngleDegrees: number; score: number } | null = null;
+
+  for (let angleOffset = -3; angleOffset <= 3; angleOffset += 1) {
+    const candidateAngle = angleCenter + angleOffset;
+    let low: number = speedRange[0], high: number = speedRange[1];
+    for (let iteration = 0; iteration < 14; iteration += 1) {
+      const candidateSpeed = (low + high) / 2;
+      const candidate = direction.clone().multiplyScalar(candidateSpeed);
+      candidate.y = Math.tan(THREE.MathUtils.degToRad(candidateAngle)) * candidateSpeed;
+      candidate.clampLength(0, BALL_CONFIG.contactRealism.maximumOutgoingSpeed);
+      const prediction = predictReturnTrajectory(start, candidate, spin);
+      const bounce = prediction.bouncePoint;
+      const crossing = prediction.netCrossingPoint;
+      if (!bounce) { low = candidateSpeed; continue; }
+      const clearance = crossing
+        ? crossing.y - BALL_CONFIG.launch.netHeight - BALL_CONFIG.scale.physicalRadiusMeters
+        : -1;
+      const netPenalty = Math.max(0, config.minimumNetClearanceMeters - clearance) * 35;
+      const sensorPenalty = Math.abs(candidateAngle - angleCenter) * 0.025 +
+        Math.abs(candidateSpeed - measuredHorizontalSpeed) * 0.012;
+      const score = Math.abs(bounce.z - targetZ) + netPenalty + sensorPenalty;
+      if (!best || score < best.score) {
+        best = { velocity: candidate, horizontalSpeed: candidateSpeed, launchAngleDegrees: candidateAngle, score };
+      }
+      if (bounce.z > targetZ) low = candidateSpeed;
+      else high = candidateSpeed;
+    }
+  }
+  if (best) return best;
+  const velocity = direction.clone().multiplyScalar(measuredHorizontalSpeed);
+  velocity.y = Math.tan(THREE.MathUtils.degToRad(measuredLaunchAngleDegrees)) * measuredHorizontalSpeed;
+  return { velocity, horizontalSpeed: measuredHorizontalSpeed, launchAngleDegrees: measuredLaunchAngleDegrees };
 }
 
 export function trainingFollowThroughStep(

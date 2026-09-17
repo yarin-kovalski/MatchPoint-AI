@@ -196,6 +196,33 @@ test("a soft slice clears the net even with a closed phone face", () => {
   assert.equal(harderFlight.result, "OUT_LONG");
 });
 
+test("learned drop and deep intents change only slice landing depth", () => {
+  const dropMotion = motion(20 / 3.2, -0.55);
+  dropMotion.calibratedSliceIntent = "drop";
+  const deepMotion = motion(20 / 3.2, -0.55);
+  deepMotion.calibratedSliceIntent = "deep";
+  const drop = solveTrainingReturn(start, dropMotion);
+  const deep = solveTrainingReturn(start, deepMotion);
+  const dropFlight = flight(drop.velocity, drop.spin);
+  const deepFlight = flight(deep.velocity, deep.spin);
+  assert.equal(dropFlight.result, "IN");
+  assert.equal(deepFlight.result, "IN");
+  assert.ok(dropFlight.bounce.z <= BALL_CONFIG.launch.netDepth - 1.5);
+  assert.ok(dropFlight.bounce.z >= BALL_CONFIG.launch.netDepth - 3.5);
+  assert.ok(deepFlight.bounce.z <= BALL_CONFIG.launch.netDepth - 8);
+  assert.ok(deepFlight.bounce.z >= BALL_CONFIG.launch.netDepth - 10.5);
+  assert.ok(deepFlight.bounce.z < dropFlight.bounce.z - 3);
+
+  const regular = motion(6, 0);
+  const mislabeled = motion(6, 0);
+  mislabeled.calibratedSliceIntent = "deep";
+  const regularReturn = solveTrainingReturn(start, regular);
+  const mislabeledReturn = solveTrainingReturn(start, mislabeled);
+  assert.equal(regularReturn.spinType, "FLAT");
+  assert.deepEqual(mislabeledReturn.velocity.toArray(), regularReturn.velocity.toArray());
+  assert.deepEqual(mislabeledReturn.spin.toArray(), regularReturn.spin.toArray());
+});
+
 test("racket-face openness directly raises arc while a closed face lowers it", () => {
   const closedMotion = motion(6), squareMotion = motion(6), openMotion = motion(6);
   closedMotion.racketFaceNormal.set(0, -0.5, -0.866).normalize();
