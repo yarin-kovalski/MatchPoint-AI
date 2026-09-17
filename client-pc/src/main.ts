@@ -34,9 +34,7 @@ import {
   applyContactPositionCalibration, ContactPositionCalibration, loadContactPositionCalibration
 } from "./ball/contactPositionCalibration.js";
 import {
-  addSliceCalibrationSample, classifyCalibratedSlice, clearSliceCalibration, isSliceMotion,
-  loadSliceCalibration, resetSliceCalibrationKind, saveSliceCalibration, sliceCalibrationComplete,
-  SliceCalibrationData, SliceCalibrationKind, sliceMotionFeatures, SLICE_CALIBRATION_SAMPLES_PER_KIND
+  classifyCalibratedSlice, loadSliceCalibration, SliceCalibrationData
 } from "./ball/sliceShotCalibration.js";
 import { BALL_CAMERA_BASE_TARGET, BallFlightCameraState, updateBallFlightCamera } from "./scene/ballFlightCamera.js";
 import { assertBallVisualState } from "./ball/ballVisualState.js";
@@ -299,14 +297,6 @@ const elements = {
   playerPowerLevel: getElement("playerPowerLevel"),
   playerLaunchTendency: getElement("playerLaunchTendency"),
   playerContactQuality: getElement("playerContactQuality"),
-  sliceCalibrationStroke: getElement<HTMLSelectElement>("sliceCalibrationStroke"),
-  calibrateDropSlice: getElement<HTMLButtonElement>("calibrateDropSlice"),
-  calibrateDeepSlice: getElement<HTMLButtonElement>("calibrateDeepSlice"),
-  resetSliceCalibration: getElement<HTMLButtonElement>("resetSliceCalibration"),
-  dropSliceCalibrationCount: getElement("dropSliceCalibrationCount"),
-  deepSliceCalibrationCount: getElement("deepSliceCalibrationCount"),
-  sliceCalibrationReadiness: getElement("sliceCalibrationReadiness"),
-  sliceCalibrationStatus: getElement("sliceCalibrationStatus"),
   trainerSessionState: getElement("trainerSessionState"),
   trainerShotStyle: getElement("trainerShotStyle"),
   trainerShotStyleReason: getElement("trainerShotStyleReason"),
@@ -509,16 +499,7 @@ const contactPositionCalibrations: Record<CalibrationStrokeType, ContactPosition
   forehand: loadContactPositionCalibration(localStorage, "forehand"),
   backhand: loadContactPositionCalibration(localStorage, "backhand")
 };
-let sliceCalibrationData: SliceCalibrationData = loadSliceCalibration(localStorage);
-let activeSliceCalibration: {
-  kind: SliceCalibrationKind;
-  strokeType: CalibrationStrokeType;
-  capturedThisBall: boolean;
-  completed: boolean;
-  pendingSample: { motion: ReturnType<typeof sliceMotionFeatures>; features: ContactFeatureSnapshot } | null;
-} | null = null;
-let sliceCalibrationLaunchTimer: number | null = null;
-let lastEasyHitMotion: EasyHitMotion | null = null;
+const sliceCalibrationData: SliceCalibrationData = loadSliceCalibration(localStorage);
 let showBallAtContactPreview = false;
 let selectedPracticeStroke: CalibrationStrokeType | null = null;
 let practiceRelaunchAt = 0;
@@ -1839,12 +1820,11 @@ function createEasyHitMotion(): EasyHitMotion | null {
     forwardSwing,
     playabilityAssistStrength: BALL_CONFIG.playerAssist[playerAssistLevel].directionAnchorStrength
   };
-  const calibratedSlice = activeSliceCalibration ? null : classifyCalibratedSlice(motion, sliceCalibrationData);
+  const calibratedSlice = classifyCalibratedSlice(motion, sliceCalibrationData);
   if (calibratedSlice) {
     motion.calibratedSliceIntent = calibratedSlice.intent;
     motion.calibratedSliceConfidence = calibratedSlice.confidence;
   }
-  lastEasyHitMotion = motion;
   return motion;
 }
 
@@ -2604,7 +2584,6 @@ function updatePlayableStatus(now: number): void {
 }
 
 function updatePracticeLoop(now: number): void {
-  if (activeSliceCalibration) return;
   if (!elements.calibratedPracticeLoopToggle.checked || !selectedPracticeStroke ||
       !canLaunchPracticeFeed(now, practiceRelaunchAt, ballController.ball.active)) return;
   const nextStroke = elements.practiceLoopMode.value === "alternate"
@@ -2613,109 +2592,7 @@ function updatePracticeLoop(now: number): void {
   playCalibratedStroke(nextStroke);
 }
 
-function startSliceCalibration(kind: SliceCalibrationKind): void {
-  if (sliceCalibrationLaunchTimer !== null) window.clearTimeout(sliceCalibrationLaunchTimer);
-  sliceCalibrationLaunchTimer = null;
-  const strokeType = elements.sliceCalibrationStroke.value as CalibrationStrokeType;
-  sliceCalibrationData = resetSliceCalibrationKind(sliceCalibrationData, kind);
-  saveSliceCalibration(localStorage, sliceCalibrationData);
-  activeSliceCalibration = { kind, strokeType, capturedThisBall: false, completed: false, pendingSample: null };
-  elements.calibratedPracticeLoopToggle.checked = false;
-  updateSliceCalibrationUi();
-  elements.sliceCalibrationStatus.textContent =
-    `Ball 1 of 3: hit your ${kind === "drop" ? "short drop" : "deep"} slice now.`;
-  playCalibratedStroke(strokeType);
-}
-
-function captureSliceCalibrationShot(features: ContactFeatureSnapshot): void {
-  const active = activeSliceCalibration;
-  const motion = lastEasyHitMotion;
-  if (!active || active.capturedThisBall || !motion) return;
-  const motionFeatures = sliceMotionFeatures(motion);
-  if (features.shotShape !== "SLICE" || !isSliceMotion(motionFeatures)) {
-    elements.sliceCalibrationStatus.textContent =
-      "Not recognized as slice. Cut high-to-low/backward with an open face; this ball will not count.";
-    return;
-  }
-  active.capturedThisBall = true;
-  active.pendingSample = { motion: motionFeatures, features: structuredClone(features) };
-  elements.sliceCalibrationStatus.textContent = "Slice recognized. Keep your natural follow-through while the ball finishes.";
-}
-
-function finishSliceCalibrationSample(
-  technique: ShotTechnique | null,
-  result: ReturnResult,
-  bouncePoint: THREE.Vector3 | null
-): void {
-  const active = activeSliceCalibration;
-  if (!active?.pendingSample) return;
-  sliceCalibrationData = addSliceCalibrationSample(sliceCalibrationData, active.kind, {
-    recordedAt: Date.now(), strokeType: active.strokeType, motion: active.pendingSample.motion,
-    contactSensors: {
-      contact: active.pendingSample.features,
-      followThrough: technique,
-      returnResult: result,
-      firstBounce: bouncePoint ? { x: bouncePoint.x, y: bouncePoint.y, z: bouncePoint.z } : null
-    }
-  });
-  saveSliceCalibration(localStorage, sliceCalibrationData);
-  active.pendingSample = null;
-  active.completed = sliceCalibrationData[active.kind].length >= SLICE_CALIBRATION_SAMPLES_PER_KIND;
-  updateSliceCalibrationUi();
-}
-
-function continueSliceCalibrationAfterShot(): void {
-  const active = activeSliceCalibration;
-  if (!active) return;
-  if (active.completed) {
-    const completedKind = active.kind;
-    activeSliceCalibration = null;
-    updateSliceCalibrationUi();
-    elements.sliceCalibrationStatus.textContent = sliceCalibrationComplete(sliceCalibrationData)
-      ? "Calibration complete. Drop and deep slice detection is active."
-      : `${completedKind === "drop" ? "Drop" : "Deep"} slice complete. Record the other three-shot profile.`;
-    return;
-  }
-  const captured = active.capturedThisBall;
-  active.capturedThisBall = false;
-  active.pendingSample = null;
-  const nextNumber = sliceCalibrationData[active.kind].length + 1;
-  elements.sliceCalibrationStatus.textContent = captured
-    ? `Prepare for ball ${nextNumber} of 3.`
-    : `That attempt did not count. Repeat ball ${nextNumber} of 3 with a clear slice.`;
-  if (sliceCalibrationLaunchTimer !== null) window.clearTimeout(sliceCalibrationLaunchTimer);
-  sliceCalibrationLaunchTimer = window.setTimeout(() => {
-    sliceCalibrationLaunchTimer = null;
-    if (!activeSliceCalibration) return;
-    playCalibratedStroke(activeSliceCalibration.strokeType);
-    elements.sliceCalibrationStatus.textContent =
-      `Ball ${sliceCalibrationData[activeSliceCalibration.kind].length + 1} of 3: swing now.`;
-  }, 900);
-}
-
-function updateSliceCalibrationUi(): void {
-  elements.dropSliceCalibrationCount.textContent = `${sliceCalibrationData.drop.length}/3`;
-  elements.deepSliceCalibrationCount.textContent = `${sliceCalibrationData.deep.length}/3`;
-  elements.sliceCalibrationReadiness.textContent = sliceCalibrationComplete(sliceCalibrationData)
-    ? "Ready"
-    : activeSliceCalibration ? "Recording" : "Not calibrated";
-  elements.calibrateDropSlice.disabled = activeSliceCalibration !== null;
-  elements.calibrateDeepSlice.disabled = activeSliceCalibration !== null;
-  elements.sliceCalibrationStroke.disabled = activeSliceCalibration !== null;
-}
-
 function wireBallControls(): void {
-  updateSliceCalibrationUi();
-  elements.calibrateDropSlice.addEventListener("click", () => startSliceCalibration("drop"));
-  elements.calibrateDeepSlice.addEventListener("click", () => startSliceCalibration("deep"));
-  elements.resetSliceCalibration.addEventListener("click", () => {
-    if (sliceCalibrationLaunchTimer !== null) window.clearTimeout(sliceCalibrationLaunchTimer);
-    sliceCalibrationLaunchTimer = null;
-    activeSliceCalibration = null;
-    sliceCalibrationData = clearSliceCalibration(localStorage);
-    updateSliceCalibrationUi();
-    elements.sliceCalibrationStatus.textContent = "Slice calibration cleared. Other shot logic was not changed.";
-  });
   elements.recordStrokeExample.addEventListener("click", () => {
     armedStrokeExampleLabel = elements.strokeExampleLabel.value;
     elements.strokeExampleAnalysis.textContent = `Armed: ${armedStrokeExampleLabel}. The next resolved contact will be saved.`;
@@ -2732,10 +2609,6 @@ function wireBallControls(): void {
     localStorage.setItem(TRAINING_PLAYER_NAME_KEY, elements.trainingReportPlayerName.value.trim());
   });
   elements.stopPractice.addEventListener("click", () => {
-    if (sliceCalibrationLaunchTimer !== null) window.clearTimeout(sliceCalibrationLaunchTimer);
-    sliceCalibrationLaunchTimer = null;
-    activeSliceCalibration = null;
-    updateSliceCalibrationUi();
     elements.calibratedPracticeLoopToggle.checked = false;
     selectedPracticeStroke = null;
     practiceRelaunchAt = 0;
@@ -3056,7 +2929,6 @@ function onBallMiss(event: BallMissEvent): void {
       (playerAssistLevel === "training" ? ` | reasons ${lastTrainingMissReasons.join(",")}` : "");
   }
   motionRecorder.recordBallResult({ type: "miss", event });
-  if (activeSliceCalibration) continueSliceCalibrationAfterShot();
   window.setTimeout(() => finishRealHitAttempt("MISS", event.reason), 0);
   console.info("Ball miss", event);
 }
@@ -3101,10 +2973,6 @@ function finalizeReturnedTrainingShot(result: ReturnResult, bouncePoint: THREE.V
     ? `Successful return · ${accuracy}% deep-center accuracy`
     : `${result.replace(/_/g, " ")} counts as a missed shot`;
   if (currentFeedVariation) elements.feedVariationDebug.textContent += `\nLanding: ${result} | accuracy ${accuracy}%`;
-  if (activeSliceCalibration) {
-    finishSliceCalibrationSample(technique, result, bouncePoint);
-    continueSliceCalibrationAfterShot();
-  }
 }
 
 function showPendingTrainingContact(
@@ -3403,7 +3271,6 @@ function updatePhysicalContactFeedback(): void {
   elements.playerLaunchTendency.textContent = featureSnapshot.launchTendency;
   elements.playerSpinType.textContent = `${featureSnapshot.shotShape} HIT`;
   captureArmedStrokeExample(featureSnapshot);
-  captureSliceCalibrationShot(featureSnapshot);
   elements.playerContactQuality.textContent = `${Math.round(impact.contactQuality * 100)}%`;
   const shotNames = { FLAT: "Flat Drive", TOPSPIN: "Topspin", SLICE: "Slice", SIDE_SPIN: "Side Spin", MIXED: "Mixed" };
   const contactLabel = impact.outcome === "FRAME_CONTACT" ? "Frame"

@@ -270,3 +270,4 @@ Acceptance criteria:
 - [x] Use the learned motion profiles to choose short or deep slice shaping while preserving measured spin, face, direction, speed variation, and follow-through.
 - [x] Solve the calibrated drop slice to a safe 2.1 m depth past the net and the deep slice to 9.0 m past the net, including explicit net-clearance scoring.
 - [x] Guarantee through regression tests that calibrated slice intent cannot change flat or topspin trajectories.
+- [x] Retire the completed slice-calibration controls while continuing to load the six saved drop/deep examples for live classification.
