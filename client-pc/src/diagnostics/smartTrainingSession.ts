@@ -145,6 +145,7 @@ export type TrainingSessionReport = TrainingSessionSummary & {
   feedback: string[];
   shots: TrainingShot[];
   game?: GameSessionResult;
+  wind?: { conditions: string[] };
 };
 
 export class SmartTrainingSession {

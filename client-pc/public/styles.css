@@ -1036,6 +1036,8 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 }
 .wind-popover strong { display: block; margin-bottom: 8px; color: #eef5df; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
 .wind-popover label { display: block; margin-top: 7px; }
+.wind-popover .wind-mute { display:flex; align-items:center; gap:6px; color:#c8d8d2; }
+.wind-popover .wind-mute input { margin:0; }
 .wind-popover select { width: 100%; margin-top: 3px; }
 .wind-popover small { display: block; margin-top: 9px; color: #9fc2ba; font-size: 8px; line-height: 1.35; }
 @keyframes windPulse { 50% { transform: rotate(-8deg) scale(1.1); box-shadow: 0 0 10px rgba(159,222,224,.32); } }

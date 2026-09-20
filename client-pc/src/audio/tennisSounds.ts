@@ -5,6 +5,7 @@ export class TennisSoundEngine {
   private windPan: StereoPannerNode | null = null;
   private requestedWind = 0;
   private requestedWindPan = 0;
+  private windMuted = false;
 
   unlock(): void {
     const context = this.getContext();
@@ -15,6 +16,11 @@ export class TennisSoundEngine {
   setWind(strength: number, pan = 0): void {
     this.requestedWind = clamp(strength, 0, 1);
     this.requestedWindPan = clamp(pan, -1, 1);
+    this.applyWindSound();
+  }
+
+  setWindMuted(muted: boolean): void {
+    this.windMuted = muted;
     this.applyWindSound();
   }
 
@@ -80,7 +86,8 @@ export class TennisSoundEngine {
     }
     const now = context.currentTime;
     this.windGain?.gain.cancelScheduledValues(now);
-    this.windGain?.gain.setTargetAtTime(this.requestedWind > 0 ? 0.018 + this.requestedWind * 0.052 : 0.0001, now, 0.18);
+    const audibleWind = this.windMuted ? 0 : this.requestedWind;
+    this.windGain?.gain.setTargetAtTime(audibleWind > 0 ? 0.018 + audibleWind * 0.052 : 0.0001, now, 0.18);
     this.windPan?.pan.setTargetAtTime(this.requestedWindPan * 0.55, now, 0.25);
   }
 

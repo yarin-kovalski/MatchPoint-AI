@@ -297,6 +297,7 @@ const elements = {
   windButtonState: getElement("windButtonState"),
   windStrength: getElement<HTMLSelectElement>("windStrength"),
   windDirection: getElement<HTMLSelectElement>("windDirection"),
+  windSoundMuted: getElement<HTMLInputElement>("windSoundMuted"),
   windReadout: getElement("windReadout"),
   conePracticePicker: getElement<HTMLFieldSetElement>("conePracticePicker"),
   modeDescription: getElement("modeDescription"),
@@ -488,6 +489,7 @@ type WindDirection = "left" | "right" | "headwind" | "tailwind" | "leftHead" | "
 let windStrength: WindStrength = "off";
 let windDirection: WindDirection = "left";
 const windAcceleration = new THREE.Vector3();
+const sessionWindConditions = new Set<string>();
 type ConePracticeFocus = "deep" | "regular" | "short";
 let conePracticeFocus: ConePracticeFocus = "regular";
 let conePracticeChosen = false;
@@ -723,6 +725,9 @@ const gameTargetGroup = new THREE.Group();
 gameTargetGroup.name = "gameTargets";
 gameTargetGroup.visible = false;
 scene.add(gameTargetGroup);
+
+const windVisualization = createWindVisualization();
+scene.add(windVisualization);
 
 const feedOriginMarker = createFeedOriginMarker();
 feedOriginMarker.visible = false;
@@ -1353,6 +1358,7 @@ function animate(): void {
   const elapsed = clock.getElapsedTime();
   updatePremiumEnvironment(outdoorEnvironment, elapsed);
   updateCourtBackdrop(courtBackdrop, elapsed);
+  updateWindVisualization(windVisualization, elapsed);
   const now = performance.now();
   updateTargetGame(now, elapsed);
   const nowEpoch = Date.now();
@@ -2651,12 +2657,80 @@ function updatePracticeLoop(now: number): void {
 function currentWindAcceleration(now: number): THREE.Vector3 {
   const strength = ({ off: 0, light: 0.5, medium: 1.05, strong: 1.75 } as const)[windStrength];
   if (strength === 0) return windAcceleration.set(0, 0, 0);
-  const direction = ({
+  const direction = windDirectionComponents();
+  const gust = 0.92 + Math.sin(now * 0.0017) * 0.07 + Math.sin(now * 0.0043 + 1.4) * 0.035;
+  return windAcceleration.set(direction[0], 0, direction[1]).normalize().multiplyScalar(strength * gust);
+}
+
+function windDirectionComponents(): readonly [number, number] {
+  return ({
     left: [-1, 0], right: [1, 0], headwind: [0, 1], tailwind: [0, -1],
     leftHead: [-1, 1], rightHead: [1, 1], leftTail: [-1, -1], rightTail: [1, -1]
   } as const)[windDirection];
-  const gust = 0.92 + Math.sin(now * 0.0017) * 0.07 + Math.sin(now * 0.0043 + 1.4) * 0.035;
-  return windAcceleration.set(direction[0], 0, direction[1]).normalize().multiplyScalar(strength * gust);
+}
+
+function createWindVisualization(): THREE.LineSegments {
+  const positions = new Float32Array(18 * 8 * 2 * 3);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
+  const material = new THREE.LineBasicMaterial({
+    color: 0xd9f5ec, transparent: true, opacity: 0, depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  const streaks = new THREE.LineSegments(geometry, material);
+  streaks.name = "visibleWindDirection";
+  streaks.frustumCulled = false;
+  streaks.renderOrder = 3;
+  return streaks;
+}
+
+function updateWindVisualization(streaks: THREE.LineSegments, elapsed: number): void {
+  const level = ({ off: 0, light: 1, medium: 2, strong: 3 } as const)[windStrength];
+  streaks.visible = level > 0;
+  if (!level) return;
+  const [rawX, rawZ] = windDirectionComponents();
+  const magnitude = Math.hypot(rawX, rawZ) || 1;
+  const dx = rawX / magnitude;
+  const dz = rawZ / magnitude;
+  const px = -dz;
+  const pz = dx;
+  const visibleWaves = level === 1 ? 8 : level === 2 ? 13 : 18;
+  const segmentsPerWave = 8;
+  const speed = 2 + level * 1.15;
+  const positions = streaks.geometry.getAttribute("position") as THREE.BufferAttribute;
+  let vertex = 0;
+  for (let index = 0; index < visibleWaves; index += 1) {
+    const seed = (index * 0.61803398875) % 1;
+    const crossSeed = ((index * 0.38196601125 + 0.17) % 1 - 0.5) * 17;
+    const travel = ((elapsed * speed + seed * 34) % 34) - 17;
+    const yBase = 0.65 + ((index * 1.73) % 1) * 3.8;
+    const waveLength = 1.8 + level * 0.55 + (index % 3) * 0.28;
+    const amplitude = 0.08 + level * 0.035;
+    for (let segment = 0; segment < segmentsPerWave; segment += 1) {
+      for (const point of [segment, segment + 1]) {
+        const t = point / segmentsPerWave - 0.5;
+        const along = travel + t * waveLength;
+        const ripple = Math.sin(t * Math.PI * 2.3 + elapsed * 2.2 + index * 1.7) * amplitude;
+        const x = dx * along + px * (crossSeed + ripple);
+        const z = BALL_CONFIG.launch.netDepth + dz * along + pz * (crossSeed + ripple);
+        const y = yBase + Math.sin(t * Math.PI * 1.6 + elapsed * 1.5 + index) * amplitude * 0.45;
+        positions.setXYZ(vertex++, x, y, z);
+      }
+    }
+  }
+  streaks.geometry.setDrawRange(0, visibleWaves * segmentsPerWave * 2);
+  positions.needsUpdate = true;
+  const material = streaks.material as THREE.LineBasicMaterial;
+  const gustGlow = 0.9 + Math.sin(elapsed * 1.8) * 0.1;
+  material.opacity = (level === 1 ? 0.12 : level === 2 ? 0.17 : 0.22) * gustGlow;
+}
+
+function windConditionLabel(): string {
+  return ({
+    left: "left", right: "right", headwind: "toward player", tailwind: "toward opponent",
+    leftHead: "left and toward player", rightHead: "right and toward player",
+    leftTail: "left and toward opponent", rightTail: "right and toward opponent"
+  } as const)[windDirection];
 }
 
 function updateWindSettings(): void {
@@ -2664,11 +2738,7 @@ function updateWindSettings(): void {
   windDirection = elements.windDirection.value as WindDirection;
   const enabled = windStrength !== "off";
   const speed = ({ off: 0, light: 8, medium: 18, strong: 30 } as const)[windStrength];
-  const label = ({
-    left: "left", right: "right", headwind: "toward player", tailwind: "toward opponent",
-    leftHead: "left and toward player", rightHead: "right and toward player",
-    leftTail: "left and toward opponent", rightTail: "right and toward opponent"
-  } as const)[windDirection];
+  const label = windConditionLabel();
   elements.windDirection.disabled = !enabled;
   elements.windControl.classList.toggle("is-active", enabled);
   elements.windButtonState.textContent = enabled ? windStrength[0].toUpperCase() + windStrength.slice(1) : "Off";
@@ -2677,12 +2747,17 @@ function updateWindSettings(): void {
     : "Wind is off";
   const pan = windDirection.includes("left") || windDirection === "left" ? -1
     : windDirection.includes("right") || windDirection === "right" ? 1 : 0;
+  tennisSounds.setWindMuted(elements.windSoundMuted.checked);
   tennisSounds.setWind(({ off: 0, light: 0.34, medium: 0.66, strong: 1 } as const)[windStrength], pan);
 }
 
 function wireBallControls(): void {
   elements.windStrength.addEventListener("change", () => { tennisSounds.unlock(); updateWindSettings(); });
   elements.windDirection.addEventListener("change", () => { tennisSounds.unlock(); updateWindSettings(); });
+  elements.windSoundMuted.addEventListener("change", () => {
+    tennisSounds.unlock();
+    tennisSounds.setWindMuted(elements.windSoundMuted.checked);
+  });
   updateWindSettings();
   elements.recordStrokeExample.addEventListener("click", () => {
     armedStrokeExampleLabel = elements.strokeExampleLabel.value;
@@ -3164,6 +3239,7 @@ function recordSmartTrainingShot(
   detectionConfidence = 0
 ): void {
   smartTrainingSessionFinalized = false;
+  if (windStrength !== "off") sessionWindConditions.add(`${windStrength} · ${windConditionLabel()}`);
   const summary = smartTrainingSession.record(shot);
   const timing = classifyTrainingTiming(shot.timingOffsetMs, shot.missReason);
   elements.trainerDetectedStroke.textContent = formatDetectedStroke(shot.detectedStroke, detectionConfidence);
@@ -3223,7 +3299,11 @@ function finishSmartTrainingSession(): void {
     targetHitRate: gameShots ? Math.round(gameTargetsHit / gameShots * 100) : 0,
     bestTargetStreak: gameBestStreak
   } : undefined;
-  const report: TrainingSessionReport = gameResult ? { ...baseReport, game: gameResult } : baseReport;
+  const report: TrainingSessionReport = {
+    ...baseReport,
+    ...(gameResult ? { game: gameResult } : {}),
+    ...(sessionWindConditions.size ? { wind: { conditions: [...sessionWindConditions] } } : {})
+  };
   trainingSessionHistory = [...trainingSessionHistory, report].slice(-20);
   smartTrainingSessionFinalized = true;
   finishSessionRequested = false;
@@ -3234,7 +3314,8 @@ function finishSmartTrainingSession(): void {
   elements.trainerReportSummary.textContent =
     `${report.hits}/${report.attempts} successful in-court shots (${report.hitRatio}%), ${report.targetAccuracy}% target accuracy, ` +
     `${report.averageSwingSpeedKmh} km/h average and ${report.peakSwingSpeedKmh} km/h peak swing speed.` +
-    (report.game ? ` ${report.game.practiceType} cones: ${report.game.targetsHit} knocked down from ${report.game.shots} shots, scoring ${report.game.score} points.` : "");
+    (report.game ? ` ${report.game.practiceType} cones: ${report.game.targetsHit} knocked down from ${report.game.shots} shots, scoring ${report.game.score} points.` : "") +
+    (report.wind ? ` Wind training: ${report.wind.conditions.join(", ")}.` : "");
   elements.trainerReportBreakdown.textContent =
     `Detected strokes: ${report.forehands} forehand, ${report.backhands} backhand, ${report.unknownStrokes} uncertain. ` +
     `Timing: ${report.earlyHits} early, ${report.onTimeHits} on time, ${report.lateHits} late, ${report.noContact} without contact. ` +
@@ -3263,6 +3344,7 @@ function startNewSmartTrainingSession(): void {
   finishSessionRequested = false;
   elements.stopPractice.textContent = "Stop";
   smartTrainingSession.reset();
+  sessionWindConditions.clear();
   smartTrainingSessionFinalized = false;
   pendingReturnedTrainingShot = null;
   trainingStrokeEvidence.reset();
