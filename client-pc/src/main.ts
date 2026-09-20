@@ -485,7 +485,6 @@ const sessionConePracticeFocuses = new Set<ConePracticeFocus>();
 const gameTargetLayouts = createGameTargetLayouts(BALL_CONFIG.launch.netDepth);
 let activeGameTargets: GameTarget[] = [];
 let gameLayoutIndex = -1;
-let gameReplacementCursor = 0;
 const knockedGameTargetIds = new Set<string>();
 let gameScore = 0;
 let gameShots = 0;
@@ -3266,7 +3265,6 @@ function startTargetGame(_now: number): void {
 function resetTargetGameSession(): void {
   gameScore = gameShots = gameTargetsHit = gameStreak = gameBestStreak = 0;
   gameLayoutIndex = -1;
-  gameReplacementCursor = 0;
   activeGameTargets = [];
   knockedGameTargetIds.clear();
   sessionConePracticeFocuses.clear();
@@ -3301,7 +3299,7 @@ function updateTargetGame(now: number, _elapsed: number): void {
     });
     if (progress >= 1 && targetGroup.userData.replaced !== true) {
       targetGroup.userData.replaced = true;
-      replaceFallenGameTarget(String(targetGroup.userData.targetId));
+      resetFallenGameTarget(String(targetGroup.userData.targetId));
       break;
     }
   }
@@ -3336,23 +3334,11 @@ function knockDownGameTarget(targetId: string): void {
   if (targetGroup) targetGroup.userData.fallStartedAt = performance.now();
 }
 
-function replaceFallenGameTarget(targetId: string): void {
-  const targetIndex = activeGameTargets.findIndex(target => target.id === targetId);
-  if (targetIndex < 0) return;
-  const candidates = conePracticeCandidates();
-  for (let step = 1; step <= candidates.length; step += 1) {
-    const candidate = candidates[(gameReplacementCursor + step) % candidates.length];
-    if (candidate.id === targetId || activeGameTargets.some(target => target.id === candidate.id)) continue;
-    const overlaps = activeGameTargets.some((target, index) => index !== targetIndex &&
-      Math.hypot(target.x - candidate.x, target.z - candidate.z) < target.radius + candidate.radius + 0.35);
-    if (overlaps) continue;
-    activeGameTargets[targetIndex] = candidate;
-    gameReplacementCursor = (gameReplacementCursor + step) % candidates.length;
-    knockedGameTargetIds.delete(targetId);
-    renderGameTargets(activeGameTargets);
-    updateGameTargetCourtVision();
-    return;
-  }
+function resetFallenGameTarget(targetId: string): void {
+  if (!activeGameTargets.some(target => target.id === targetId)) return;
+  knockedGameTargetIds.delete(targetId);
+  renderGameTargets(activeGameTargets);
+  updateGameTargetCourtVision();
 }
 
 function conePracticeCandidates(): GameTarget[] {
@@ -3371,7 +3357,7 @@ function conePracticeLabel(focus: ConePracticeFocus): "Deep shot" | "Regular" | 
 function conePracticeDescription(focus: ConePracticeFocus): string {
   return focus === "deep" ? "cone groups stay near the opponent baseline."
     : focus === "short" ? "cone groups stay inside the short court near the net."
-    : "cone groups rotate through varied in-court locations.";
+    : "cone groups stay in varied in-court locations and reset after a hit.";
 }
 
 function updateGameTargetCourtVision(): void {
