@@ -174,14 +174,15 @@ export class BallController {
     allowHit = true,
     playableProfile: TrajectoryCalibrationProfile | null = null,
     playableEnabled = false,
-    playerAssistLevel: PlayerAssistLevel = "training"
+    playerAssistLevel: PlayerAssistLevel = "training",
+    windAcceleration?: THREE.Vector3
   ): void {
     if (!this.ball.active) {
       if (this.ball.state === "MISSED" && now >= this.resetAt) this.reset();
       return;
     }
     this.applyTrainingFollowThrough(now, easyMotion ?? null);
-    const physics = advanceBallFixedStep(this.ball, deltaSeconds, this.physicsState);
+    const physics = advanceBallFixedStep(this.ball, deltaSeconds, this.physicsState, windAcceleration);
     const bounced = physics.bounced;
     if ((this.ball.hit || this.ball.state === "RETURNED") && !this.lastReturnResult) {
       for (const event of physics.events) {

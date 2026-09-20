@@ -31,7 +31,8 @@ export function createFixedStepPhysicsState(): FixedStepPhysicsState {
 export function advanceBallFixedStep(
   ball: BallSnapshot,
   frameDeltaSeconds: number,
-  state: FixedStepPhysicsState
+  state: FixedStepPhysicsState,
+  windAcceleration?: THREE.Vector3
 ): FixedStepPhysicsResult {
   const frameDelta = THREE.MathUtils.clamp(frameDeltaSeconds, 0, BALL_CONFIG.maximumFrameDeltaSeconds);
   const fixedDelta = BALL_CONFIG.physicsStepSeconds;
@@ -43,7 +44,7 @@ export function advanceBallFixedStep(
 
   while (state.accumulatorSeconds >= fixedDelta && steps < BALL_CONFIG.maximumPhysicsSubsteps) {
     state.previousStepPosition.copy(ball.position);
-    bounced = stepBallPhysics(ball, fixedDelta, event => events.push(event)) || bounced;
+    bounced = stepBallPhysics(ball, fixedDelta, event => events.push(event), windAcceleration) || bounced;
     state.accumulatorSeconds -= fixedDelta;
     steps += 1;
   }

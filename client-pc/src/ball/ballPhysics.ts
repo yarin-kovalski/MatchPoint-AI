@@ -18,7 +18,8 @@ export type BallPhysicsEvent = {
   surface?: FenceSurface;
 };
 
-export function stepBallPhysics(ball: BallSnapshot, deltaSeconds: number, onEvent?: (event: BallPhysicsEvent) => void): boolean {
+export function stepBallPhysics(ball: BallSnapshot, deltaSeconds: number, onEvent?: (event: BallPhysicsEvent) => void,
+  windAcceleration?: THREE.Vector3): boolean {
   let remaining = Math.min(deltaSeconds, 0.1);
   let bounced = false;
   ball.previousPosition.copy(ball.position);
@@ -29,6 +30,7 @@ export function stepBallPhysics(ball: BallSnapshot, deltaSeconds: number, onEven
     ball.velocity.y += (BALL_CONFIG.gravity + ball.magnusAcceleration.y) * dt;
     ball.velocity.x += ball.magnusAcceleration.x * dt;
     ball.velocity.z += ball.magnusAcceleration.z * dt;
+    if (windAcceleration) ball.velocity.addScaledVector(windAcceleration, dt);
     ball.velocity.multiplyScalar(Math.max(0, 1 - BALL_CONFIG.airDrag * dt));
     ball.position.addScaledVector(ball.velocity, dt);
     const returned = ball.state === "RETURNED" || ball.hit;

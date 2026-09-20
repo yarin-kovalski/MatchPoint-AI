@@ -42,12 +42,43 @@
             <button id="stopPractice" type="button">Stop</button>
           </div>
           <div class="player-options">
-            <label>Mode
-              <select id="playerAssistLevel">
-                <option value="training" selected>Training</option>
-                <option value="game">Target Cones Practice</option>
-              </select>
-            </label>
+            <div class="practice-mode-row">
+              <label>Mode
+                <select id="playerAssistLevel">
+                  <option value="training" selected>Training</option>
+                  <option value="game">Target Cones Practice</option>
+                </select>
+              </label>
+              <details id="windControl" class="wind-control">
+                <summary id="windButton" title="Wind settings" aria-label="Open wind settings">
+                  <span class="wind-icon" aria-hidden="true">≋</span><span id="windButtonState">Off</span>
+                </summary>
+                <div class="wind-popover">
+                  <strong>Wind</strong>
+                  <label>Strength
+                    <select id="windStrength">
+                      <option value="off" selected>Off</option>
+                      <option value="light">Light</option>
+                      <option value="medium">Medium</option>
+                      <option value="strong">Strong</option>
+                    </select>
+                  </label>
+                  <label>Direction
+                    <select id="windDirection">
+                      <option value="left">← Left</option>
+                      <option value="right">→ Right</option>
+                      <option value="headwind">↓ Toward player</option>
+                      <option value="tailwind">↑ Toward opponent</option>
+                      <option value="leftHead">↙ Left + player</option>
+                      <option value="rightHead">↘ Right + player</option>
+                      <option value="leftTail">↖ Left + opponent</option>
+                      <option value="rightTail">↗ Right + opponent</option>
+                    </select>
+                  </label>
+                  <small id="windReadout">Wind is off</small>
+                </div>
+              </details>
+            </div>
             <p id="modeDescription" class="mode-description">Training: practice forehand and backhand with sensor-driven speed, spin, direction, and landing feedback.</p>
             <fieldset id="conePracticePicker" class="cone-practice-picker" hidden>
               <legend>Which shot do you want to practice?</legend>

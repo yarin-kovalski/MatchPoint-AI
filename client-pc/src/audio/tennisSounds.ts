@@ -1,9 +1,21 @@
 export class TennisSoundEngine {
   private context: AudioContext | null = null;
+  private windSource: AudioBufferSourceNode | null = null;
+  private windGain: GainNode | null = null;
+  private windPan: StereoPannerNode | null = null;
+  private requestedWind = 0;
+  private requestedWindPan = 0;
 
   unlock(): void {
     const context = this.getContext();
-    if (context?.state === "suspended") void context.resume();
+    if (context?.state === "suspended") void context.resume().then(() => this.applyWindSound());
+    else this.applyWindSound();
+  }
+
+  setWind(strength: number, pan = 0): void {
+    this.requestedWind = clamp(strength, 0, 1);
+    this.requestedWindPan = clamp(pan, -1, 1);
+    this.applyWindSound();
   }
 
   playRacketHit(speed: number): void {
@@ -34,6 +46,42 @@ export class TennisSoundEngine {
     this.tone(context, now, 460, 235, 0.09, 0.075, "triangle");
     this.noiseBurst(context, now + 0.13, 0.12, 180, 1900, 0.095);
     this.tone(context, now + 0.13, 235, 105, 0.14, 0.065, "triangle");
+  }
+
+  private applyWindSound(): void {
+    const context = this.readyContext();
+    if (!context) return;
+    if (!this.windSource && this.requestedWind > 0) {
+      const seconds = 3;
+      const buffer = context.createBuffer(1, context.sampleRate * seconds, context.sampleRate);
+      const channel = buffer.getChannelData(0);
+      let smoothed = 0;
+      for (let index = 0; index < channel.length; index += 1) {
+        smoothed = smoothed * 0.985 + (Math.random() * 2 - 1) * 0.015;
+        channel[index] = smoothed;
+      }
+      const source = context.createBufferSource();
+      const highPass = context.createBiquadFilter();
+      const lowPass = context.createBiquadFilter();
+      const gain = context.createGain();
+      const panNode = context.createStereoPanner();
+      source.buffer = buffer;
+      source.loop = true;
+      highPass.type = "highpass";
+      highPass.frequency.value = 90;
+      lowPass.type = "lowpass";
+      lowPass.frequency.value = 950;
+      gain.gain.value = 0.0001;
+      source.connect(highPass).connect(lowPass).connect(panNode).connect(gain).connect(context.destination);
+      source.start();
+      this.windSource = source;
+      this.windGain = gain;
+      this.windPan = panNode;
+    }
+    const now = context.currentTime;
+    this.windGain?.gain.cancelScheduledValues(now);
+    this.windGain?.gain.setTargetAtTime(this.requestedWind > 0 ? 0.018 + this.requestedWind * 0.052 : 0.0001, now, 0.18);
+    this.windPan?.pan.setTargetAtTime(this.requestedWindPan * 0.55, now, 0.25);
   }
 
   private getContext(): AudioContext | null {

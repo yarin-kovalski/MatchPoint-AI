@@ -1016,6 +1016,29 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 .player-options { gap: 7px; margin: 10px 0 8px; }
 .player-options label { gap: 3px; font-size: 9px; }
 .player-options select { min-height: 28px; padding: 4px; font-size: 9px; }
+.practice-mode-row { position: relative; grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; align-items: end; }
+.practice-mode-row > label { min-width: 0; }
+.wind-control { position: relative; justify-self: start; }
+.wind-control > summary {
+  display: flex; align-items: center; gap: 6px; min-width: 76px; min-height: 28px; padding: 4px 9px;
+  border: 1px solid #506963; border-radius: 7px; background: linear-gradient(145deg,#203535,#142526);
+  color: #dce9df; font: 650 9px "Segoe UI",sans-serif; cursor: pointer; list-style: none;
+  box-shadow: inset 0 1px rgba(255,255,255,.05);
+}
+.wind-control > summary::-webkit-details-marker { display: none; }
+.wind-control[open] > summary,.wind-control.is-active > summary { border-color: #a9cfb4; color: #efffd8; }
+.wind-icon { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #294d55; color: #bce7ef; font-size: 19px; line-height: 1; transform: rotate(-8deg); }
+.wind-control.is-active .wind-icon { animation: windPulse 1.8s ease-in-out infinite; }
+.wind-popover {
+  position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; width: 190px; padding: 11px;
+  border: 1px solid #5f7f77; border-radius: 9px; background: rgba(12,28,29,.98);
+  box-shadow: 0 12px 28px rgba(0,0,0,.42); backdrop-filter: blur(12px);
+}
+.wind-popover strong { display: block; margin-bottom: 8px; color: #eef5df; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.wind-popover label { display: block; margin-top: 7px; }
+.wind-popover select { width: 100%; margin-top: 3px; }
+.wind-popover small { display: block; margin-top: 9px; color: #9fc2ba; font-size: 8px; line-height: 1.35; }
+@keyframes windPulse { 50% { transform: rotate(-8deg) scale(1.1); box-shadow: 0 0 10px rgba(159,222,224,.32); } }
 .mode-description { font-size: 9px; line-height: 1.35; }
 .single-shot-button {
   min-height: 28px; align-self: end; border: 1px solid #617b73; border-radius: 5px;

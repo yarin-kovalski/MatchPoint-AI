@@ -293,6 +293,11 @@ const elements = {
   practiceLoopMode: getElement<HTMLSelectElement>("practiceLoopMode"),
   feedVariationLevel: getElement<HTMLSelectElement>("feedVariationLevel"),
   playerAssistLevel: getElement<HTMLSelectElement>("playerAssistLevel"),
+  windControl: getElement<HTMLDetailsElement>("windControl"),
+  windButtonState: getElement("windButtonState"),
+  windStrength: getElement<HTMLSelectElement>("windStrength"),
+  windDirection: getElement<HTMLSelectElement>("windDirection"),
+  windReadout: getElement("windReadout"),
   conePracticePicker: getElement<HTMLFieldSetElement>("conePracticePicker"),
   modeDescription: getElement("modeDescription"),
   feedSeed: getElement<HTMLInputElement>("feedSeed"),
@@ -478,6 +483,11 @@ let contactFlashUntil = 0;
 let assistMode: AssistMode = "easy";
 let playerAssistLevel: PlayerAssistLevel = "training";
 let playerMode: "training" | "game" = "training";
+type WindStrength = "off" | "light" | "medium" | "strong";
+type WindDirection = "left" | "right" | "headwind" | "tailwind" | "leftHead" | "rightHead" | "leftTail" | "rightTail";
+let windStrength: WindStrength = "off";
+let windDirection: WindDirection = "left";
+const windAcceleration = new THREE.Vector3();
 type ConePracticeFocus = "deep" | "regular" | "short";
 let conePracticeFocus: ConePracticeFocus = "regular";
 let conePracticeChosen = false;
@@ -1402,7 +1412,7 @@ function animate(): void {
       ballDeltaSeconds, nowEpoch, racketStringCollider.matrixWorld, detectorSnapshot,
       lastContactEvent, assistMode, createEasyHitMotion(), !previewTrajectoryActive,
       activeCalibrationProfile ?? trajectoryProfiles[ballController.ball.expectedStrokeType],
-      isPlayableCalibratedHitEnabled(), playerAssistLevel
+      isPlayableCalibratedHitEnabled(), playerAssistLevel, currentWindAcceleration(nowEpoch)
     );
   }
   telemetryPhysicsMs += performance.now() - physicsStartedAt;
@@ -2638,7 +2648,42 @@ function updatePracticeLoop(now: number): void {
   playCalibratedStroke(nextStroke);
 }
 
+function currentWindAcceleration(now: number): THREE.Vector3 {
+  const strength = ({ off: 0, light: 0.5, medium: 1.05, strong: 1.75 } as const)[windStrength];
+  if (strength === 0) return windAcceleration.set(0, 0, 0);
+  const direction = ({
+    left: [-1, 0], right: [1, 0], headwind: [0, 1], tailwind: [0, -1],
+    leftHead: [-1, 1], rightHead: [1, 1], leftTail: [-1, -1], rightTail: [1, -1]
+  } as const)[windDirection];
+  const gust = 0.92 + Math.sin(now * 0.0017) * 0.07 + Math.sin(now * 0.0043 + 1.4) * 0.035;
+  return windAcceleration.set(direction[0], 0, direction[1]).normalize().multiplyScalar(strength * gust);
+}
+
+function updateWindSettings(): void {
+  windStrength = elements.windStrength.value as WindStrength;
+  windDirection = elements.windDirection.value as WindDirection;
+  const enabled = windStrength !== "off";
+  const speed = ({ off: 0, light: 8, medium: 18, strong: 30 } as const)[windStrength];
+  const label = ({
+    left: "left", right: "right", headwind: "toward player", tailwind: "toward opponent",
+    leftHead: "left and toward player", rightHead: "right and toward player",
+    leftTail: "left and toward opponent", rightTail: "right and toward opponent"
+  } as const)[windDirection];
+  elements.windDirection.disabled = !enabled;
+  elements.windControl.classList.toggle("is-active", enabled);
+  elements.windButtonState.textContent = enabled ? windStrength[0].toUpperCase() + windStrength.slice(1) : "Off";
+  elements.windReadout.textContent = enabled
+    ? `${speed} km/h ${label}. Gusts continuously alter the ball flight.`
+    : "Wind is off";
+  const pan = windDirection.includes("left") || windDirection === "left" ? -1
+    : windDirection.includes("right") || windDirection === "right" ? 1 : 0;
+  tennisSounds.setWind(({ off: 0, light: 0.34, medium: 0.66, strong: 1 } as const)[windStrength], pan);
+}
+
 function wireBallControls(): void {
+  elements.windStrength.addEventListener("change", () => { tennisSounds.unlock(); updateWindSettings(); });
+  elements.windDirection.addEventListener("change", () => { tennisSounds.unlock(); updateWindSettings(); });
+  updateWindSettings();
   elements.recordStrokeExample.addEventListener("click", () => {
     armedStrokeExampleLabel = elements.strokeExampleLabel.value;
     elements.strokeExampleAnalysis.textContent = `Armed: ${armedStrokeExampleLabel}. The next resolved contact will be saved.`;
