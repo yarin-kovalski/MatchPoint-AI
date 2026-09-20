@@ -3084,6 +3084,9 @@ function updateSmartTrainerSummary(): void {
 }
 
 function finishSmartTrainingSession(): void {
+  elements.calibratedPracticeLoopToggle.checked = false;
+  singleShotArmed = false;
+  practiceRelaunchAt = 0;
   if (smartTrainingSessionFinalized) return;
   if (pendingReturnedTrainingShot) {
     elements.trainerSessionState.textContent = "Waiting for landing";
@@ -3442,6 +3445,7 @@ function updateShotTechniqueUi(technique: ShotTechnique | null): void {
 function setTechniqueMeter(meter: HTMLElement, level: number, animate = true): void {
   const safe = THREE.MathUtils.clamp(Math.round(level), 0, 10);
   meter.setAttribute("aria-valuenow", String(safe));
+  meter.style.setProperty("--meter-level", String(safe));
   Array.from(meter.children).forEach((segment, index) => segment.classList.toggle("is-active", index < safe));
   meter.classList.remove("meter-pulse");
   if (animate && safe > 0) {
