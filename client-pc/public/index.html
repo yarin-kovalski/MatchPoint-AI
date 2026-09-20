@@ -57,7 +57,8 @@
                 <option value="random">Random</option>
               </select>
             </label>
-            <label class="check-label"><input id="calibratedPracticeLoopToggle" type="checkbox"> Practice Loop</label>
+            <input id="calibratedPracticeLoopToggle" type="checkbox" checked hidden>
+            <button id="playSingleShot" type="button" class="single-shot-button">Play single shot</button>
             <label>Loop mode
               <select id="practiceLoopMode">
                 <option value="repeat" selected>Repeat selected stroke</option>
@@ -87,7 +88,7 @@
             <div><span>Launch</span><strong id="playerLaunchTendency">--</strong></div>
             <div><span>Contact quality</span><strong id="playerContactQuality">--</strong></div>
           </div>
-          <section class="smart-trainer" aria-labelledby="smartTrainerTitle">
+          <section id="smartTrainer" class="smart-trainer" aria-labelledby="smartTrainerTitle">
             <div class="smart-trainer-heading">
               <div><span class="trainer-kicker">Motion analysis</span><h3 id="smartTrainerTitle">Smart Trainer</h3></div>
               <span id="trainerSessionState" class="trainer-session-state">Session ready</span>
@@ -118,6 +119,7 @@
               <button id="finishTrainingSession" type="button">Finish session</button>
               <button id="newTrainingSession" type="button" class="secondary-button">New session</button>
               <button id="downloadTrainingReport" type="button" class="report-download" disabled>Download full report</button>
+              <button id="closeSessionReport" type="button" class="report-close" aria-label="Close session report">&times;</button>
             </div>
             <section id="trainingSessionReport" class="training-session-report" aria-live="polite" hidden>
               <div class="report-heading"><strong>Session feedback</strong><span id="trainerImprovement">First recorded session</span></div>

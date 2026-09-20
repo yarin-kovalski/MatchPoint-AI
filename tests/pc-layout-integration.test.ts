@@ -53,7 +53,9 @@ test("primary calibration and diagnostic bindings remain present", () => {
 
 test("player mode exposes simple play controls and keeps advanced tools collapsed", () => {
   for (const label of ["Play Forehand", "Play Backhand", "Stop"]) assert.match(html, new RegExp(`>${label}<`));
-  assert.match(html, /id="calibratedPracticeLoopToggle"[^>]*> Practice Loop/);
+  assert.match(html, /id="calibratedPracticeLoopToggle"[^>]*checked[^>]*hidden/);
+  assert.match(html, /id="playSingleShot"[^>]*>Play single shot</);
+  assert.match(main, /playSingleShot: getElement<HTMLButtonElement>\("playSingleShot"\)/);
   assert.match(html, /id="feedVariationLevel"/);
   assert.match(html, /id="playerAssistLevel"/);
   assert.match(html, /<option value="training" selected>Training<\/option>/);
@@ -63,7 +65,7 @@ test("player mode exposes simple play controls and keeps advanced tools collapse
     assert.doesNotMatch(html, new RegExp(`id=["']${id}["']`), `${id} should not be shown during play`);
     assert.doesNotMatch(main, new RegExp(`getElement(?:<[^>]+>)?\\(["']${id}["']\\)`), `${id} should not be bound`);
   }
-  assert.match(main, /scoreGameBounce\(bouncePoint, result, activeGameTargets\)/);
+  assert.match(main, /scoreGameBounce\(bouncePoint, result, availableTargets\)/);
   assert.match(main, /sessionIncludedGameMode/);
   assert.match(html, /<option value="low" selected>Low<\/option>/);
   assert.match(html, /<details class="developer-panel">/);
@@ -85,7 +87,7 @@ test("smart trainer exposes live motion metrics and session feedback controls", 
     "trainerHitRatio", "trainerStrokeCounts", "trainerAverageSpeed", "trainerBestStreak",
     "trainerShotStyle", "trainerSpinMeter", "trainerFaceMeter", "trainerArcMeter", "trainerFinishMeter",
     "trainingReportPlayerName", "trainingReportPlayerFeedback",
-    "finishTrainingSession", "newTrainingSession", "downloadTrainingReport",
+    "finishTrainingSession", "newTrainingSession", "downloadTrainingReport", "closeSessionReport",
     "trainingSessionReport", "trainerReportBreakdown", "trainerFeedbackList"
   ]) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(html, /Target Game scores only the observed first bounce inside an active target/);

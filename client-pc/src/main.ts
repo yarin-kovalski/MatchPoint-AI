@@ -276,6 +276,7 @@ const elements = {
   playCalibratedBackhand: getElement<HTMLButtonElement>("playCalibratedBackhand"),
   playableCalibratedHitToggle: getElement<HTMLInputElement>("playableCalibratedHitToggle"),
   calibratedPracticeLoopToggle: getElement<HTMLInputElement>("calibratedPracticeLoopToggle"),
+  playSingleShot: getElement<HTMLButtonElement>("playSingleShot"),
   playableCountdown: getElement("playableCountdown"),
   playableWindowStatus: getElement("playableWindowStatus"),
   playableExpectedStroke: getElement("playableExpectedStroke"),
@@ -324,9 +325,11 @@ const elements = {
   trainerAverageSpeed: getElement("trainerAverageSpeed"),
   trainerBestStreak: getElement("trainerBestStreak"),
   trainerTechniqueSummary: getElement("trainerTechniqueSummary"),
+  smartTrainer: getElement<HTMLElement>("smartTrainer"),
   finishTrainingSession: getElement<HTMLButtonElement>("finishTrainingSession"),
   newTrainingSession: getElement<HTMLButtonElement>("newTrainingSession"),
   downloadTrainingReport: getElement<HTMLButtonElement>("downloadTrainingReport"),
+  closeSessionReport: getElement<HTMLButtonElement>("closeSessionReport"),
   trainingReportPlayerName: getElement<HTMLInputElement>("trainingReportPlayerName"),
   trainingReportPlayerFeedback: getElement<HTMLTextAreaElement>("trainingReportPlayerFeedback"),
   courtVision: getElement<HTMLElement>("courtVision"),
@@ -428,6 +431,8 @@ const elements = {
   debugStrokeTimeline: getElement("debugStrokeTimeline")
 };
 
+// Keep Motion Analysis in the court overlay layer so modal and HUD ordering is predictable.
+visualizationPanel.append(elements.smartTrainer);
 elements.courtVisionMap.innerHTML = createCourtMapSvg([], "Court vision awaiting the first bounce");
 
 let packetCount = 0;
@@ -517,6 +522,7 @@ const contactPositionCalibrations: Record<CalibrationStrokeType, ContactPosition
 const sliceCalibrationData: SliceCalibrationData = loadSliceCalibration(localStorage);
 let showBallAtContactPreview = false;
 let selectedPracticeStroke: CalibrationStrokeType | null = null;
+let singleShotArmed = false;
 let practiceRelaunchAt = 0;
 let practiceAttempts = 0;
 let practiceHits = 0;
@@ -2627,10 +2633,29 @@ function wireBallControls(): void {
     elements.strokeExampleAnalysis.textContent = `Armed: ${armedStrokeExampleLabel}. The next resolved contact will be saved.`;
   });
   elements.analyzeStrokeExamples.addEventListener("click", analyzeStrokeExamples);
-  elements.playCalibratedForehand.addEventListener("click", () => playCalibratedStroke("forehand"));
-  elements.playCalibratedBackhand.addEventListener("click", () => playCalibratedStroke("backhand"));
+  const playFromPlayerControls = (stroke: CalibrationStrokeType): void => {
+    elements.calibratedPracticeLoopToggle.checked = !singleShotArmed;
+    singleShotArmed = false;
+    playCalibratedStroke(stroke);
+  };
+  elements.playCalibratedForehand.addEventListener("click", () => playFromPlayerControls("forehand"));
+  elements.playCalibratedBackhand.addEventListener("click", () => playFromPlayerControls("backhand"));
+  elements.playSingleShot.addEventListener("click", () => {
+    elements.calibratedPracticeLoopToggle.checked = false;
+    if (selectedPracticeStroke && !ballController.ball.active) {
+      singleShotArmed = false;
+      playCalibratedStroke(selectedPracticeStroke);
+    } else {
+      singleShotArmed = true;
+      elements.practiceStatus.textContent = "Single shot armed. Choose Forehand or Backhand.";
+    }
+  });
   elements.finishTrainingSession.addEventListener("click", finishSmartTrainingSession);
-  elements.newTrainingSession.addEventListener("click", startNewSmartTrainingSession);
+  elements.newTrainingSession.addEventListener("click", () => {
+    startNewSmartTrainingSession();
+    elements.smartTrainer.classList.remove("is-complete");
+  });
+  elements.closeSessionReport.addEventListener("click", () => elements.smartTrainer.classList.remove("is-complete"));
   elements.downloadTrainingReport.addEventListener("click", downloadLatestTrainingReport);
   elements.downloadTrainingReport.disabled = lastCompletedTrainingReport === null;
   elements.trainingReportPlayerName.value = localStorage.getItem(TRAINING_PLAYER_NAME_KEY) ?? "";
@@ -2639,6 +2664,7 @@ function wireBallControls(): void {
   });
   elements.stopPractice.addEventListener("click", () => {
     elements.calibratedPracticeLoopToggle.checked = false;
+    singleShotArmed = false;
     selectedPracticeStroke = null;
     practiceRelaunchAt = 0;
     ballController.reset();
@@ -3110,6 +3136,7 @@ function finishSmartTrainingSession(): void {
     return item;
   }));
   elements.trainingSessionReport.hidden = false;
+  elements.smartTrainer.classList.add("is-complete");
 }
 
 function startNewSmartTrainingSession(): void {
@@ -3129,6 +3156,7 @@ function startNewSmartTrainingSession(): void {
   elements.trainingReportPlayerFeedback.value = "";
   updateShotTechniqueUi(null);
   elements.trainingSessionReport.hidden = true;
+  elements.smartTrainer.classList.remove("is-complete");
   elements.courtVisionMap.innerHTML = createCourtMapSvg([], "Court vision awaiting the first bounce",
     playerMode === "game" ? activeGameTargets : []);
   elements.courtVisionResult.textContent = "READY";

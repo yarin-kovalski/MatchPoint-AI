@@ -991,3 +991,97 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
   58% { transform: scale(1.35); opacity: 1; }
   100% { transform: scale(1); }
 }
+
+/* Compact court-side command console and translucent motion-analysis cockpit. */
+.app-shell { grid-template-columns: minmax(276px, 21.5vw) minmax(0, 1fr); }
+.control-panel.hud { padding: 0 14px 14px; }
+.sticky-status { margin-bottom: 6px; padding: 12px 0 10px; }
+.sticky-status .hero h1 { font-size: 22px; letter-spacing: -.8px; }
+.hero .eyebrow { margin-bottom: 3px; font-size: 8px; }
+.hero #connectionStatus { margin-top: 4px; font-size: 9px; }
+.essential-status { margin-top: 7px; }
+.essential-status span { font-size: 8px; }
+.essential-status strong { font-size: 10px; }
+.player-mode { padding: 10px 0 6px; }
+.player-mode h2 { margin-bottom: 8px; font-size: 11px; }
+.player-actions { gap: 6px; }
+.player-actions button { min-height: 36px; font-size: 10px; }
+.player-actions #stopPractice { min-height: 28px; }
+.player-options { gap: 7px; margin: 10px 0 8px; }
+.player-options label { gap: 3px; font-size: 9px; }
+.player-options select { min-height: 28px; padding: 4px; font-size: 9px; }
+.mode-description { font-size: 9px; line-height: 1.35; }
+.single-shot-button {
+  min-height: 28px; align-self: end; border: 1px solid #617b73; border-radius: 5px;
+  background: rgba(82,115,105,.18); color: #dbe9df; font: 650 9px "Segoe UI",sans-serif;
+  letter-spacing: .02em; cursor: pointer;
+}
+.single-shot-button:hover { border-color: #b9d58b; color: #eff8df; }
+.player-scoreboard { margin-top: 8px; }
+.player-scoreboard > div { padding: 7px 3px; }
+.player-scoreboard span { font-size: 8px; }
+.player-scoreboard strong { margin-top: 2px; font-size: 12px; }
+.player-scoreboard > div:nth-child(-n+4) { padding: 7px 3px; }
+.player-scoreboard > div:nth-child(-n+4) strong { font-size: 18px; }
+.player-status { margin-top: 8px; font-size: 9px; line-height: 1.4; }
+.developer-panel { margin-top: 7px; }
+.developer-panel > summary { padding: 8px 0; font-size: 9px; }
+
+.smart-trainer {
+  position: fixed; top: 58px; right: 18px; bottom: 18px; z-index: 8;
+  width: clamp(300px, 23vw, 372px); margin: 0; padding: 13px;
+  overflow: hidden; border: 1px solid rgba(124,212,190,.54); border-radius: 4px;
+  clip-path: polygon(0 0, calc(100% - 17px) 0, 100% 17px, 100% 100%, 17px 100%, 0 calc(100% - 17px));
+  background: linear-gradient(145deg,rgba(5,22,26,.78),rgba(6,17,22,.58));
+  box-shadow: 0 0 0 1px rgba(5,20,22,.6), 0 15px 42px rgba(0,0,0,.34), inset 0 0 32px rgba(52,181,154,.055);
+  backdrop-filter: blur(8px) saturate(1.15);
+}
+.smart-trainer::before {
+  content:""; position:absolute; inset:0; pointer-events:none; opacity:.2;
+  background: repeating-linear-gradient(180deg,transparent 0 4px,rgba(127,220,199,.08) 5px);
+}
+.smart-trainer > * { position: relative; z-index: 1; }
+.smart-trainer-heading { align-items: center; padding-bottom: 7px; border-bottom: 1px solid rgba(113,185,168,.3); }
+.trainer-kicker { color: #82d9c3; font-size: 8px; letter-spacing: .18em; }
+.smart-trainer h3 { margin: 2px 0 0; font-size: 16px; letter-spacing: .02em; }
+.trainer-session-state { padding: 4px 7px; border: 1px solid rgba(139,217,170,.25); background: rgba(77,142,114,.16); font-size: 8px; }
+.shot-identity { margin: 8px 0 7px; padding: 7px 9px; border-color: rgba(112,199,177,.48); border-radius: 4px; }
+.shot-identity span,.shot-identity small { font-size: 7px; }
+.shot-identity strong { margin: 1px 0; font-size: 14px; }
+.trainer-live-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px; }
+.trainer-live-grid > div { min-height: 45px; padding: 7px 8px; border-radius: 3px; border-left: 2px solid rgba(104,203,178,.38); background: rgba(4,18,21,.48); }
+.trainer-live-grid span,.trainer-session-grid span { font-size: 7px; letter-spacing: .04em; text-transform: uppercase; }
+.trainer-live-grid strong,.trainer-session-grid strong { margin-top: 2px; font-size: 12px; }
+.trainer-live-grid .technique-card { min-height: 76px; }
+.technique-card small { min-height: 18px; margin-top: 1px; font-size: 7px; line-height: 1.2; }
+.technique-meter { height: 17px; margin-top: 3px; padding: 3px; gap: 2px; border-radius: 3px; }
+.trainer-session-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 4px; margin-top: 6px; }
+.trainer-session-grid > div { padding: 6px 3px; border: 1px solid rgba(78,128,117,.3); background: rgba(7,24,27,.42); }
+.trainer-session-grid strong { font-size: 10px; }
+.trainer-target-note { display: none; }
+.report-personalization,.trainer-actions .secondary-button,.trainer-actions .report-download,.trainer-actions .report-close { display:none; }
+.trainer-actions { display:block; margin-top:7px; }
+.trainer-actions #finishTrainingSession { width:100%; min-height:31px; border:1px solid #80bea8; background:rgba(80,148,126,.2); color:#dbf4e8; font-size:10px; }
+
+.smart-trainer.is-complete {
+  top: 50%; right: 50%; bottom: auto; width: min(610px,calc(100vw - 44px)); max-height: 88vh;
+  padding: 22px; overflow-y: auto; transform: translate(50%,-50%); clip-path: none; border-radius: 8px;
+  background: rgba(7,24,27,.95); box-shadow: 0 28px 90px rgba(0,0,0,.64),0 0 0 9999px rgba(2,8,10,.48);
+}
+.smart-trainer.is-complete .shot-identity,.smart-trainer.is-complete .trainer-live-grid,
+.smart-trainer.is-complete .trainer-session-grid,.smart-trainer.is-complete .trainer-target-note { display:none; }
+.smart-trainer.is-complete .report-personalization { display:grid; grid-template-columns:1fr 1.4fr; margin:14px 0 10px; }
+.smart-trainer.is-complete .training-session-report { margin-top:10px; }
+.smart-trainer.is-complete .trainer-actions { display:grid; grid-template-columns:1fr 1.35fr; padding-right:40px; }
+.smart-trainer.is-complete .trainer-actions #finishTrainingSession { display:none; }
+.smart-trainer.is-complete .trainer-actions .secondary-button,
+.smart-trainer.is-complete .trainer-actions .report-download { display:block; grid-column:auto; }
+.smart-trainer.is-complete .trainer-actions .report-close {
+  display:block; position:absolute; top:14px; right:14px; width:32px; min-height:32px; padding:0;
+  border:1px solid #68827a; border-radius:50%; background:rgba(4,15,18,.72); color:#e8f4ee; font-size:20px; line-height:28px;
+}
+
+@media (max-width: 1100px) {
+  .app-shell { grid-template-columns: 260px minmax(0,1fr); }
+  .smart-trainer { width: 292px; right: 10px; }
+}
