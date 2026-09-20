@@ -8,7 +8,7 @@ import { FrameTelemetry } from "../client-pc/src/diagnostics/frameTelemetry.js";
 import { BallController } from "../client-pc/src/ball/BallController.js";
 import { advanceBallFixedStep, sampleBallVisualPosition } from "../client-pc/src/ball/fixedStepBallPhysics.js";
 import { integrateBallRotation } from "../client-pc/src/ball/ballVisuals.js";
-import { createArchetypeFeed, FEED_ARCHETYPES, FeedArchetype } from "../client-pc/src/ball/feedArchetypes.js";
+import { createArchetypeFeed, FEED_ARCHETYPES, FeedArchetype, resolveFeedStyle } from "../client-pc/src/ball/feedArchetypes.js";
 import { generateSafeFeedVariation } from "../client-pc/src/ball/feedVariation.js";
 import { positionValidatedProfileAtBaseline } from "../client-pc/src/ball/courtPositioning.js";
 import { solveTrajectoryProfile } from "../client-pc/src/ball/trajectoryCalibration.js";
@@ -101,6 +101,10 @@ for(const side of ["forehand","backhand"] as const) for(const kind of Object.key
     assert.equal(feed.variation.fallback,false,feed.variation.validationErrors.join(';'));
     assert.equal(JSON.stringify(base),before);
     assert.deepEqual(feed.variation,again.variation);
+    assert.deepEqual(feed.variation.profile.launchPointWorld,base.profile.launchPointWorld);
+    assert.deepEqual(feed.variation.profile.bouncePointWorld,base.profile.bouncePointWorld);
+    assert.deepEqual(feed.variation.profile.contactPointWorld,base.profile.contactPointWorld);
+    assert.equal(feed.variation.profile.bounceToContactMs,base.profile.bounceToContactMs);
     const profile=positionValidatedProfileAtBaseline(feed.variation.profile);
     const solved=solveTrajectoryProfile(profile);
     assert.ok(solved.valid);
@@ -116,6 +120,26 @@ for(const side of ["forehand","backhand"] as const) for(const kind of Object.key
     assert.deepEqual(profile.contactPointWorld,positionValidatedProfileAtBaseline(base.profile).contactPointWorld);
   });
 }
+
+test("feed menu keeps three safe styles and Random never repeats the previous style",()=>{
+  assert.deepEqual(Object.keys(FEED_ARCHETYPES),["neutral","fastFlat","heavyTopspin"]);
+  assert.equal(resolveFeedStyle("neutral","fastFlat",()=>.5),"neutral");
+  const next=resolveFeedStyle("random","neutral",()=>0);
+  assert.notEqual(next,"neutral");
+  assert.ok(next in FEED_ARCHETYPES);
+});
+
+test("Fast Flat changes pace and Heavy Topspin changes spin without moving contact",()=>{
+  const base=generateSafeFeedVariation("forehand","off",1);
+  const neutral=createArchetypeFeed(base,"neutral");
+  const fast=createArchetypeFeed(base,"fastFlat");
+  const spin=createArchetypeFeed(base,"heavyTopspin");
+  assert.ok(fast.launchVelocity.length()>neutral.launchVelocity.length());
+  assert.equal(neutral.spin.length(),0);
+  assert.ok(spin.spin.x>neutral.spin.x);
+  assert.deepEqual(fast.variation.profile.contactPointWorld,base.profile.contactPointWorld);
+  assert.deepEqual(spin.variation.profile.contactPointWorld,base.profile.contactPointWorld);
+});
 
 test("premium net has physical cords in one mesh and reusable scene finishes",()=>{
   const net=createAuthenticTennisNet(-5.5);

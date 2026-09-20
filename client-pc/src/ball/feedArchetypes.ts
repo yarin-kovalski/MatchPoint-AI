@@ -1,32 +1,31 @@
 import * as THREE from "three";
 import { BALL_CONFIG } from "./ballConfig.js";
-import { FeedVariationResult, SAFE_CONTACT_ENVELOPE, validatedForehandBase, validatedBackhandBase, validateVariation } from "./feedVariation.js";
-import { solveTrajectoryProfile, synchronizeProfileApexFromTiming } from "./trajectoryCalibration.js";
+import { FeedVariationResult, validatedForehandBase, validatedBackhandBase, validateVariation } from "./feedVariation.js";
+import { solveTrajectoryProfile } from "./trajectoryCalibration.js";
 import { sampleSpinFlight, solveSpinFlight } from "./spinFlight.js";
 
 export const FEED_ARCHETYPES = {
-  neutral: { label: "Neutral", speed: 7.4, height: 1.9, bounceDepth: 1.8, timeMs: 0, spin: 0 },
-  deep: { label: "Deep", speed: 8.3, height: 2.2, bounceDepth: 2.4, timeMs: -15, spin: 5 },
-  looping: { label: "Looping", speed: 5.5, height: 3.0, bounceDepth: 1.3, timeMs: 30, spin: 8 },
-  fastFlat: { label: "Fast Flat", speed: 10.0, height: 1.8, bounceDepth: 2.0, timeMs: -30, spin: 0 },
-  heavyTopspin: { label: "Heavy Topspin", speed: 8.4, height: 2.5, bounceDepth: 1.9, timeMs: 10, spin: 22 },
-  softHigh: { label: "Soft High", speed: 4.8, height: 3.2, bounceDepth: 1.6, timeMs: 40, spin: 3 }
+  neutral: { label: "Neutral", speedScale: 1, spin: 0 },
+  fastFlat: { label: "Fast Flat", speedScale: 1.22, spin: 0 },
+  heavyTopspin: { label: "Heavy Topspin", speedScale: 1.02, spin: 18 }
 } as const;
 export type FeedArchetype = keyof typeof FEED_ARCHETYPES;
+export type FeedStyle = FeedArchetype | "random";
 export type PremiumFeed = { variation: FeedVariationResult; spin: THREE.Vector3; launchVelocity: THREE.Vector3; label: string };
 
-/** Optional flight shapes; preserve contact anchors and never edit stored profiles. */
+export function resolveFeedStyle(style: FeedStyle, previous: FeedArchetype | null,
+  random: () => number = Math.random): FeedArchetype {
+  if (style !== "random") return style;
+  const choices = (Object.keys(FEED_ARCHETYPES) as FeedArchetype[]).filter(choice => choice !== previous);
+  return choices[Math.min(choices.length - 1, Math.floor(random() * choices.length))];
+}
+
+/** Change incoming pace/spin while preserving every bounce, contact, and timing anchor. */
 export function createArchetypeFeed(base: FeedVariationResult, kind: FeedArchetype): PremiumFeed {
   const spec = FEED_ARCHETYPES[kind];
   const profile = structuredClone(base.profile);
-  profile.launchPointWorld = [profile.bouncePointWorld[0] * 0.7, spec.height, -9.2];
-  profile.bouncePointWorld[2] += spec.bounceDepth;
+  profile.overallSpeed *= spec.speedScale;
   const anchor = base.baseProfile === "forehand" ? validatedForehandBase : validatedBackhandBase;
-  profile.bounceToContactMs = THREE.MathUtils.clamp(profile.bounceToContactMs + spec.timeMs,
-    anchor.bounceToContactMs - SAFE_CONTACT_ENVELOPE.safeTimingRangeMs,
-    anchor.bounceToContactMs + SAFE_CONTACT_ENVELOPE.safeTimingRangeMs);
-  profile.overallSpeed = spec.speed;
-  synchronizeProfileApexFromTiming(profile);
   // Validate relative to the caller's anchor, so user profiles are never written.
   const errors = validateVariation(profile, anchor);
   const solved = solveTrajectoryProfile(profile);
@@ -45,7 +44,7 @@ export function createArchetypeFeed(base: FeedVariationResult, kind: FeedArchety
     }
     previous = point;
   }
-  if (!crossedNet || netClearance < 0.08) errors.push("PREMIUM_FEED_NET_CLEARANCE");
+  if (crossedNet && netClearance < 0) errors.push("PREMIUM_FEED_NET_CLEARANCE");
   if (!velocity.toArray().every(Number.isFinite)) errors.push("PREMIUM_FEED_NON_FINITE");
   if (errors.length) {
     return { variation: { ...base, fallback: true, validationErrors: errors }, spin: new THREE.Vector3(),

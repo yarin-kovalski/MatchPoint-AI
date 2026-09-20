@@ -17,7 +17,7 @@ import {
   restoreValidatedTrajectoryPreset, TrajectoryProfileSource, VALIDATED_TRAJECTORY_PRESET
 } from "./ball/validatedTrajectoryPreset.js";
 import { canLaunchPracticeFeed, FeedVariationLevel, FeedVariationResult, generateSafeFeedVariation } from "./ball/feedVariation.js";
-import { createArchetypeFeed, FeedArchetype } from "./ball/feedArchetypes.js";
+import { createArchetypeFeed, FeedArchetype, FeedStyle, resolveFeedStyle } from "./ball/feedArchetypes.js";
 import { solveSpinFlight } from "./ball/spinFlight.js";
 import type { ReturnResult } from "./ball/courtRules.js";
 import type { PhysicalImpactResolution } from "./ball/contactRealism.js";
@@ -539,6 +539,7 @@ let trainingRejectedInWindow: PlayableFailureReason | null = null;
 const trainingMissBreakdown = emptyTrainingMissBreakdown();
 let lastTrainingMissReasons: TrainingMissReason[] = [];
 let currentFeedVariation: FeedVariationResult | null = null;
+let lastRandomFeedArchetype: FeedArchetype | null = null;
 let activeCalibrationProfile: TrajectoryCalibrationProfile | null = null;
 let geometryMissStreak = 0;
 let forceValidatedBaseNext = false;
@@ -2511,9 +2512,10 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
     ? Math.trunc(enteredSeed)
     : crypto.getRandomValues(new Uint32Array(1))[0];
   const baseVariation = generateSafeFeedVariation(strokeType, level, seed);
-  const style = (document.getElementById("feedArchetype") as HTMLSelectElement).value;
-  const premium = playerAssistLevel === "training" || style === "validated" || level === "off"
-    ? null : createArchetypeFeed(baseVariation, style as FeedArchetype);
+  const style = (document.getElementById("feedArchetype") as HTMLSelectElement).value as FeedStyle;
+  const resolvedStyle = resolveFeedStyle(style, lastRandomFeedArchetype);
+  if (style === "random") lastRandomFeedArchetype = resolvedStyle;
+  const premium = createArchetypeFeed(baseVariation, resolvedStyle);
   const generatedVariation = premium?.variation ?? baseVariation;
   currentFeedVariation = {
     ...generatedVariation,
@@ -2550,6 +2552,7 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   }
   const variationSummary = {
     baseProfile: strokeType,
+    feedStyle: premium.label,
     level,
     seed,
     offsets: currentFeedVariation.offsets,
