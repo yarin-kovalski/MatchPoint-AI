@@ -480,6 +480,7 @@ let playerMode: "training" | "game" = "training";
 type ConePracticeFocus = "deep" | "regular" | "short";
 let conePracticeFocus: ConePracticeFocus = "regular";
 let conePracticeChosen = false;
+const sessionConePracticeFocuses = new Set<ConePracticeFocus>();
 const gameTargetLayouts = createGameTargetLayouts(BALL_CONFIG.launch.netDepth);
 let activeGameTargets: GameTarget[] = [];
 let gameLayoutIndex = -1;
@@ -2760,6 +2761,9 @@ function wireBallControls(): void {
     button.addEventListener("click", () => {
       conePracticeFocus = button.dataset.conePractice as ConePracticeFocus;
       conePracticeChosen = true;
+      activeGameTargets = [];
+      knockedGameTargetIds.clear();
+      gameTargetGroup.visible = false;
       elements.conePracticePicker.querySelectorAll("button").forEach(item =>
         item.classList.toggle("is-selected", item === button));
       startTargetGame(performance.now());
@@ -3153,7 +3157,7 @@ function finishSmartTrainingSession(): void {
   const previous = trainingSessionHistory.at(-1) ?? null;
   const baseReport = smartTrainingSession.finish(previous);
   const gameResult: GameSessionResult | undefined = sessionIncludedGameMode ? {
-    practiceType: conePracticeLabel(conePracticeFocus),
+    practiceType: sessionConePracticeFocuses.size > 1 ? "Mixed" : conePracticeLabel(conePracticeFocus),
     score: gameScore,
     shots: gameShots,
     targetsHit: gameTargetsHit,
@@ -3239,6 +3243,7 @@ function updateCourtVision(result: ReturnResult, bouncePoint: THREE.Vector3 | nu
 function startTargetGame(_now: number): void {
   if (!sessionIncludedGameMode) resetTargetGameSession();
   sessionIncludedGameMode = true;
+  sessionConePracticeFocuses.add(conePracticeFocus);
   if (!activeGameTargets.length) activateInitialGameTargets();
   else gameTargetGroup.visible = true;
 }
@@ -3249,6 +3254,7 @@ function resetTargetGameSession(): void {
   gameReplacementCursor = 0;
   activeGameTargets = [];
   knockedGameTargetIds.clear();
+  sessionConePracticeFocuses.clear();
   sessionIncludedGameMode = false;
 }
 

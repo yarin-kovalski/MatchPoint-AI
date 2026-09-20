@@ -129,7 +129,7 @@ export type TrainingImprovement = {
 };
 
 export type GameSessionResult = {
-  practiceType?: "Deep shot" | "Regular" | "Short shot";
+  practiceType?: "Deep shot" | "Regular" | "Short shot" | "Mixed";
   score: number;
   shots: number;
   targetsHit: number;
