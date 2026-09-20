@@ -31,6 +31,8 @@ type Quaternion = {
 type SocketState = "offline" | "connecting" | "connected" | "error";
 
 const SENSOR_INTERVAL_MS = 16;
+const ACCELEROMETER_INTERVAL_MS = 32;
+const MOTION_EMIT_INTERVAL_MS = 20;
 const STROKE_THRESHOLD_G = 1.5;
 const STROKE_COOLDOWN_MS = 1000;
 const USE_LEGACY_STROKE_DETECTOR = false;
@@ -59,6 +61,7 @@ export default function App() {
   const lastStrokeAtRef = useRef(0);
   const peakAccelerationRef = useRef(0);
   const packetCountRef = useRef(0);
+  const lastMotionEmitAtRef = useRef(0);
   const sensorUiThrottleRef = useRef(new SensorUiThrottle());
 
   useEffect(() => {
@@ -116,11 +119,11 @@ export default function App() {
     socketRef.current?.disconnect();
 
     const socket = io(normalizedUrl, {
-      transports: ["websocket"],
+      transports: ["websocket", "polling"],
       secure: isSecure,
       reconnection: true,
       reconnectionDelay: 500,
-      timeout: 8000,
+      timeout: 12000,
       forceNew: true
     });
 
@@ -169,53 +172,54 @@ export default function App() {
       }
 
       DeviceMotion.setUpdateInterval(SENSOR_INTERVAL_MS);
-      Accelerometer.setUpdateInterval(SENSOR_INTERVAL_MS);
+      Accelerometer.setUpdateInterval(ACCELEROMETER_INTERVAL_MS);
 
       orientationRef.current = { x: 0, y: 0, z: 0 };
       peakAccelerationRef.current = 0;
+      lastMotionEmitAtRef.current = 0;
       sensorUiThrottleRef.current.reset();
       setCalibrated(false);
 
       const motionSubscription = DeviceMotion.addListener((sample) => {
         const now = Date.now();
         orientationRef.current = {
-          x: sample.rotation.beta,
-          y: sample.rotation.gamma,
-          z: sample.rotation.alpha
+          x: finiteClamped(sample.rotation.beta, -Math.PI * 4, Math.PI * 4),
+          y: finiteClamped(sample.rotation.gamma, -Math.PI * 4, Math.PI * 4),
+          z: finiteClamped(sample.rotation.alpha, -Math.PI * 4, Math.PI * 4)
         };
 
-        const quaternion = deviceRotationToQuaternion(sample.rotation);
+        const quaternion = deviceRotationToQuaternion({
+          alpha: orientationRef.current.z,
+          beta: orientationRef.current.x,
+          gamma: orientationRef.current.y
+        });
 
-        if (socketRef.current?.connected) {
-          socketRef.current.emit("continuous_orientation", {
+        if (socketRef.current?.connected && now - lastMotionEmitAtRef.current >= MOTION_EMIT_INTERVAL_MS) {
+          lastMotionEmitAtRef.current = now;
+          const angularVelocity = sanitizeVector(normalizeMotionRotationRate(sample.rotationRate, Platform.OS), 50);
+          const acceleration = sample.acceleration ? sanitizeVector(sample.acceleration, 20) : null;
+          const accelerationIncludingGravity = sanitizeVector(sample.accelerationIncludingGravity, 20);
+          // Volatile packets are intentionally dropped if the JS/network path is busy. Keeping stale
+          // motion in a queue creates visible freezes followed by a burst during fast swings.
+          socketRef.current.volatile.emit("continuous_orientation", {
             t: now,
             sensorTimestamp: sample.rotation.timestamp,
             source: "expo-mobile",
             rotation: orientationRef.current,
             quaternion,
-            angularVelocityRadPerSecond: normalizeMotionRotationRate(sample.rotationRate, Platform.OS),
+            angularVelocityRadPerSecond: angularVelocity,
             rotationRate: {
-              alpha: sample.rotationRate?.alpha ?? 0,
-              beta: sample.rotationRate?.beta ?? 0,
-              gamma: sample.rotationRate?.gamma ?? 0
+              alpha: finiteClamped(sample.rotationRate?.alpha, -50, 50),
+              beta: finiteClamped(sample.rotationRate?.beta, -50, 50),
+              gamma: finiteClamped(sample.rotationRate?.gamma, -50, 50)
             },
             gyro: {
-              x: sample.rotationRate?.alpha ?? 0,
-              y: sample.rotationRate?.beta ?? 0,
-              z: sample.rotationRate?.gamma ?? 0
+              x: finiteClamped(sample.rotationRate?.alpha, -50, 50),
+              y: finiteClamped(sample.rotationRate?.beta, -50, 50),
+              z: finiteClamped(sample.rotationRate?.gamma, -50, 50)
             },
-            acceleration: sample.acceleration
-              ? {
-                  x: sample.acceleration.x,
-                  y: sample.acceleration.y,
-                  z: sample.acceleration.z
-                }
-              : null,
-            accelerationIncludingGravity: {
-              x: sample.accelerationIncludingGravity.x,
-              y: sample.accelerationIncludingGravity.y,
-              z: sample.accelerationIncludingGravity.z
-            },
+            acceleration,
+            accelerationIncludingGravity,
             screenOrientation: sample.orientation,
             intervalMs: sample.interval
           });
@@ -233,7 +237,7 @@ export default function App() {
       });
 
       const accelSubscription = Accelerometer.addListener((sample) => {
-        accelerationRef.current = sample;
+        accelerationRef.current = sanitizeVector(sample, 20);
         if (USE_LEGACY_STROKE_DETECTOR) {
           detectStroke(sample.x);
         }
@@ -414,6 +418,20 @@ function normalizeServerUrl(value: string): string {
   }
 
   return `http://${trimmed}`;
+}
+
+function finiteClamped(value: number | null | undefined, minimum: number, maximum: number): number {
+  return Number.isFinite(value) ? Math.max(minimum, Math.min(maximum, value as number)) : 0;
+}
+
+function sanitizeVector(value: { x: number; y: number; z: number } | null | undefined,
+  maximumMagnitude: number): Vector3 {
+  if (!value) return { x: 0, y: 0, z: 0 };
+  return {
+    x: finiteClamped(value.x, -maximumMagnitude, maximumMagnitude),
+    y: finiteClamped(value.y, -maximumMagnitude, maximumMagnitude),
+    z: finiteClamped(value.z, -maximumMagnitude, maximumMagnitude)
+  };
 }
 
 function isTennisReadyPhonePose(acceleration: Vector3): boolean {

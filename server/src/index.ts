@@ -273,27 +273,11 @@ for (const io of ioServers) {
 
 httpServer.listen(PORT, HOST, () => {
   console.log("");
-  console.log("MatchPoint AI HTTP broker is running.");
-  console.log(`Local PC page:      http://localhost:${PORT}/pc`);
-  console.log(`Local mobile page:  http://localhost:${PORT}/mobile`);
-  console.log("");
-  console.log("Open one of these LAN URLs on your phone:");
-  for (const url of localUrls) {
-    console.log(`  ${url}/mobile`);
-  }
-  console.log("");
+  console.log(`MatchPoint AI server ready: http://localhost:${PORT}/pc`);
 });
 
 httpsServer.listen(HTTPS_PORT, HOST, () => {
-  console.log("MatchPoint AI HTTPS broker is running.");
-  console.log(`Secure PC page:      https://localhost:${HTTPS_PORT}/pc`);
-  console.log(`Secure mobile page:  https://localhost:${HTTPS_PORT}/mobile`);
-  console.log("");
-  console.log("Open one of these secure LAN URLs on your iPhone:");
-  for (const url of localHttpsUrls) {
-    console.log(`  ${url}/mobile`);
-  }
-  console.log("");
+  // HTTPS remains available for browser-sensor fallback, without duplicating startup instructions.
 });
 
 async function handleHttpRequest(

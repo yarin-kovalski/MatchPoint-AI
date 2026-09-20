@@ -53,6 +53,8 @@ function Wait-ForHttp {
     [string]$StderrPath
   )
   $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  $lastHttpStatus = $null
+  $lastHttpBody = $null
   do {
     try {
       $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5
@@ -61,11 +63,10 @@ function Wait-ForHttp {
       $statusCode = $null
       if ($_.Exception.Response) { $statusCode = [int]$_.Exception.Response.StatusCode }
       if ($statusCode -ge 400) {
-        $body = Get-HttpErrorBody -Exception $_.Exception
-        Write-Host "HTTP $statusCode returned by $Url" -ForegroundColor Red
-        if ($body) { Write-Host $body }
-        Write-ProcessDiagnostics -Name $ProcessName -Process $RequiredProcess -StdoutPath $StdoutPath -StderrPath $StderrPath
-        throw "HTTP $statusCode while waiting for $Url"
+        # Metro can briefly answer 500 while its resolver and cleared cache initialize.
+        # Keep waiting instead of turning that transient response into a failed startup.
+        $lastHttpStatus = $statusCode
+        $lastHttpBody = Get-HttpErrorBody -Exception $_.Exception
       }
       if ($RequiredProcess -and $RequiredProcess.HasExited) {
         Write-ProcessDiagnostics -Name $ProcessName -Process $RequiredProcess -StdoutPath $StdoutPath -StderrPath $StderrPath
@@ -74,6 +75,10 @@ function Wait-ForHttp {
       Start-Sleep -Milliseconds 500
     }
   } while ([DateTime]::UtcNow -lt $deadline)
+  if ($lastHttpStatus) {
+    Write-Host "Last HTTP response: $lastHttpStatus" -ForegroundColor Red
+    if ($lastHttpBody) { Write-Host $lastHttpBody }
+  }
   Write-ProcessDiagnostics -Name $ProcessName -Process $RequiredProcess -StdoutPath $StdoutPath -StderrPath $StderrPath
   throw "Timed out waiting for $Url"
 }
@@ -121,8 +126,6 @@ $LanCandidates = foreach ($route in $DefaultRoutes) {
     }
 }
 $LanCandidates = @($LanCandidates | Sort-Object Metric -Unique)
-Write-Host "LAN candidates:" -ForegroundColor Cyan
-$LanCandidates | Format-Table Address, InterfaceAlias, NextHop, Metric -AutoSize
 
 $LanAddress = $env:MATCHPOINT_LAN_IP
 if (-not $LanAddress) { $LanAddress = $LanCandidates | Select-Object -First 1 -ExpandProperty Address }
@@ -172,7 +175,6 @@ $ExpoErrorLog = Join-Path $env:TEMP "matchpoint-expo-error.log"
 $ServerProcess = $null
 $ExpoProcess = $null
 $MetroProcess = $null
-$BrowserJob = $null
 $PreviousExpoServerUrl = $env:EXPO_PUBLIC_SERVER_URL
 $PreviousPackagerHostname = $env:REACT_NATIVE_PACKAGER_HOSTNAME
 $PreviousExpoOffline = $env:EXPO_OFFLINE
@@ -182,15 +184,11 @@ $env:EXPO_OFFLINE = "0"
 
 try {
   Remove-Item -LiteralPath $ServerLog, $ServerErrorLog, $ExpoLog, $ExpoErrorLog -Force -ErrorAction SilentlyContinue
-  Write-Host "Starting backend and PC client build..." -ForegroundColor Cyan
+  Write-Host "Starting MatchPoint AI..." -ForegroundColor Cyan
   $ServerProcess = Start-Process npm.cmd -ArgumentList @("run", "dev") -WorkingDirectory $RootDir -PassThru -WindowStyle Hidden -RedirectStandardOutput $ServerLog -RedirectStandardError $ServerErrorLog
   Wait-ForHttp -Url $PcUrl -TimeoutSeconds 120 -RequiredProcess $ServerProcess -ProcessName "Backend" -StdoutPath $ServerLog -StderrPath $ServerErrorLog | Out-Null
-  Write-Host "Backend ready: $ServerUrl" -ForegroundColor Green
-
-  Write-Host "Starting Expo from: $ExpoDir" -ForegroundColor Cyan
-  Write-Host "Expo command: npx.cmd expo start --lan --go --port $MetroPort --clear"
-  $ExpoProcess = Start-Process cmd.exe -PassThru -WindowStyle Hidden -WorkingDirectory $ExpoDir -ArgumentList @(
-    "/d", "/s", "/c", "npx.cmd expo start --lan --go --port $MetroPort --clear"
+  $ExpoProcess = Start-Process npx.cmd -PassThru -WindowStyle Hidden -WorkingDirectory $ExpoDir -ArgumentList @(
+    "expo", "start", "--lan", "--go", "--port", "$MetroPort", "--clear"
   ) -RedirectStandardOutput $ExpoLog -RedirectStandardError $ExpoErrorLog
   Wait-ForHttp -Url $MetroHttpUrl -TimeoutSeconds 120 -RequiredProcess $ExpoProcess -ProcessName "Expo" -StdoutPath $ExpoLog -StderrPath $ExpoErrorLog | Out-Null
   $listener = Get-NetTCPConnection -State Listen -LocalPort $MetroPort -ErrorAction Stop | Select-Object -First 1
@@ -198,26 +196,19 @@ try {
     throw "Metro is listening only on $($listener.LocalAddress), not the LAN interface."
   }
   $MetroProcess = Get-Process -Id $listener.OwningProcess -ErrorAction Stop
-  Write-Host "Metro listening: $($listener.LocalAddress):$MetroPort (PID $($listener.OwningProcess))" -ForegroundColor Green
-
-  Write-Host "Building and fetching the iOS bundle..." -ForegroundColor Cyan
   $bundle = Wait-ForHttp -Url $BundleUrl -TimeoutSeconds 180 -RequiredProcess $MetroProcess -ProcessName "Metro" -StdoutPath $ExpoLog -StderrPath $ExpoErrorLog
   if ($bundle.Content.Length -lt 1000) { throw "Metro returned an unexpectedly small iOS bundle ($($bundle.Content.Length) bytes)." }
 
   Write-Host ""
   Write-Host "MatchPoint AI is ready" -ForegroundColor Green
-  Write-Host "Selected LAN IPv4: $LanAddress"
-  Write-Host "PC client: $PcUrl"
-  Write-Host "Expo Go LAN URL: $ExpoUrl" -ForegroundColor Yellow
-  Write-Host "Verified iOS bundle: $BundleUrl" -ForegroundColor Green
+  Start-Process $PcUrl
+  Write-Host "The PC court opened automatically." -ForegroundColor Green
+  Write-Host "Scan this QR code with the iPhone camera:" -ForegroundColor Yellow
   $QrModule = Join-Path $ExpoDir "node_modules\toqr"
   if (Test-Path -LiteralPath $QrModule) {
-    Write-Host "Scan this QR with the iPhone camera:" -ForegroundColor Yellow
     & node -e "const{toQR}=require(process.argv[1]);const q=toQR(process.argv[2]);const n=Math.sqrt(q.length),b=2;for(let y=-b;y<n+b;y++){let s='';for(let x=-b;x<n+b;x++){const white=x<0||y<0||x>=n||y>=n||!q[y*n+x];s+=(white?'\x1b[47m  ':'\x1b[40m  ')}console.log(s+'\x1b[0m')}" $QrModule $ExpoUrl
   }
-  Write-Host "The Expo Go address must use $LanAddress."
-  Write-Host "Keep both terminals open. Press Ctrl+C here to stop the project."
-  $BrowserJob = Start-Job -ScriptBlock { param($Url) Start-Process $Url } -ArgumentList $PcUrl
+  Write-Host "Keep this terminal open. Press Ctrl+C to stop everything."
 
   while (-not $ServerProcess.HasExited -and -not $MetroProcess.HasExited) { Start-Sleep -Seconds 1 }
   if ($ServerProcess.HasExited) { throw "Backend stopped unexpectedly. See $ServerErrorLog" }
@@ -228,7 +219,6 @@ finally {
   $env:EXPO_PUBLIC_SERVER_URL = $PreviousExpoServerUrl
   $env:REACT_NATIVE_PACKAGER_HOSTNAME = $PreviousPackagerHostname
   $env:EXPO_OFFLINE = $PreviousExpoOffline
-  if ($BrowserJob) { Stop-Job $BrowserJob -ErrorAction SilentlyContinue; Remove-Job $BrowserJob -Force -ErrorAction SilentlyContinue }
   if ($ExpoProcess -and -not $ExpoProcess.HasExited) { Stop-ProcessTree -ProcessId $ExpoProcess.Id }
   if ($ServerProcess -and -not $ServerProcess.HasExited) { Stop-ProcessTree -ProcessId $ServerProcess.Id }
 }
