@@ -61,3 +61,24 @@ test("court vision maps real world positions and keeps out balls beyond the cour
   assert.match(svg, /Shot 2: OUT WIDE/);
   assert.doesNotMatch(svg, /NaN|Infinity/);
 });
+
+test("game score appears only in reports for sessions that included Target Game", () => {
+  const session = new SmartTrainingSession(1000);
+  session.record({ timestamp: 1200, expectedStroke: "forehand", detectedStroke: "forehand",
+    hit: true, swingSpeedKmh: 65, timingOffsetMs: 10, placementAccuracy: 82, technique,
+    returnOutcome: "IN", bouncePoint: { x: 0, z: -12 } });
+  const trainingReport = session.finish(null, 5000);
+  assert.doesNotMatch(createTrainingReportHtml(trainingReport), /Target game result/);
+
+  const gameReport = { ...trainingReport, game: {
+    score: 240, shots: 5, targetsHit: 3, targetHitRate: 60, bestTargetStreak: 2
+  } };
+  const html = createTrainingReportHtml(gameReport);
+  assert.match(html, /Target game result/);
+  assert.match(html, /240 points/);
+  assert.match(html, /Targets hit/);
+  assert.match(html, /3 \/ 5/);
+  assert.match(html, /Target hit rate/);
+  assert.match(html, /60%/);
+  assert.match(html, /Best target streak/);
+});

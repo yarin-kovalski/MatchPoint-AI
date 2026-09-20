@@ -128,6 +128,14 @@ export type TrainingImprovement = {
   followThroughPoints: number;
 };
 
+export type GameSessionResult = {
+  score: number;
+  shots: number;
+  targetsHit: number;
+  targetHitRate: number;
+  bestTargetStreak: number;
+};
+
 export type TrainingSessionReport = TrainingSessionSummary & {
   startedAt: number;
   endedAt: number;
@@ -135,6 +143,7 @@ export type TrainingSessionReport = TrainingSessionSummary & {
   improvement: TrainingImprovement | null;
   feedback: string[];
   shots: TrainingShot[];
+  game?: GameSessionResult;
 };
 
 export class SmartTrainingSession {

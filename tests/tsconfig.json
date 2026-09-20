@@ -43,11 +43,13 @@
     "smart-training-session.test.ts",
     "stroke-technique-analysis.test.ts",
     "training-report-export.test.ts",
+    "target-game.test.ts",
     "../client-pc/src/ball/validatedTrajectoryPreset.ts",
     "../client-pc/src/diagnostics/**/*.ts",
     "../client-pc/src/motion/**/*.ts",
     "../client-pc/src/strokeDetection/**/*.ts",
     "../client-pc/src/ball/**/*.ts",
+    "../client-pc/src/game/**/*.ts",
     "../virtucourt-mobile/sensorUiThrottle.ts"
   ]
 }

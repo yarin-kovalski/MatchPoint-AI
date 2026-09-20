@@ -57,8 +57,14 @@ test("player mode exposes simple play controls and keeps advanced tools collapse
   assert.match(html, /id="feedVariationLevel"/);
   assert.match(html, /id="playerAssistLevel"/);
   assert.match(html, /<option value="training" selected>Training<\/option>/);
-  assert.match(html, /<option value="game">Game \(coming later\)<\/option>/);
+  assert.match(html, /<option value="game">Target Game<\/option>/);
   assert.match(html, /id="modeDescription"/);
+  for (const id of ["gameHud", "gameTimer", "gameScore", "gameTargetsHit", "gameStreak", "gameLastAward"]) {
+    assert.doesNotMatch(html, new RegExp(`id=["']${id}["']`), `${id} should not be shown during play`);
+    assert.doesNotMatch(main, new RegExp(`getElement(?:<[^>]+>)?\\(["']${id}["']\\)`), `${id} should not be bound`);
+  }
+  assert.match(main, /scoreGameBounce\(bouncePoint, result, activeGameTargets\)/);
+  assert.match(main, /sessionIncludedGameMode/);
   assert.match(html, /<option value="low" selected>Low<\/option>/);
   assert.match(html, /<details class="developer-panel">/);
   assert.doesNotMatch(html, /<details class="developer-panel" open>/);
@@ -82,7 +88,7 @@ test("smart trainer exposes live motion metrics and session feedback controls", 
     "finishTrainingSession", "newTrainingSession", "downloadTrainingReport",
     "trainingSessionReport", "trainerReportBreakdown", "trainerFeedbackList"
   ]) assert.match(html, new RegExp(`id="${id}"`));
-  assert.match(html, /Visible shooting targets will arrive with Game mode/);
+  assert.match(html, /Target Game scores only the observed first bounce inside an active target/);
   assert.match(html, /1 closed .* 5 square .* 10 open/);
   assert.match(css, /@keyframes trainer-meter-rise/);
   assert.match(main, /strokeType: event\.expectedStrokeType, confidence: 1, source: "feed-side"/);

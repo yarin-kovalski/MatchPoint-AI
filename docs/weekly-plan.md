@@ -271,3 +271,10 @@ Acceptance criteria:
 - [x] Solve the calibrated drop slice to a safe 2.1 m depth past the net and the deep slice to 9.0 m past the net, including explicit net-clearance scoring.
 - [x] Guarantee through regression tests that calibrated slice intent cannot change flat or topspin trajectories.
 - [x] Retire the completed slice-calibration controls while continuing to load the six saved drop/deep examples for live classification.
+# September 18, 2026 — Target Game
+
+- Completed the smart trainer's Target Game mode without changing Training contact or shot physics.
+- Added three regulation-safe targets that rotate every 10 seconds and score the observed first bounce.
+- Added difficulty-weighted points, precision scaling, streaks, professional court-level target graphics, and active targets in Court Vision.
+- Removed the live challenge panel; Game score and target performance now appear only after the session and in its downloaded report.
+- Added automated court-boundary and scoring tests.

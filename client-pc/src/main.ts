@@ -50,13 +50,16 @@ import {
 import { TrainingSessionCalibration } from "./diagnostics/trainingSessionCalibration.js";
 import {
   calculateTrainingTargetAccuracy, classifyTrainingTiming, DetectedTrainingStroke,
-  isSuccessfulTrainingReturn, SmartTrainingSession, TrainingSessionReport,
+  GameSessionResult, isSuccessfulTrainingReturn, SmartTrainingSession, TrainingSessionReport,
   TrainingStrokeDetection, TrainingStrokeEvidence
 } from "./diagnostics/smartTrainingSession.js";
 import { createShotTechnique, emptyFollowThrough, FollowThroughAnalyzer } from "./diagnostics/strokeTechniqueAnalysis.js";
 import type { ShotTechnique } from "./diagnostics/strokeTechniqueAnalysis.js";
 import { createTrainingReportHtml } from "./diagnostics/trainingReportExport.js";
 import { createCourtMapSvg } from "./diagnostics/courtVision.js";
+import {
+  createGameTargetLayouts, GameTarget, GAME_TARGET_DURATION_MS, scoreGameBounce
+} from "./game/targetGame.js";
 import { adaptiveVisualSmoothingFactor, SensorResampler, updateVisualRacketQuaternion } from "./motion/sensorResampler.js";
 import { ForwardSwingFusion } from "./motion/forwardSwingFusion.js";
 import { stabilizeTrainingRacketOrigin } from "./motion/racketOriginStability.js";
@@ -467,6 +470,17 @@ let replayTimer: number | null = null;
 let contactFlashUntil = 0;
 let assistMode: AssistMode = "easy";
 let playerAssistLevel: PlayerAssistLevel = "training";
+let playerMode: "training" | "game" = "training";
+const gameTargetLayouts = createGameTargetLayouts(BALL_CONFIG.launch.netDepth);
+let activeGameTargets: GameTarget[] = [];
+let gameLayoutIndex = -1;
+let gameTargetsExpireAt = 0;
+let gameScore = 0;
+let gameShots = 0;
+let gameTargetsHit = 0;
+let gameStreak = 0;
+let gameBestStreak = 0;
+let sessionIncludedGameMode = false;
 const trainingSessionCalibration = new TrainingSessionCalibration();
 const TRAINING_HISTORY_KEY = "matchpoint.smart-training-history.v5";
 const TRAINING_PLAYER_NAME_KEY = "matchpoint.training-player-name";
@@ -678,6 +692,11 @@ const tennisNet = createAuthenticTennisNet(BALL_CONFIG.launch.netDepth);
 const courtBackdrop = createCourtBackdrop(BALL_CONFIG.launch.netDepth);
 scene.add(court, tennisNet, courtBackdrop);
 
+const gameTargetGroup = new THREE.Group();
+gameTargetGroup.name = "gameTargets";
+gameTargetGroup.visible = false;
+scene.add(gameTargetGroup);
+
 const feedOriginMarker = createFeedOriginMarker();
 feedOriginMarker.visible = false;
 scene.add(feedOriginMarker);
@@ -789,8 +808,9 @@ const ballController = new BallController(onBallHit, onBallMiss, (result, firstB
     OUT_WIDE: "OUT - wide", OUT_LONG: "OUT - long", SHORT: "SHORT - bounced on your side", OUT: "OUT" } as const)[result];
   finalizeReturnedTrainingShot(result, firstBouncePoint);
   updateCourtVision(result, firstBouncePoint);
+  const gameAward = playerMode === "game" ? scoreGameReturn(result, firstBouncePoint) : null;
   const announcement = getElement("landingAnnouncement");
-  announcement.textContent = elements.ballResult.textContent;
+  announcement.textContent = gameAward ?? elements.ballResult.textContent;
   announcement.hidden = false;
   clearTimeout(landingAnnouncementTimer);
   landingAnnouncementTimer = setTimeout(() => { announcement.hidden = true; }, 2600);
@@ -920,6 +940,10 @@ const strokeStateMachine = new StrokeStateMachine(
 wireStrokeControls();
 wireBallControls();
 wireDiagnosticControls();
+if (new URLSearchParams(window.location.search).get("mode") === "game") {
+  elements.playerAssistLevel.value = "game";
+  elements.playerAssistLevel.dispatchEvent(new Event("change"));
+}
 wireTrajectoryCalibration();
 loadRacketModel();
 
@@ -1303,6 +1327,7 @@ function animate(): void {
   updatePremiumEnvironment(outdoorEnvironment, elapsed);
   updateCourtBackdrop(courtBackdrop, elapsed);
   const now = performance.now();
+  updateTargetGame(now, elapsed);
   const nowEpoch = Date.now();
   const rawFrameDeltaMs = now - lastBallFrameAt;
   const ballDeltaSeconds = Math.min(rawFrameDeltaMs / 1000, 0.1);
@@ -2649,16 +2674,22 @@ function wireBallControls(): void {
   });
   elements.playerAssistLevel.addEventListener("change", () => {
     if (elements.playerAssistLevel.value === "game") {
-      elements.playerAssistLevel.value = "training";
+      playerMode = "game";
       playerAssistLevel = "training";
       elements.modeDescription.textContent =
-        "Game mode is planned: court targets, per-shot points, accuracy ranks, streaks, and session score. Training remains active for now.";
-      elements.practiceStatus.textContent = "Game mode is planned for a later phase. Training mode is still active.";
+        "Target Game: keep the complete trainer analysis while scoring the real first bounce against in-court targets.";
+      elements.practiceStatus.textContent = "Target game ready. Choose forehand or backhand and aim for the active court targets.";
+      startTargetGame(performance.now());
       return;
     }
+    playerMode = "training";
     playerAssistLevel = "training";
+    gameTargetGroup.visible = false;
     elements.modeDescription.textContent =
       "Training: practice forehand and backhand with sensor-driven speed, spin, direction, and landing feedback.";
+    elements.courtVisionMap.innerHTML = createCourtMapSvg([], "Court vision awaiting the first bounce");
+    elements.courtVisionResult.textContent = "READY";
+    elements.courtVisionResult.style.color = "#f4f6e9";
   });
   elements.ballSpeedSelect.addEventListener("change", () => {
     ballSpeedPreset = elements.ballSpeedSelect.value as BallSpeedPreset;
@@ -3036,7 +3067,15 @@ function finishSmartTrainingSession(): void {
     return;
   }
   const previous = trainingSessionHistory.at(-1) ?? null;
-  const report = smartTrainingSession.finish(previous);
+  const baseReport = smartTrainingSession.finish(previous);
+  const gameResult: GameSessionResult | undefined = sessionIncludedGameMode ? {
+    score: gameScore,
+    shots: gameShots,
+    targetsHit: gameTargetsHit,
+    targetHitRate: gameShots ? Math.round(gameTargetsHit / gameShots * 100) : 0,
+    bestTargetStreak: gameBestStreak
+  } : undefined;
+  const report: TrainingSessionReport = gameResult ? { ...baseReport, game: gameResult } : baseReport;
   trainingSessionHistory = [...trainingSessionHistory, report].slice(-20);
   smartTrainingSessionFinalized = true;
   lastCompletedTrainingReport = report;
@@ -3045,7 +3084,8 @@ function finishSmartTrainingSession(): void {
   elements.trainerSessionState.textContent = "Session complete";
   elements.trainerReportSummary.textContent =
     `${report.hits}/${report.attempts} successful in-court shots (${report.hitRatio}%), ${report.targetAccuracy}% target accuracy, ` +
-    `${report.averageSwingSpeedKmh} km/h average and ${report.peakSwingSpeedKmh} km/h peak swing speed.`;
+    `${report.averageSwingSpeedKmh} km/h average and ${report.peakSwingSpeedKmh} km/h peak swing speed.` +
+    (report.game ? ` Game score: ${report.game.score} points from ${report.game.targetsHit}/${report.game.shots} targets.` : "");
   elements.trainerReportBreakdown.textContent =
     `Detected strokes: ${report.forehands} forehand, ${report.backhands} backhand, ${report.unknownStrokes} uncertain. ` +
     `Timing: ${report.earlyHits} early, ${report.onTimeHits} on time, ${report.lateHits} late, ${report.noContact} without contact. ` +
@@ -3075,6 +3115,8 @@ function startNewSmartTrainingSession(): void {
   trainingStrokeEvidence.reset();
   followThroughAnalyzer.reset();
   practiceAttempts = practiceHits = practiceMisses = 0;
+  resetTargetGameSession();
+  if (playerMode === "game") startTargetGame(performance.now());
   elements.trainerSessionState.textContent = "Session ready";
   elements.trainerDetectedStroke.textContent = "--";
   elements.trainerSwingSpeed.textContent = "0 km/h";
@@ -3083,7 +3125,8 @@ function startNewSmartTrainingSession(): void {
   elements.trainingReportPlayerFeedback.value = "";
   updateShotTechniqueUi(null);
   elements.trainingSessionReport.hidden = true;
-  elements.courtVisionMap.innerHTML = createCourtMapSvg([], "Court vision awaiting the first bounce");
+  elements.courtVisionMap.innerHTML = createCourtMapSvg([], "Court vision awaiting the first bounce",
+    playerMode === "game" ? activeGameTargets : []);
   elements.courtVisionResult.textContent = "READY";
   elements.courtVisionResult.style.color = "#f4f6e9";
   elements.practiceStatus.textContent = "New training session ready.";
@@ -3093,12 +3136,187 @@ function startNewSmartTrainingSession(): void {
 function updateCourtVision(result: ReturnResult, bouncePoint: THREE.Vector3 | null): void {
   const bounce = bouncePoint ? [{ x: bouncePoint.x, z: bouncePoint.z, outcome: result }] : [];
   elements.courtVisionMap.innerHTML = createCourtMapSvg(bounce,
-    bouncePoint ? `Latest shot first bounce: ${result.replace(/_/g, " ")}` : `Latest shot result: ${result}`);
+    bouncePoint ? `Latest shot first bounce: ${result.replace(/_/g, " ")}` : `Latest shot result: ${result}`,
+    playerMode === "game" ? activeGameTargets : []);
   elements.courtVisionResult.textContent = result.replace(/_/g, " ");
   elements.courtVisionResult.style.color = result === "IN" ? "#c8f268" : "#ff9b82";
   elements.courtVision.classList.remove("is-new");
   void elements.courtVision.offsetWidth;
   elements.courtVision.classList.add("is-new");
+}
+
+function startTargetGame(now: number): void {
+  if (!sessionIncludedGameMode) resetTargetGameSession();
+  sessionIncludedGameMode = true;
+  activateNextGameTargets(now);
+}
+
+function resetTargetGameSession(): void {
+  gameScore = gameShots = gameTargetsHit = gameStreak = gameBestStreak = 0;
+  gameLayoutIndex = -1;
+  gameTargetsExpireAt = 0;
+  sessionIncludedGameMode = false;
+}
+
+function activateNextGameTargets(now: number): void {
+  gameLayoutIndex = (gameLayoutIndex + 1) % gameTargetLayouts.length;
+  activeGameTargets = gameTargetLayouts[gameLayoutIndex];
+  gameTargetsExpireAt = now + GAME_TARGET_DURATION_MS;
+  renderGameTargets(activeGameTargets);
+  elements.courtVisionMap.innerHTML = createCourtMapSvg([], "Active game targets", activeGameTargets);
+  elements.courtVisionResult.textContent = "TARGETS";
+  elements.courtVisionResult.style.color = "#dfff72";
+}
+
+function updateTargetGame(now: number, elapsed: number): void {
+  if (playerMode !== "game") return;
+  if (now >= gameTargetsExpireAt) activateNextGameTargets(now);
+  gameTargetGroup.children.forEach((target, index) => {
+    const pulse = 1 + Math.sin(elapsed * 2.6 + index * 1.7) * 0.015;
+    target.scale.setScalar(pulse);
+  });
+}
+
+function scoreGameReturn(result: ReturnResult, bouncePoint: THREE.Vector3 | null): string {
+  gameShots += 1;
+  const hit = scoreGameBounce(bouncePoint, result, activeGameTargets);
+  if (hit) {
+    gameScore += hit.points;
+    gameTargetsHit += 1;
+    gameStreak += 1;
+    gameBestStreak = Math.max(gameBestStreak, gameStreak);
+    elements.practiceStatus.textContent =
+      `${hit.target.difficulty} target hit · ${Math.round(hit.accuracy * 100)}% target precision`;
+  } else {
+    gameStreak = 0;
+    elements.practiceStatus.textContent = result === "IN"
+      ? "In court, but outside every active target. Keep the same technique and adjust placement."
+      : `${result.replace(/_/g, " ")} · no target`;
+  }
+  return hit ? "TARGET HIT" : result === "IN" ? "IN · NO TARGET" : `${result.replace(/_/g, " ")} · NO TARGET`;
+}
+
+function renderGameTargets(targets: readonly GameTarget[]): void {
+  while (gameTargetGroup.children.length) {
+    const child = gameTargetGroup.children[0];
+    gameTargetGroup.remove(child);
+    child.traverse(object => {
+      if (!(object instanceof THREE.Mesh)) return;
+      if (object.userData.texture instanceof THREE.Texture) {
+        object.userData.texture.dispose();
+      }
+      object.geometry?.dispose();
+      const material = object.material;
+      if (Array.isArray(material)) material.forEach(item => item.dispose());
+      else material.dispose();
+    });
+  }
+  for (const [index, target] of targets.entries()) {
+    const targetGroup = new THREE.Group();
+    targetGroup.name = `gameTarget-${target.id}`;
+    targetGroup.position.set(target.x, BALL_CONFIG.courtHeight + 0.018, target.z);
+    const color = target.difficulty === "Hard" ? 0xffc45c :
+      target.difficulty === "Medium" ? 0xdfff72 : 0x87dff2;
+    const texture = createProfessionalTargetTexture(target.points, target.difficulty, color);
+    const surface = new THREE.Mesh(
+      new THREE.PlaneGeometry(target.radius * 2, target.radius * 2),
+      new THREE.MeshBasicMaterial({
+        map: texture, transparent: true, opacity: 0.98, depthWrite: false,
+        side: THREE.DoubleSide, toneMapped: false
+      })
+    );
+    surface.rotation.x = -Math.PI / 2;
+    surface.position.y = 0.042;
+    surface.renderOrder = 3;
+    surface.userData.texture = texture;
+    targetGroup.add(surface);
+
+    const rim = new THREE.Mesh(
+      new THREE.TorusGeometry(target.radius, Math.max(0.025, target.radius * 0.026), 14, 96),
+      new THREE.MeshStandardMaterial({
+        color, emissive: color, emissiveIntensity: 0.42, metalness: 0.35,
+        roughness: 0.3, transparent: true, opacity: 0.94
+      })
+    );
+    rim.rotation.x = -Math.PI / 2;
+    rim.position.y = 0.048;
+    rim.renderOrder = 4;
+    targetGroup.add(rim);
+
+    const medallion = new THREE.Mesh(
+      new THREE.CylinderGeometry(target.radius * 0.31, target.radius * 0.31, 0.035, 64),
+      new THREE.MeshStandardMaterial({
+        color: 0x102729, emissive: color, emissiveIntensity: 0.18,
+        metalness: 0.42, roughness: 0.32
+      })
+    );
+    medallion.position.y = 0.012;
+    targetGroup.add(medallion);
+    targetGroup.userData.targetIndex = index;
+    gameTargetGroup.add(targetGroup);
+  }
+  gameTargetGroup.visible = playerMode === "game";
+}
+
+function createProfessionalTargetTexture(points: number, difficulty: GameTarget["difficulty"], color: number): THREE.CanvasTexture {
+  const labelCanvas = document.createElement("canvas");
+  labelCanvas.width = 1024;
+  labelCanvas.height = 1024;
+  const context = labelCanvas.getContext("2d")!;
+  const accent = `#${color.toString(16).padStart(6, "0")}`;
+  const center = 512;
+  const outerRadius = 448;
+  const glow = context.createRadialGradient(center, center, 70, center, center, 500);
+  glow.addColorStop(0, "rgba(8,28,31,.96)");
+  glow.addColorStop(.58, "rgba(9,35,38,.82)");
+  glow.addColorStop(.82, `${accent}38`);
+  glow.addColorStop(1, `${accent}00`);
+  context.fillStyle = glow;
+  context.fillRect(0, 0, 1024, 1024);
+  context.lineCap = "round";
+  [1, .72, .44].forEach((fraction, ringIndex) => {
+    context.beginPath();
+    context.arc(center, center, outerRadius * fraction, 0, Math.PI * 2);
+    context.strokeStyle = ringIndex === 0 ? accent : `${accent}${ringIndex === 1 ? "bd" : "8f"}`;
+    context.lineWidth = ringIndex === 0 ? 22 : 11;
+    context.stroke();
+  });
+  for (let tick = 0; tick < 24; tick += 1) {
+    const angle = tick / 24 * Math.PI * 2;
+    const inner = outerRadius * (tick % 3 === 0 ? .83 : .88);
+    const outer = outerRadius * .95;
+    context.beginPath();
+    context.moveTo(center + Math.cos(angle) * inner, center + Math.sin(angle) * inner);
+    context.lineTo(center + Math.cos(angle) * outer, center + Math.sin(angle) * outer);
+    context.strokeStyle = `${accent}${tick % 3 === 0 ? "bf" : "68"}`;
+    context.lineWidth = tick % 3 === 0 ? 9 : 5;
+    context.stroke();
+  }
+  context.beginPath();
+  context.arc(center, center, 184, 0, Math.PI * 2);
+  context.fillStyle = "rgba(7,24,27,.96)";
+  context.fill();
+  context.strokeStyle = accent;
+  context.lineWidth = 12;
+  context.stroke();
+  context.fillStyle = "#fffdf2";
+  context.shadowColor = accent;
+  context.shadowBlur = 22;
+  context.font = "800 232px Segoe UI, Arial";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(String(points), center, center - 18);
+  context.shadowBlur = 0;
+  context.fillStyle = accent;
+  context.font = "700 32px Segoe UI, Arial";
+  context.letterSpacing = "6px";
+  context.fillText(difficulty.toUpperCase(), center, center + 143);
+  const texture = new THREE.CanvasTexture(labelCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  return texture;
 }
 
 function currentTrainingSwingSpeed(): number {
