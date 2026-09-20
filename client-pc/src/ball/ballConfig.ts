@@ -11,7 +11,8 @@ export const BALL_CONFIG = {
   camera: {
     fovDegrees: 50,
     position: [0, 5.2, 13.6],
-    target: [0, 1.3, 0.8],
+    // Compose the court slightly left so the trainer HUD occupies right-side margin instead of the singles court.
+    target: [0.9, 1.3, 0.8],
     near: 0.1,
     far: 100
   },

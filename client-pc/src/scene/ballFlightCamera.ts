@@ -2,7 +2,8 @@ import * as THREE from "three";
 
 export type BallFlightCameraState = { targetY: number; fov: number };
 
-export const BALL_CAMERA_BASE_TARGET = new THREE.Vector3(0, 1.3, 0.8);
+// Keep the adaptive flight camera on the same left-weighted composition as the standard player view.
+export const BALL_CAMERA_BASE_TARGET = new THREE.Vector3(0.9, 1.3, 0.8);
 export const BALL_CAMERA_BASE_FOV = 50;
 
 export function updateBallFlightCamera(
