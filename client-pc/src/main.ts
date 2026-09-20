@@ -474,7 +474,8 @@ let playerMode: "training" | "game" = "training";
 const gameTargetLayouts = createGameTargetLayouts(BALL_CONFIG.launch.netDepth);
 let activeGameTargets: GameTarget[] = [];
 let gameLayoutIndex = -1;
-let gameTargetsExpireAt = 0;
+let gameReplacementCursor = 0;
+const knockedGameTargetIds = new Set<string>();
 let gameScore = 0;
 let gameShots = 0;
 let gameTargetsHit = 0;
@@ -3148,43 +3149,58 @@ function updateCourtVision(result: ReturnResult, bouncePoint: THREE.Vector3 | nu
 function startTargetGame(now: number): void {
   if (!sessionIncludedGameMode) resetTargetGameSession();
   sessionIncludedGameMode = true;
-  activateNextGameTargets(now);
+  if (!activeGameTargets.length) activateInitialGameTargets();
+  else gameTargetGroup.visible = true;
 }
 
 function resetTargetGameSession(): void {
   gameScore = gameShots = gameTargetsHit = gameStreak = gameBestStreak = 0;
   gameLayoutIndex = -1;
-  gameTargetsExpireAt = 0;
+  gameReplacementCursor = 0;
+  activeGameTargets = [];
+  knockedGameTargetIds.clear();
   sessionIncludedGameMode = false;
 }
 
-function activateNextGameTargets(now: number): void {
-  gameLayoutIndex = (gameLayoutIndex + 1) % gameTargetLayouts.length;
-  activeGameTargets = gameTargetLayouts[gameLayoutIndex];
-  gameTargetsExpireAt = now + GAME_TARGET_DURATION_MS;
+function activateInitialGameTargets(): void {
+  gameLayoutIndex = 0;
+  activeGameTargets = [...gameTargetLayouts[gameLayoutIndex]];
   renderGameTargets(activeGameTargets);
-  elements.courtVisionMap.innerHTML = createCourtMapSvg([], "Active game targets", activeGameTargets);
-  elements.courtVisionResult.textContent = "TARGETS";
-  elements.courtVisionResult.style.color = "#dfff72";
+  updateGameTargetCourtVision();
 }
 
-function updateTargetGame(now: number, elapsed: number): void {
+function updateTargetGame(now: number, _elapsed: number): void {
   if (playerMode !== "game") return;
-  if (now >= gameTargetsExpireAt) activateNextGameTargets(now);
-  gameTargetGroup.children.forEach((target, index) => {
-    const pulse = 1 + Math.sin(elapsed * 2.6 + index * 1.7) * 0.015;
-    target.scale.setScalar(pulse);
-  });
+  for (const targetGroup of [...gameTargetGroup.children]) {
+    const fallStartedAt = targetGroup.userData.fallStartedAt as number | undefined;
+    if (fallStartedAt === undefined) continue;
+    const progress = Math.min(1, (now - fallStartedAt) / 900);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    targetGroup.children.forEach((child, index) => {
+      if (child.userData.isCone !== true) return;
+      const fallDirection = child.userData.fallDirection as number;
+      child.rotation.x = Math.cos(fallDirection) * eased * 1.38;
+      child.rotation.z = Math.sin(fallDirection) * eased * 1.38;
+      child.position.y = Math.sin(progress * Math.PI) * 0.055;
+    });
+    if (progress >= 1 && targetGroup.userData.replaced !== true) {
+      targetGroup.userData.replaced = true;
+      replaceFallenGameTarget(String(targetGroup.userData.targetId));
+      break;
+    }
+  }
 }
 
 function scoreGameReturn(result: ReturnResult, bouncePoint: THREE.Vector3 | null): string {
   gameShots += 1;
-  const hit = scoreGameBounce(bouncePoint, result, activeGameTargets);
+  const availableTargets = activeGameTargets.filter(target => !knockedGameTargetIds.has(target.id));
+  const hit = scoreGameBounce(bouncePoint, result, availableTargets);
   if (hit) {
     gameScore += hit.points;
     gameTargetsHit += 1;
     gameStreak += 1;
     gameBestStreak = Math.max(gameBestStreak, gameStreak);
+    knockDownGameTarget(hit.target.id);
     elements.practiceStatus.textContent =
       `${hit.target.difficulty} target hit · ${Math.round(hit.accuracy * 100)}% target precision`;
   } else {
@@ -3194,6 +3210,38 @@ function scoreGameReturn(result: ReturnResult, bouncePoint: THREE.Vector3 | null
       : `${result.replace(/_/g, " ")} · no target`;
   }
   return hit ? "TARGET HIT" : result === "IN" ? "IN · NO TARGET" : `${result.replace(/_/g, " ")} · NO TARGET`;
+}
+
+function knockDownGameTarget(targetId: string): void {
+  if (knockedGameTargetIds.has(targetId)) return;
+  knockedGameTargetIds.add(targetId);
+  const targetGroup = gameTargetGroup.getObjectByName(`gameTarget-${targetId}`);
+  if (targetGroup) targetGroup.userData.fallStartedAt = performance.now();
+}
+
+function replaceFallenGameTarget(targetId: string): void {
+  const targetIndex = activeGameTargets.findIndex(target => target.id === targetId);
+  if (targetIndex < 0) return;
+  const candidates = gameTargetLayouts.flat();
+  for (let step = 1; step <= candidates.length; step += 1) {
+    const candidate = candidates[(gameReplacementCursor + step) % candidates.length];
+    if (candidate.id === targetId || activeGameTargets.some(target => target.id === candidate.id)) continue;
+    const overlaps = activeGameTargets.some((target, index) => index !== targetIndex &&
+      Math.hypot(target.x - candidate.x, target.z - candidate.z) < target.radius + candidate.radius + 0.35);
+    if (overlaps) continue;
+    activeGameTargets[targetIndex] = candidate;
+    gameReplacementCursor = (gameReplacementCursor + step) % candidates.length;
+    knockedGameTargetIds.delete(targetId);
+    renderGameTargets(activeGameTargets);
+    updateGameTargetCourtVision();
+    return;
+  }
+}
+
+function updateGameTargetCourtVision(): void {
+  elements.courtVisionMap.innerHTML = createCourtMapSvg([], "Active cone targets", activeGameTargets);
+  elements.courtVisionResult.textContent = "CONES READY";
+  elements.courtVisionResult.style.color = "#ff8b2d";
 }
 
 function renderGameTargets(targets: readonly GameTarget[]): void {
