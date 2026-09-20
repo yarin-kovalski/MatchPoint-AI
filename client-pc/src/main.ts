@@ -2511,6 +2511,8 @@ function isPlayableCalibratedHitEnabled(): boolean {
 
 function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   if (smartTrainingSessionFinalized) startNewSmartTrainingSession();
+  // Each feed starts with an empty instrument so the next contact produces one clear rise animation.
+  updateShotTechniqueUi(null);
   const selectedLevel = elements.feedVariationLevel.value as FeedVariationLevel;
   const level = playerAssistLevel === "training" || forceValidatedBaseNext ? "off" : selectedLevel;
   forceValidatedBaseNext = false;
@@ -3084,7 +3086,8 @@ function recordSmartTrainingShot(
     early: "Early", "on-time": "On time", late: "Late", "no-contact": "No contact"
   } as const)[timing];
   elements.trainerAccuracy.textContent = `${shot.placementAccuracy}%`;
-  updateShotTechniqueUi(shot.technique ?? null);
+  // Contact already played the rise animation; landing only refines the final values.
+  updateShotTechniqueUi(shot.technique ?? null, false);
   elements.trainerSessionState.textContent = `${summary.attempts} shot${summary.attempts === 1 ? "" : "s"}`;
   elements.trainingSessionReport.hidden = true;
   updateSmartTrainerSummary();
@@ -3421,7 +3424,7 @@ function loadTrainingSessionHistory(): TrainingSessionReport[] {
   }
 }
 
-function updateShotTechniqueUi(technique: ShotTechnique | null): void {
+function updateShotTechniqueUi(technique: ShotTechnique | null, animate = true): void {
   if (!technique) {
     elements.trainerSpinLevel.textContent = "--";
     elements.trainerShotStyle.textContent = "Waiting for shot";
@@ -3453,16 +3456,17 @@ function updateShotTechniqueUi(technique: ShotTechnique | null): void {
     ? "Finished across the far shoulder" : "Continue across to the far shoulder";
   elements.trainerShotStyle.textContent = technique.shotStyleLabel;
   elements.trainerShotStyleReason.textContent = shotStyleReason(technique);
-  setTechniqueMeter(elements.trainerSpinMeter, spinLevel);
-  setTechniqueMeter(elements.trainerFaceMeter, technique.racketFaceOpennessLevel);
-  setTechniqueMeter(elements.trainerArcMeter, technique.arcLevel);
-  setTechniqueMeter(elements.trainerFinishMeter, finishLevel);
+  setTechniqueMeter(elements.trainerSpinMeter, spinLevel, animate);
+  setTechniqueMeter(elements.trainerFaceMeter, technique.racketFaceOpennessLevel, animate);
+  setTechniqueMeter(elements.trainerArcMeter, technique.arcLevel, animate);
+  setTechniqueMeter(elements.trainerFinishMeter, finishLevel, animate);
 }
 
 function setTechniqueMeter(meter: HTMLElement, level: number, animate = true): void {
   const safe = THREE.MathUtils.clamp(Math.round(level), 0, 10);
   meter.setAttribute("aria-valuenow", String(safe));
   meter.style.setProperty("--meter-level", String(safe));
+  meter.classList.toggle("meter-reset", safe === 0 && !animate);
   Array.from(meter.children).forEach((segment, index) => segment.classList.toggle("is-active", index < safe));
   meter.classList.remove("meter-pulse");
   if (animate && safe > 0) {

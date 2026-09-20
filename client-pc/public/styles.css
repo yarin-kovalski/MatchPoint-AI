@@ -1418,6 +1418,10 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 .smart-trainer:not(.is-complete) .technique-meter.meter-pulse::before {
   animation:liquid-gauge-rise .58s cubic-bezier(.2,.82,.22,1.12);
 }
+.smart-trainer:not(.is-complete) .technique-meter.meter-reset::before,
+.smart-trainer:not(.is-complete) .technique-meter.meter-reset::after {
+  transition:none; animation:none;
+}
 @keyframes liquid-gauge-rise {
   0% { transform:scaleY(0); filter:brightness(1.8); }
   72% { transform:scaleY(1.08); }
