@@ -528,6 +528,7 @@ let practiceRelaunchAt = 0;
 let practiceAttempts = 0;
 let practiceHits = 0;
 let practiceMisses = 0;
+let finishSessionRequested = false;
 let appliedContactCorrection = 0;
 let contactDistanceBeforeCorrection = 0;
 let contactDistanceAfterCorrection = 0;
@@ -3051,6 +3052,7 @@ function finalizeReturnedTrainingShot(result: ReturnResult, bouncePoint: THREE.V
     ? `Successful return · ${accuracy}% deep-center accuracy`
     : `${result.replace(/_/g, " ")} counts as a missed shot`;
   if (currentFeedVariation) elements.feedVariationDebug.textContent += `\nLanding: ${result} | accuracy ${accuracy}%`;
+  if (finishSessionRequested) finishSmartTrainingSession();
 }
 
 function showPendingTrainingContact(
@@ -3106,6 +3108,7 @@ function finishSmartTrainingSession(): void {
   singleShotArmed = false;
   practiceRelaunchAt = 0;
   if (smartTrainingSessionFinalized) return;
+  finishSessionRequested = true;
   if (pendingReturnedTrainingShot) {
     elements.trainerSessionState.textContent = "Waiting for landing";
     elements.practiceStatus.textContent = "The current shot must land before the session can finish.";
@@ -3113,6 +3116,7 @@ function finishSmartTrainingSession(): void {
   }
   const summary = smartTrainingSession.summary();
   if (summary.attempts === 0) {
+    finishSessionRequested = false;
     elements.trainerSessionState.textContent = "No shots yet";
     elements.practiceStatus.textContent = "Play at least one feed before finishing the session.";
     return;
@@ -3129,6 +3133,7 @@ function finishSmartTrainingSession(): void {
   const report: TrainingSessionReport = gameResult ? { ...baseReport, game: gameResult } : baseReport;
   trainingSessionHistory = [...trainingSessionHistory, report].slice(-20);
   smartTrainingSessionFinalized = true;
+  finishSessionRequested = false;
   lastCompletedTrainingReport = report;
   elements.downloadTrainingReport.disabled = false;
   localStorage.setItem(TRAINING_HISTORY_KEY, JSON.stringify(trainingSessionHistory));
@@ -3162,6 +3167,7 @@ function finishSmartTrainingSession(): void {
 
 function startNewSmartTrainingSession(): void {
   practicePaused = false;
+  finishSessionRequested = false;
   elements.stopPractice.textContent = "Stop";
   smartTrainingSession.reset();
   smartTrainingSessionFinalized = false;

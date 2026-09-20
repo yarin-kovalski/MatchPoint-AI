@@ -1377,6 +1377,10 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 .smart-trainer:not(.is-complete) .trainer-session-grid strong { font-size:10px; }
 .smart-trainer:not(.is-complete) .trainer-actions { right:7px; bottom:6px; width:150px; }
 .smart-trainer:not(.is-complete) .trainer-actions #finishTrainingSession { min-height:25px; font-size:9px; }
+.smart-trainer:not(.is-complete),
+.smart-trainer:not(.is-complete) .trainer-actions,
+.smart-trainer:not(.is-complete) #finishTrainingSession { pointer-events:auto; }
+.smart-trainer:not(.is-complete) .trainer-actions { z-index:20; }
 
 /* Keep titles inside the curved edge and use smooth game-style rising gauges. */
 .smart-trainer:not(.is-complete) .smart-trainer-heading {
