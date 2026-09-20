@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { TennisSoundEngine } from "./audio/tennisSounds.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BallController } from "./ball/BallController.js";
 import { BALL_CONFIG } from "./ball/ballConfig.js";
@@ -648,6 +649,8 @@ const STROKE_EXAMPLE_STORAGE_KEY = "matchpoint.stroke-examples.v1";
 let armedStrokeExampleLabel: string | null = null;
 
 const clock = new THREE.Clock();
+const tennisSounds = new TennisSoundEngine();
+window.addEventListener("pointerdown", () => tennisSounds.unlock(), { once: true });
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xd5b6a4);
 scene.fog = new THREE.Fog(0xe6c4a3, 34, 82);
@@ -2924,6 +2927,7 @@ function launchBall(preset: LaunchPreset, calibrationProfile?: TrajectoryCalibra
 }
 
 function onBallHit(event: BallHitEvent): void {
+  tennisSounds.playRacketHit(event.outgoingSpeed);
   contactMarker.position.copy(event.contactPointWorld);
   contactMarker.visible = true;
   elements.ballResult.textContent = "CONTACT - tracking landing";
@@ -3786,6 +3790,7 @@ function updateBallVisuals(deltaSeconds: number): void {
   feedOriginMarker.visible = elements.developerPanel.open && ball.active && performance.now() < feedOriginVisibleUntil;
   if (ball.bounceCount === 1 && ball.position.y > observedIncomingApex.y) observedIncomingApex.copy(ball.position);
   if (ball.bounceCount > lastBallBounceCount) {
+    tennisSounds.playCourtBounce(ball.velocity.length());
     bounceMarker.position.set(ball.position.x, BALL_CONFIG.courtHeight + 0.006, ball.position.z);
     bounceMarker.visible = true;
     if (ball.bounceCount === 1) {
