@@ -59,7 +59,11 @@ test("player mode exposes simple play controls and keeps advanced tools collapse
   assert.match(html, /id="feedVariationLevel"/);
   assert.match(html, /id="playerAssistLevel"/);
   assert.match(html, /<option value="training" selected>Training<\/option>/);
-  assert.match(html, /<option value="game">Target Game<\/option>/);
+  assert.match(html, /<option value="game">Target Cones Practice<\/option>/);
+  assert.match(html, /id="conePracticePicker"[^>]*hidden/);
+  for (const practice of ["deep", "regular", "short"]) {
+    assert.match(html, new RegExp(`data-cone-practice="${practice}"`));
+  }
   assert.match(html, /id="modeDescription"/);
   for (const id of ["gameHud", "gameTimer", "gameScore", "gameTargetsHit", "gameStreak", "gameLastAward"]) {
     assert.doesNotMatch(html, new RegExp(`id=["']${id}["']`), `${id} should not be shown during play`);
@@ -90,7 +94,7 @@ test("smart trainer exposes live motion metrics and session feedback controls", 
     "finishTrainingSession", "newTrainingSession", "downloadTrainingReport", "closeSessionReport",
     "trainingSessionReport", "trainerReportBreakdown", "trainerFeedbackList"
   ]) assert.match(html, new RegExp(`id="${id}"`));
-  assert.match(html, /Target Game scores only the observed first bounce inside an active target/);
+  assert.match(html, /Target Cones Practice scores the observed first bounce inside an active cone group/);
   assert.match(html, /1 closed .* 5 square .* 10 open/);
   assert.match(css, /@keyframes trainer-meter-rise/);
   assert.match(main, /strokeType: event\.expectedStrokeType, confidence: 1, source: "feed-side"/);

@@ -62,7 +62,7 @@ test("court vision maps real world positions and keeps out balls beyond the cour
   assert.doesNotMatch(svg, /NaN|Infinity/);
 });
 
-test("game score appears only in reports for sessions that included Target Game", () => {
+test("cone practice focus and knocked-down count appear only in cone-practice reports", () => {
   const session = new SmartTrainingSession(1000);
   session.record({ timestamp: 1200, expectedStroke: "forehand", detectedStroke: "forehand",
     hit: true, swingSpeedKmh: 65, timingOffsetMs: 10, placementAccuracy: 82, technique,
@@ -71,14 +71,15 @@ test("game score appears only in reports for sessions that included Target Game"
   assert.doesNotMatch(createTrainingReportHtml(trainingReport), /Target game result/);
 
   const gameReport = { ...trainingReport, game: {
+    practiceType: "Deep shot" as const,
     score: 240, shots: 5, targetsHit: 3, targetHitRate: 60, bestTargetStreak: 2
   } };
   const html = createTrainingReportHtml(gameReport);
-  assert.match(html, /Target game result/);
+  assert.match(html, /Target cones practice · Deep shot/);
   assert.match(html, /240 points/);
-  assert.match(html, /Targets hit/);
-  assert.match(html, /3 \/ 5/);
-  assert.match(html, /Target hit rate/);
+  assert.match(html, /Cones knocked down/);
+  assert.match(html, />3</);
+  assert.match(html, /Cone hit rate/);
   assert.match(html, /60%/);
-  assert.match(html, /Best target streak/);
+  assert.match(html, /Best cone streak/);
 });

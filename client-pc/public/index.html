@@ -45,10 +45,16 @@
             <label>Mode
               <select id="playerAssistLevel">
                 <option value="training" selected>Training</option>
-                <option value="game">Target Game</option>
+                <option value="game">Target Cones Practice</option>
               </select>
             </label>
             <p id="modeDescription" class="mode-description">Training: practice forehand and backhand with sensor-driven speed, spin, direction, and landing feedback.</p>
+            <fieldset id="conePracticePicker" class="cone-practice-picker" hidden>
+              <legend>Which shot do you want to practice?</legend>
+              <button type="button" data-cone-practice="deep">Deep shot<span>Cones near the baseline</span></button>
+              <button type="button" data-cone-practice="regular">Regular<span>Random court locations</span></button>
+              <button type="button" data-cone-practice="short">Short shot<span>Cones near the net</span></button>
+            </fieldset>
             <label>Feed style
               <select id="feedArchetype">
                 <option value="neutral" selected>Neutral</option>
@@ -110,7 +116,7 @@
               <div><span>Average speed</span><strong id="trainerAverageSpeed">0 km/h</strong></div>
               <div><span>Best streak</span><strong id="trainerBestStreak">0</strong></div>
             </div>
-            <p class="trainer-target-note">Training accuracy measures distance from a safe deep-center aim zone. Target Game scores only the observed first bounce inside an active target.</p>
+            <p class="trainer-target-note">Training accuracy measures distance from a safe deep-center aim zone. Target Cones Practice scores the observed first bounce inside an active cone group.</p>
             <div class="report-personalization">
               <label>Player name<input id="trainingReportPlayerName" type="text" maxlength="80" autocomplete="name" placeholder="Enter player name"></label>
               <label>Player session reflection<textarea id="trainingReportPlayerFeedback" maxlength="1200" rows="3" placeholder="What felt good? What do you want to improve next session?"></textarea></label>

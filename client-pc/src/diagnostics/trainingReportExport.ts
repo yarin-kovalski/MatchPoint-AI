@@ -61,7 +61,7 @@ export function createTrainingReportHtml(
   );
   const mappedIn = placementBounces.filter(bounce => bounce.outcome === "IN").length;
   const mappedOut = placementBounces.length - mappedIn;
-  const gameResult = report.game ? `<div class="game-result"><div class="game-result-title"><span>Target game result</span><strong>${report.game.score} points</strong></div><div class="game-result-grid">${stat("Target shots",String(report.game.shots))}${stat("Targets hit",`${report.game.targetsHit} / ${report.game.shots}`)}${stat("Target hit rate",`${report.game.targetHitRate}%`)}${stat("Best target streak",String(report.game.bestTargetStreak))}</div></div>` : "";
+  const gameResult = report.game ? `<div class="game-result"><div class="game-result-title"><span>Target cones practice · ${escapeHtml(report.game.practiceType ?? "Regular")}</span><strong>${report.game.score} points</strong></div><div class="game-result-grid">${stat("Practice focus",escapeHtml(report.game.practiceType ?? "Regular"))}${stat("Cones knocked down",String(report.game.targetsHit))}${stat("Cone hit rate",`${report.game.targetHitRate}%`)}${stat("Best cone streak",String(report.game.bestTargetStreak))}</div></div>` : "";
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

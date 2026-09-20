@@ -292,6 +292,7 @@ const elements = {
   practiceLoopMode: getElement<HTMLSelectElement>("practiceLoopMode"),
   feedVariationLevel: getElement<HTMLSelectElement>("feedVariationLevel"),
   playerAssistLevel: getElement<HTMLSelectElement>("playerAssistLevel"),
+  conePracticePicker: getElement<HTMLFieldSetElement>("conePracticePicker"),
   modeDescription: getElement("modeDescription"),
   feedSeed: getElement<HTMLInputElement>("feedSeed"),
   feedVariationDebug: getElement("feedVariationDebug"),
@@ -476,6 +477,9 @@ let contactFlashUntil = 0;
 let assistMode: AssistMode = "easy";
 let playerAssistLevel: PlayerAssistLevel = "training";
 let playerMode: "training" | "game" = "training";
+type ConePracticeFocus = "deep" | "regular" | "short";
+let conePracticeFocus: ConePracticeFocus = "regular";
+let conePracticeChosen = false;
 const gameTargetLayouts = createGameTargetLayouts(BALL_CONFIG.launch.netDepth);
 let activeGameTargets: GameTarget[] = [];
 let gameLayoutIndex = -1;
@@ -2638,6 +2642,10 @@ function wireBallControls(): void {
   });
   elements.analyzeStrokeExamples.addEventListener("click", analyzeStrokeExamples);
   const playFromPlayerControls = (stroke: CalibrationStrokeType): void => {
+    if (playerMode === "game" && !conePracticeChosen) {
+      elements.practiceStatus.textContent = "Choose Deep shot, Regular, or Short shot practice first.";
+      return;
+    }
     practicePaused = false;
     elements.stopPractice.textContent = "Stop";
     elements.calibratedPracticeLoopToggle.checked = !singleShotArmed;
@@ -2724,20 +2732,41 @@ function wireBallControls(): void {
     if (elements.playerAssistLevel.value === "game") {
       playerMode = "game";
       playerAssistLevel = "training";
+      elements.calibratedPracticeLoopToggle.checked = false;
+      singleShotArmed = false;
+      practiceRelaunchAt = 0;
+      ballController.reset();
+      ballMesh.visible = false;
+      resetTargetGameSession();
+      conePracticeChosen = false;
+      elements.conePracticePicker.hidden = false;
+      gameTargetGroup.visible = false;
       elements.modeDescription.textContent =
-        "Target Game: keep the complete trainer analysis while scoring the real first bounce against in-court targets.";
-      elements.practiceStatus.textContent = "Target game ready. Choose forehand or backhand and aim for the active court targets.";
-      startTargetGame(performance.now());
+        "Target Cones Practice: choose a landing-depth focus, then select forehand or backhand to begin.";
+      elements.practiceStatus.textContent = "Feed paused. Choose Deep shot, Regular, or Short shot practice.";
       return;
     }
     playerMode = "training";
     playerAssistLevel = "training";
+    elements.conePracticePicker.hidden = true;
     gameTargetGroup.visible = false;
     elements.modeDescription.textContent =
       "Training: practice forehand and backhand with sensor-driven speed, spin, direction, and landing feedback.";
     elements.courtVisionMap.innerHTML = createCourtMapSvg([], "Court vision awaiting the first bounce");
     elements.courtVisionResult.textContent = "READY";
     elements.courtVisionResult.style.color = "#f4f6e9";
+  });
+  elements.conePracticePicker.querySelectorAll<HTMLButtonElement>("[data-cone-practice]").forEach(button => {
+    button.addEventListener("click", () => {
+      conePracticeFocus = button.dataset.conePractice as ConePracticeFocus;
+      conePracticeChosen = true;
+      elements.conePracticePicker.querySelectorAll("button").forEach(item =>
+        item.classList.toggle("is-selected", item === button));
+      startTargetGame(performance.now());
+      const label = conePracticeLabel(conePracticeFocus);
+      elements.modeDescription.textContent = `${label}: ${conePracticeDescription(conePracticeFocus)}`;
+      elements.practiceStatus.textContent = `${label} cones ready. Choose Forehand or Backhand to start the feed.`;
+    });
   });
   elements.ballSpeedSelect.addEventListener("change", () => {
     ballSpeedPreset = elements.ballSpeedSelect.value as BallSpeedPreset;
@@ -3124,6 +3153,7 @@ function finishSmartTrainingSession(): void {
   const previous = trainingSessionHistory.at(-1) ?? null;
   const baseReport = smartTrainingSession.finish(previous);
   const gameResult: GameSessionResult | undefined = sessionIncludedGameMode ? {
+    practiceType: conePracticeLabel(conePracticeFocus),
     score: gameScore,
     shots: gameShots,
     targetsHit: gameTargetsHit,
@@ -3141,7 +3171,7 @@ function finishSmartTrainingSession(): void {
   elements.trainerReportSummary.textContent =
     `${report.hits}/${report.attempts} successful in-court shots (${report.hitRatio}%), ${report.targetAccuracy}% target accuracy, ` +
     `${report.averageSwingSpeedKmh} km/h average and ${report.peakSwingSpeedKmh} km/h peak swing speed.` +
-    (report.game ? ` Game score: ${report.game.score} points from ${report.game.targetsHit}/${report.game.shots} targets.` : "");
+    (report.game ? ` ${report.game.practiceType} cones: ${report.game.targetsHit} knocked down from ${report.game.shots} shots, scoring ${report.game.score} points.` : "");
   elements.trainerReportBreakdown.textContent =
     `Detected strokes: ${report.forehands} forehand, ${report.backhands} backhand, ${report.unknownStrokes} uncertain. ` +
     `Timing: ${report.earlyHits} early, ${report.onTimeHits} on time, ${report.lateHits} late, ${report.noContact} without contact. ` +
@@ -3223,8 +3253,13 @@ function resetTargetGameSession(): void {
 }
 
 function activateInitialGameTargets(): void {
-  gameLayoutIndex = 0;
-  activeGameTargets = [...gameTargetLayouts[gameLayoutIndex]];
+  gameLayoutIndex = conePracticeFocus === "regular"
+    ? Math.floor(Math.random() * gameTargetLayouts.length)
+    : 0;
+  const candidates = conePracticeCandidates();
+  activeGameTargets = conePracticeFocus === "regular"
+    ? [...gameTargetLayouts[gameLayoutIndex]]
+    : candidates.slice(0, 3);
   renderGameTargets(activeGameTargets);
   updateGameTargetCourtVision();
 }
@@ -3282,7 +3317,7 @@ function knockDownGameTarget(targetId: string): void {
 function replaceFallenGameTarget(targetId: string): void {
   const targetIndex = activeGameTargets.findIndex(target => target.id === targetId);
   if (targetIndex < 0) return;
-  const candidates = gameTargetLayouts.flat();
+  const candidates = conePracticeCandidates();
   for (let step = 1; step <= candidates.length; step += 1) {
     const candidate = candidates[(gameReplacementCursor + step) % candidates.length];
     if (candidate.id === targetId || activeGameTargets.some(target => target.id === candidate.id)) continue;
@@ -3296,6 +3331,25 @@ function replaceFallenGameTarget(targetId: string): void {
     updateGameTargetCourtVision();
     return;
   }
+}
+
+function conePracticeCandidates(): GameTarget[] {
+  const candidates = gameTargetLayouts.flat();
+  if (conePracticeFocus === "deep") return candidates.filter(target => target.id.startsWith("deep"));
+  if (conePracticeFocus === "short") {
+    return candidates.filter(target => target.id.startsWith("short") || target.id.startsWith("service"));
+  }
+  return candidates;
+}
+
+function conePracticeLabel(focus: ConePracticeFocus): "Deep shot" | "Regular" | "Short shot" {
+  return focus === "deep" ? "Deep shot" : focus === "short" ? "Short shot" : "Regular";
+}
+
+function conePracticeDescription(focus: ConePracticeFocus): string {
+  return focus === "deep" ? "cone groups stay near the opponent baseline."
+    : focus === "short" ? "cone groups stay inside the short court near the net."
+    : "cone groups rotate through varied in-court locations.";
 }
 
 function updateGameTargetCourtVision(): void {
