@@ -58,7 +58,7 @@ import type { ShotTechnique } from "./diagnostics/strokeTechniqueAnalysis.js";
 import { createTrainingReportHtml } from "./diagnostics/trainingReportExport.js";
 import { createCourtMapSvg } from "./diagnostics/courtVision.js";
 import {
-  createGameTargetLayouts, GameTarget, GAME_TARGET_DURATION_MS, scoreGameBounce
+  createGameTargetLayouts, GameTarget, scoreGameBounce
 } from "./game/targetGame.js";
 import { adaptiveVisualSmoothingFactor, SensorResampler, updateVisualRacketQuaternion } from "./motion/sensorResampler.js";
 import { ForwardSwingFusion } from "./motion/forwardSwingFusion.js";
@@ -3146,7 +3146,7 @@ function updateCourtVision(result: ReturnResult, bouncePoint: THREE.Vector3 | nu
   elements.courtVision.classList.add("is-new");
 }
 
-function startTargetGame(now: number): void {
+function startTargetGame(_now: number): void {
   if (!sessionIncludedGameMode) resetTargetGameSession();
   sessionIncludedGameMode = true;
   if (!activeGameTargets.length) activateInitialGameTargets();
@@ -3262,109 +3262,67 @@ function renderGameTargets(targets: readonly GameTarget[]): void {
   for (const [index, target] of targets.entries()) {
     const targetGroup = new THREE.Group();
     targetGroup.name = `gameTarget-${target.id}`;
-    targetGroup.position.set(target.x, BALL_CONFIG.courtHeight + 0.018, target.z);
-    const color = target.difficulty === "Hard" ? 0xffc45c :
-      target.difficulty === "Medium" ? 0xdfff72 : 0x87dff2;
-    const texture = createProfessionalTargetTexture(target.points, target.difficulty, color);
-    const surface = new THREE.Mesh(
-      new THREE.PlaneGeometry(target.radius * 2, target.radius * 2),
-      new THREE.MeshBasicMaterial({
-        map: texture, transparent: true, opacity: 0.98, depthWrite: false,
-        side: THREE.DoubleSide, toneMapped: false
-      })
-    );
-    surface.rotation.x = -Math.PI / 2;
-    surface.position.y = 0.042;
-    surface.renderOrder = 3;
-    surface.userData.texture = texture;
-    targetGroup.add(surface);
+    targetGroup.position.set(target.x, BALL_CONFIG.courtHeight + 0.012, target.z);
+    targetGroup.userData.targetId = target.id;
+    const spacing = Math.min(0.62, target.radius * 0.5);
+    const coneOffsets = [
+      new THREE.Vector3(-spacing * 0.58, 0, spacing * 0.38),
+      new THREE.Vector3(spacing * 0.58, 0, spacing * 0.38),
+      new THREE.Vector3(0, 0, -spacing * 0.5)
+    ];
+    coneOffsets.forEach((offset, coneIndex) => {
+      const shadow = new THREE.Mesh(
+        new THREE.CircleGeometry(0.3, 32),
+        new THREE.MeshBasicMaterial({ color: 0x07110f, transparent: true, opacity: 0.24, depthWrite: false })
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.copy(offset).setY(0.004);
+      targetGroup.add(shadow);
 
-    const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(target.radius, Math.max(0.025, target.radius * 0.026), 14, 96),
-      new THREE.MeshStandardMaterial({
-        color, emissive: color, emissiveIntensity: 0.42, metalness: 0.35,
-        roughness: 0.3, transparent: true, opacity: 0.94
-      })
-    );
-    rim.rotation.x = -Math.PI / 2;
-    rim.position.y = 0.048;
-    rim.renderOrder = 4;
-    targetGroup.add(rim);
-
-    const medallion = new THREE.Mesh(
-      new THREE.CylinderGeometry(target.radius * 0.31, target.radius * 0.31, 0.035, 64),
-      new THREE.MeshStandardMaterial({
-        color: 0x102729, emissive: color, emissiveIntensity: 0.18,
-        metalness: 0.42, roughness: 0.32
-      })
-    );
-    medallion.position.y = 0.012;
-    targetGroup.add(medallion);
+      const cone = createTrainingCone();
+      cone.position.copy(offset);
+      cone.rotation.y = (coneIndex - 1) * 0.13;
+      cone.userData.isCone = true;
+      cone.userData.fallDirection = index * 0.82 + coneIndex * 2.16 + 0.35;
+      targetGroup.add(cone);
+    });
     targetGroup.userData.targetIndex = index;
     gameTargetGroup.add(targetGroup);
   }
   gameTargetGroup.visible = playerMode === "game";
 }
 
-function createProfessionalTargetTexture(points: number, difficulty: GameTarget["difficulty"], color: number): THREE.CanvasTexture {
-  const labelCanvas = document.createElement("canvas");
-  labelCanvas.width = 1024;
-  labelCanvas.height = 1024;
-  const context = labelCanvas.getContext("2d")!;
-  const accent = `#${color.toString(16).padStart(6, "0")}`;
-  const center = 512;
-  const outerRadius = 448;
-  const glow = context.createRadialGradient(center, center, 70, center, center, 500);
-  glow.addColorStop(0, "rgba(8,28,31,.96)");
-  glow.addColorStop(.58, "rgba(9,35,38,.82)");
-  glow.addColorStop(.82, `${accent}38`);
-  glow.addColorStop(1, `${accent}00`);
-  context.fillStyle = glow;
-  context.fillRect(0, 0, 1024, 1024);
-  context.lineCap = "round";
-  [1, .72, .44].forEach((fraction, ringIndex) => {
-    context.beginPath();
-    context.arc(center, center, outerRadius * fraction, 0, Math.PI * 2);
-    context.strokeStyle = ringIndex === 0 ? accent : `${accent}${ringIndex === 1 ? "bd" : "8f"}`;
-    context.lineWidth = ringIndex === 0 ? 22 : 11;
-    context.stroke();
+function createTrainingCone(): THREE.Group {
+  const cone = new THREE.Group();
+  const orange = new THREE.MeshPhysicalMaterial({
+    color: 0xff4b12, roughness: 0.24, metalness: 0.02, clearcoat: 0.72, clearcoatRoughness: 0.2
   });
-  for (let tick = 0; tick < 24; tick += 1) {
-    const angle = tick / 24 * Math.PI * 2;
-    const inner = outerRadius * (tick % 3 === 0 ? .83 : .88);
-    const outer = outerRadius * .95;
-    context.beginPath();
-    context.moveTo(center + Math.cos(angle) * inner, center + Math.sin(angle) * inner);
-    context.lineTo(center + Math.cos(angle) * outer, center + Math.sin(angle) * outer);
-    context.strokeStyle = `${accent}${tick % 3 === 0 ? "bf" : "68"}`;
-    context.lineWidth = tick % 3 === 0 ? 9 : 5;
-    context.stroke();
-  }
-  context.beginPath();
-  context.arc(center, center, 184, 0, Math.PI * 2);
-  context.fillStyle = "rgba(7,24,27,.96)";
-  context.fill();
-  context.strokeStyle = accent;
-  context.lineWidth = 12;
-  context.stroke();
-  context.fillStyle = "#fffdf2";
-  context.shadowColor = accent;
-  context.shadowBlur = 22;
-  context.font = "800 232px Segoe UI, Arial";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(String(points), center, center - 18);
-  context.shadowBlur = 0;
-  context.fillStyle = accent;
-  context.font = "700 32px Segoe UI, Arial";
-  context.letterSpacing = "6px";
-  context.fillText(difficulty.toUpperCase(), center, center + 143);
-  const texture = new THREE.CanvasTexture(labelCanvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  return texture;
+  const stripe = new THREE.MeshPhysicalMaterial({
+    color: 0xf5f0df, roughness: 0.3, clearcoat: 0.38
+  });
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.055, 0.5), orange);
+  base.position.y = 0.028;
+  base.castShadow = true;
+  base.receiveShadow = true;
+  cone.add(base);
+
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.205, 0.64, 36, 1), orange.clone());
+  body.position.y = 0.365;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  cone.add(body);
+
+  const reflectiveBand = new THREE.Mesh(new THREE.CylinderGeometry(0.118, 0.143, 0.105, 36, 1, true), stripe);
+  reflectiveBand.position.y = 0.43;
+  reflectiveBand.castShadow = true;
+  cone.add(reflectiveBand);
+
+  const baseLip = new THREE.Mesh(new THREE.TorusGeometry(0.205, 0.021, 10, 40), orange.clone());
+  baseLip.rotation.x = Math.PI / 2;
+  baseLip.position.y = 0.075;
+  baseLip.castShadow = true;
+  cone.add(baseLip);
+  return cone;
 }
 
 function currentTrainingSwingSpeed(): number {

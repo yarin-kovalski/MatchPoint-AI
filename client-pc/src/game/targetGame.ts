@@ -1,8 +1,6 @@
 import { TENNIS_COURT } from "../scene/tennisEnvironment.js";
 import type { ReturnResult } from "../ball/courtRules.js";
 
-export const GAME_TARGET_DURATION_MS = 10_000;
-
 export type GameTarget = {
   id: string;
   x: number;
@@ -23,19 +21,19 @@ export function createGameTargetLayouts(netDepth: number): GameTarget[][] {
   const farBaseline = netDepth - TENNIS_COURT.length / 2;
   return [
     [
-      target("short-center", 0, netDepth - 2.9, 1.45, 20, "Easy"),
-      target("deep-left", -2.65, farBaseline + 1.3, 1, 70, "Hard"),
-      target("deep-right", 2.55, farBaseline + 2.25, 1.15, 50, "Medium")
+      target("service-t", 0, netDepth - TENNIS_COURT.serviceLineDistance, 0.92, 40, "Medium"),
+      target("deep-left", -3.05, farBaseline + 1.25, 0.82, 80, "Hard"),
+      target("deep-right", 3.05, farBaseline + 1.25, 0.82, 80, "Hard")
     ],
     [
-      target("service-left", -2.25, netDepth - 5.2, 1.3, 30, "Easy"),
-      target("deep-center", 0, farBaseline + 1.25, 1.05, 60, "Hard"),
-      target("short-right", 2.75, netDepth - 2.35, 1, 80, "Hard")
+      target("service-left", -2.75, netDepth - 4.7, 0.95, 35, "Easy"),
+      target("deep-center", 0, farBaseline + 1.15, 0.78, 70, "Hard"),
+      target("service-right", 2.75, netDepth - 4.7, 0.95, 35, "Easy")
     ],
     [
-      target("short-left", -2.75, netDepth - 2.45, 1, 70, "Hard"),
-      target("mid-center", 0.35, netDepth - 6.1, 1.35, 30, "Easy"),
-      target("deep-right-corner", 2.75, farBaseline + 1.2, 1, 100, "Hard")
+      target("short-left-angle", -2.85, netDepth - 2.3, 0.78, 75, "Hard"),
+      target("deep-middle-left", -1.35, farBaseline + 1.8, 0.9, 55, "Medium"),
+      target("short-right-angle", 2.85, netDepth - 2.3, 0.78, 75, "Hard")
     ]
   ];
 }

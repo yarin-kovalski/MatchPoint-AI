@@ -47,8 +47,9 @@ export function createCourtMapSvg(bounces: CourtBounce[], accessibleLabel = "Sho
     const point = courtPointToMap(target.x, target.z);
     const edge = courtPointToMap(target.x + target.radius, target.z);
     const radius = Math.max(2, Math.abs(edge.x - point.x));
-    const color = target.points >= 70 ? "#ffc45c" : target.points >= 50 ? "#dfff72" : "#87dff2";
-    return `<g class="court-map-target"><circle cx="${round(point.x)}" cy="${round(point.y)}" r="${round(radius + 2)}" fill="${color}" fill-opacity=".08"/><circle cx="${round(point.x)}" cy="${round(point.y)}" r="${round(radius)}" fill="#0d2627" fill-opacity=".75" stroke="${color}" stroke-width="1.8"/><circle cx="${round(point.x)}" cy="${round(point.y)}" r="${round(radius * .64)}" fill="none" stroke="${color}" stroke-width=".8" opacity=".7"/><circle cx="${round(point.x)}" cy="${round(point.y)}" r="${round(radius * .3)}" fill="${color}" fill-opacity=".25"/><text x="${round(point.x)}" y="${round(point.y + 2.1)}" text-anchor="middle" fill="#fffdf2" font-size="6.2" font-weight="800">${target.points}</text></g>`;
+    const coneRadius = Math.max(2.1, radius * .25);
+    const offset = Math.max(2.5, radius * .3);
+    return `<g class="court-map-target"><circle cx="${round(point.x)}" cy="${round(point.y)}" r="${round(radius)}" fill="#ff6a1a" fill-opacity=".08" stroke="#ff9b45" stroke-width=".8" stroke-dasharray="2 2"/><circle cx="${round(point.x - offset)}" cy="${round(point.y + offset * .35)}" r="${round(coneRadius)}" fill="#ff5315" stroke="#fff0dc" stroke-width=".8"/><circle cx="${round(point.x + offset)}" cy="${round(point.y + offset * .35)}" r="${round(coneRadius)}" fill="#ff5315" stroke="#fff0dc" stroke-width=".8"/><circle cx="${round(point.x)}" cy="${round(point.y - offset * .55)}" r="${round(coneRadius)}" fill="#ff5315" stroke="#fff0dc" stroke-width=".8"/></g>`;
   }).join("");
   return `<svg class="court-map-svg" viewBox="0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}" role="img" aria-label="${accessibleLabel}">
     <rect x="2" y="2" width="156" height="246" rx="8" fill="#264d3e" stroke="#73907d" stroke-width="2"/>

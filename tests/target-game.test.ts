@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { BALL_CONFIG } from "../client-pc/src/ball/ballConfig.js";
 import {
-  createGameTargetLayouts, GAME_TARGET_DURATION_MS, isTargetFullyInSinglesCourt, scoreGameBounce
+  createGameTargetLayouts, isTargetFullyInSinglesCourt, scoreGameBounce
 } from "../client-pc/src/game/targetGame.js";
 
 test("every game target and its full radius stays inside the opponent singles court", () => {
@@ -12,17 +12,16 @@ test("every game target and its full radius stays inside the opponent singles co
   for (const target of layouts.flat()) {
     assert.equal(isTargetFullyInSinglesCourt(target, BALL_CONFIG.launch.netDepth), true, target.id);
   }
-  assert.equal(GAME_TARGET_DURATION_MS, 10_000);
 });
 
 test("hard small targets pay more and only an in-court bounce can score", () => {
-  const targets = createGameTargetLayouts(BALL_CONFIG.launch.netDepth)[2];
+  const targets = createGameTargetLayouts(BALL_CONFIG.launch.netDepth).flat();
   const easy = targets.find(target => target.difficulty === "Easy")!;
-  const hard = targets.find(target => target.points === 100)!;
-  assert.ok(scoreGameBounce({ x: hard.x, z: hard.z }, "IN", targets)!.points >
-    scoreGameBounce({ x: easy.x, z: easy.z }, "IN", targets)!.points);
-  assert.equal(scoreGameBounce({ x: hard.x, z: hard.z }, "OUT_LONG", targets), null);
-  assert.equal(scoreGameBounce({ x: hard.x + hard.radius + 0.01, z: hard.z }, "IN", targets), null);
+  const hard = targets.find(target => target.points === 80)!;
+  assert.ok(scoreGameBounce({ x: hard.x, z: hard.z }, "IN", [hard])!.points >
+    scoreGameBounce({ x: easy.x, z: easy.z }, "IN", [easy])!.points);
+  assert.equal(scoreGameBounce({ x: hard.x, z: hard.z }, "OUT_LONG", [hard]), null);
+  assert.equal(scoreGameBounce({ x: hard.x + hard.radius + 0.01, z: hard.z }, "IN", [hard]), null);
 });
 
 test("target edge earns less than its center", () => {

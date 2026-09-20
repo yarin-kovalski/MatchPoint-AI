@@ -274,7 +274,7 @@ Acceptance criteria:
 # September 18, 2026 — Target Game
 
 - Completed the smart trainer's Target Game mode without changing Training contact or shot physics.
-- Added three regulation-safe targets that rotate every 10 seconds and score the observed first bounce.
-- Added difficulty-weighted points, precision scaling, streaks, professional court-level target graphics, and active targets in Court Vision.
+- Added three regulation-safe cone clusters that stay fixed until hit and score the observed first bounce.
+- Added difficulty-weighted points, precision scaling, streaks, glossy 3D cones with knockdown animation, logical replacement locations, and cone groups in Court Vision.
 - Removed the live challenge panel; Game score and target performance now appear only after the session and in its downloaded report.
 - Added automated court-boundary and scoring tests.

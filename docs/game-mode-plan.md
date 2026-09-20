@@ -4,9 +4,9 @@ Target Game is the competitive layer over the completed smart trainer. It keeps 
 
 ## Implemented behavior
 
-- Three targets are visible on the opponent court at a time.
+- Three orange-cone clusters are visible on the opponent court at a time. Each cluster uses three full 3D cones in a compact triangle.
 - The complete target radius stays inside the singles court; targets never extend into the doubles alley or beyond a baseline.
-- The layout changes every 10 seconds, even when no shot is played.
+- Cone clusters remain fixed until the ball hits them. The cones then fall in different directions and that cluster alone moves to a new valid location.
 - Points use the observed physical first bounce, never a predicted or assisted destination.
 - A shot must first be ruled `IN` before it can score.
 - Smaller targets and difficult short/deep corner locations award more points.
@@ -18,7 +18,7 @@ Target Game is the competitive layer over the completed smart trainer. It keeps 
 
 ## Target layouts
 
-Three regulation-safe layouts rotate. Larger professional court-level targets use distinct cyan, lime, and gold difficulty colors, concentric precision rings, tick marks, and an integrated point medallion. Easy targets award 20–30 points, medium targets about 50 points, and hard targets at demanding short or deep locations award 60–100 points.
+The replacement pool uses regulation-safe tactical locations such as the service-line T, deep corners, deep center, service-box corners, and short angles. Glossy orange cone bodies, reflective white bands, weighted bases, contact shadows, and individual fall directions make each cluster readable and physical. Easy clusters award 35 points, medium clusters 40–55 points, and hard short/deep placements 70–80 points.
 
 The game does not steer the ball toward a target or alter its trajectory. Phone motion continues to determine speed, direction, spin, slice, racket-face launch, and follow-through depth.
 
