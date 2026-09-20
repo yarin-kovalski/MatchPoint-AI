@@ -3320,6 +3320,7 @@ function scoreGameReturn(result: ReturnResult, bouncePoint: THREE.Vector3 | null
 function knockDownGameTarget(targetId: string): void {
   if (knockedGameTargetIds.has(targetId)) return;
   knockedGameTargetIds.add(targetId);
+  tennisSounds.playConeFall();
   const targetGroup = gameTargetGroup.getObjectByName(`gameTarget-${targetId}`);
   if (targetGroup) targetGroup.userData.fallStartedAt = performance.now();
 }

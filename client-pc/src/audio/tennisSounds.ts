@@ -25,6 +25,17 @@ export class TennisSoundEngine {
     this.tone(context, now, 118 + strength * 24, 68, 0.07, 0.085 * strength, "sine");
   }
 
+  playConeFall(): void {
+    const context = this.readyContext();
+    if (!context) return;
+    const now = context.currentTime;
+    // Hollow polyethylene impact, followed by the wider clatter as the group reaches the court.
+    this.noiseBurst(context, now, 0.065, 520, 3200, 0.11);
+    this.tone(context, now, 460, 235, 0.09, 0.075, "triangle");
+    this.noiseBurst(context, now + 0.13, 0.12, 180, 1900, 0.095);
+    this.tone(context, now + 0.13, 235, 105, 0.14, 0.065, "triangle");
+  }
+
   private getContext(): AudioContext | null {
     if (this.context) return this.context;
     if (typeof AudioContext === "undefined") return null;
