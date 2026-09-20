@@ -312,26 +312,6 @@ function addResortLandscape(group: THREE.Group, farZ: number, netDepth: number):
   ground.receiveShadow = true;
   group.add(ground);
 
-  const hedgeMaterial = new THREE.MeshLambertMaterial({ color: 0x244f34 });
-  const hedge = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), hedgeMaterial, 22);
-  hedge.name = "distantTreeCanopy";
-  const transform = new THREE.Object3D();
-  for (let index = 0; index < 22; index += 1) {
-    transform.position.set(-27 + index * 2.55, 3.1 + Math.sin(index * 1.9) * 0.65, farZ - 6.5 - index % 3);
-    transform.scale.set(2.6 + index % 2, 2.5 + index % 4 * 0.28, 2.4);
-    transform.rotation.y = index * 0.83;
-    transform.updateMatrix();
-    hedge.setMatrixAt(index, transform.matrix);
-  }
-  group.add(hedge);
-
-  const palms: Array<[number, number, number, number]> = [
-    [-15, farZ - 4, 7.8, 0.2], [-8.2, farZ - 5.8, 9.5, 1.4],
-    [7.6, farZ - 5.2, 8.8, 2.6], [15.5, farZ - 3.5, 10.4, 3.8],
-    [-12.5, netDepth + 3, 7.1, 4.6], [13.2, netDepth + 1, 7.6, 5.4]
-  ];
-  palms.forEach((entry, index) => group.add(createPalmTree(...entry, index)));
-
   for (const side of [-1, 1]) {
     for (const z of [farZ + 5.5, netDepth + 7.5]) group.add(createCourtLight(side * 8.7, z));
   }

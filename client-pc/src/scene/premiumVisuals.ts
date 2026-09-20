@@ -40,26 +40,15 @@ export function createSoftContactShadowTexture(): THREE.DataTexture {
 }
 
 export function createSkyDome(): THREE.Mesh {
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(90, 32, 18), new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false,
-    uniforms: {
-      zenith: { value: new THREE.Color(0x6789ad) },
-      middle: { value: new THREE.Color(0xb7b6bf) },
-      horizon: { value: new THREE.Color(0xffc77e) }
-    },
-    vertexShader: `uniform vec3 zenith; uniform vec3 horizon; varying vec3 skyColor;
-      uniform vec3 middle;
-      void main(){float h=clamp(normalize(position).y,0.,1.);skyColor=h<.32
-        ?mix(horizon,middle,smoothstep(0.,.32,h))
-        :mix(middle,zenith,smoothstep(.32,1.,h));
-      gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-    fragmentShader: `varying vec3 skyColor;
-      void main(){gl_FragColor=vec4(skyColor,1.);
-      #include <tonemapping_fragment>
-      #include <colorspace_fragment>
-      }`
-  }));
+  const texture = new THREE.TextureLoader().load("/pc/assets/environment/desert-resort-panorama.png");
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.anisotropy = 4;
+  const material = new THREE.MeshBasicMaterial({ map: texture, depthWrite: false, fog: false });
+  const sky = new THREE.Mesh(new THREE.PlaneGeometry(155, 57), material);
   sky.name = "premiumSky";
+  sky.position.set(0, 23.5, -74);
+  sky.renderOrder = -100;
   return sky;
 }
 
@@ -93,7 +82,7 @@ export function updatePremiumEnvironment(environment: THREE.Object3D, elapsed: n
 function createSun(): THREE.Group {
   const sun = new THREE.Group();
   sun.name = "daylightSun";
-  sun.position.set(-18, 8.5, -55);
+  sun.position.set(27, 11.5, -55);
   const sunTexture = createRadialGlowTexture();
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({
     map: sunTexture, color: 0xffb65c, transparent: true,
@@ -114,7 +103,7 @@ function createCloudField(): THREE.Group {
   const field = new THREE.Group();
   field.name = "movingClouds";
   const material = new THREE.MeshLambertMaterial({
-    color: 0xf3d9c8, transparent: true, opacity: 0.68, depthWrite: false
+    color: 0xf5f7f2, transparent: true, opacity: 0.5, depthWrite: false
   });
   const geometry = new THREE.SphereGeometry(1, 10, 7);
   const placements = [

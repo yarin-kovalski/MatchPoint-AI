@@ -1001,7 +1001,7 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 /* Compact court-side command console and translucent motion-analysis cockpit. */
 .app-shell { grid-template-columns: minmax(276px, 21.5vw) minmax(0, 1fr); }
 .control-panel.hud { padding: 0 14px 14px; }
-.sticky-status { margin-bottom: 6px; padding: 12px 0 10px; }
+.sticky-status { margin: 0 -14px 6px; padding: 12px 14px 10px; }
 .sticky-status .hero h1 { font-size: 22px; letter-spacing: -.8px; }
 .hero .eyebrow { margin-bottom: 3px; font-size: 8px; }
 .hero #connectionStatus { margin-top: 4px; font-size: 9px; }
