@@ -3046,6 +3046,9 @@ function onBallMiss(event: BallMissEvent): void {
   }
   motionRecorder.recordBallResult({ type: "miss", event });
   window.setTimeout(() => finishRealHitAttempt("MISS", event.reason), 0);
+  window.setTimeout(() => {
+    if (finishSessionRequested) finishSmartTrainingSession();
+  }, 0);
   console.info("Ball miss", event);
 }
 
@@ -3144,11 +3147,19 @@ function finishSmartTrainingSession(): void {
   elements.calibratedPracticeLoopToggle.checked = false;
   singleShotArmed = false;
   practiceRelaunchAt = 0;
-  if (smartTrainingSessionFinalized) return;
+  if (smartTrainingSessionFinalized) {
+    elements.trainingSessionReport.hidden = false;
+    elements.smartTrainer.classList.add("is-complete");
+    return;
+  }
   finishSessionRequested = true;
-  if (pendingReturnedTrainingShot) {
-    elements.trainerSessionState.textContent = "Waiting for landing";
-    elements.practiceStatus.textContent = "The current shot must land before the session can finish.";
+  const ballStillResolving = ballController.ball.active && ballController.lastReturnResult === null;
+  if (ballStillResolving || pendingReturnedTrainingShot) {
+    const waitingForLanding = Boolean(pendingReturnedTrainingShot);
+    elements.trainerSessionState.textContent = waitingForLanding ? "Waiting for landing" : "Waiting for current ball";
+    elements.practiceStatus.textContent = waitingForLanding
+      ? "The current shot must land before the session can finish."
+      : "The current ball must finish before the session can close.";
     return;
   }
   const summary = smartTrainingSession.summary();
