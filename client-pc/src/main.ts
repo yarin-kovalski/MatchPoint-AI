@@ -523,6 +523,7 @@ const sliceCalibrationData: SliceCalibrationData = loadSliceCalibration(localSto
 let showBallAtContactPreview = false;
 let selectedPracticeStroke: CalibrationStrokeType | null = null;
 let singleShotArmed = false;
+let practicePaused = false;
 let practiceRelaunchAt = 0;
 let practiceAttempts = 0;
 let practiceHits = 0;
@@ -2634,6 +2635,8 @@ function wireBallControls(): void {
   });
   elements.analyzeStrokeExamples.addEventListener("click", analyzeStrokeExamples);
   const playFromPlayerControls = (stroke: CalibrationStrokeType): void => {
+    practicePaused = false;
+    elements.stopPractice.textContent = "Stop";
     elements.calibratedPracticeLoopToggle.checked = !singleShotArmed;
     singleShotArmed = false;
     playCalibratedStroke(stroke);
@@ -2641,6 +2644,8 @@ function wireBallControls(): void {
   elements.playCalibratedForehand.addEventListener("click", () => playFromPlayerControls("forehand"));
   elements.playCalibratedBackhand.addEventListener("click", () => playFromPlayerControls("backhand"));
   elements.playSingleShot.addEventListener("click", () => {
+    practicePaused = false;
+    elements.stopPractice.textContent = "Stop";
     elements.calibratedPracticeLoopToggle.checked = false;
     if (selectedPracticeStroke && !ballController.ball.active) {
       singleShotArmed = false;
@@ -2663,15 +2668,25 @@ function wireBallControls(): void {
     localStorage.setItem(TRAINING_PLAYER_NAME_KEY, elements.trainingReportPlayerName.value.trim());
   });
   elements.stopPractice.addEventListener("click", () => {
+    if (practicePaused) {
+      practicePaused = false;
+      elements.stopPractice.textContent = "Stop";
+      elements.calibratedPracticeLoopToggle.checked = true;
+      elements.practiceStatus.textContent = selectedPracticeStroke
+        ? `Practice resumed · ${selectedPracticeStroke}`
+        : "Practice resumed. Choose Forehand or Backhand.";
+      if (selectedPracticeStroke && !ballController.ball.active) playCalibratedStroke(selectedPracticeStroke);
+      return;
+    }
+    practicePaused = true;
+    elements.stopPractice.textContent = "Resume";
     elements.calibratedPracticeLoopToggle.checked = false;
     singleShotArmed = false;
-    selectedPracticeStroke = null;
     practiceRelaunchAt = 0;
     ballController.reset();
     ballMesh.visible = false;
     elements.playableCountdown.textContent = "READY";
-    elements.practiceStatus.textContent = "Practice stopped.";
-    if (smartTrainingSession.summary().attempts > 0) finishSmartTrainingSession();
+    elements.practiceStatus.textContent = "Practice paused. Your session and analysis are still active.";
   });
   elements.launchForehandBall.addEventListener("click", () => launchBall("easyForehand"));
   elements.launchBackhandBall.addEventListener("click", () => launchBall("easyBackhand"));
@@ -3143,6 +3158,8 @@ function finishSmartTrainingSession(): void {
 }
 
 function startNewSmartTrainingSession(): void {
+  practicePaused = false;
+  elements.stopPractice.textContent = "Stop";
   smartTrainingSession.reset();
   smartTrainingSessionFinalized = false;
   pendingReturnedTrainingShot = null;

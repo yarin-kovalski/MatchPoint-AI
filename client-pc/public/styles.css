@@ -1269,3 +1269,111 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
   .smart-trainer:not(.is-complete) { width:min(420px,43vw,calc(100vh - 30px)); }
   .smart-trainer:not(.is-complete) .trainer-live-grid .technique-card { width:205px; }
 }
+
+/* Final instrument layout: four vertical technique gauges with two quiet data rails. */
+.smart-trainer:not(.is-complete) {
+  width:min(500px,37vw,calc(100vh - 36px));
+  background:linear-gradient(135deg,rgba(8,30,33,.12),rgba(3,19,22,.52) 58%,rgba(3,16,19,.78));
+}
+.smart-trainer:not(.is-complete) .smart-trainer-heading,
+.smart-trainer:not(.is-complete) .shot-identity { width:350px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid .technique-card {
+  --hand-angle:0deg; --counter-angle:0deg;
+  top:150px; bottom:auto; width:68px; height:166px; min-height:166px;
+  transform:none; transform-origin:center; border:0; background:none;
+}
+.smart-trainer:not(.is-complete) .trainer-live-grid .technique-card:nth-child(5) { right:248px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid .technique-card:nth-child(6) { right:172px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid .technique-card:nth-child(7) { right:96px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid .technique-card:nth-child(8) { right:20px; }
+.smart-trainer:not(.is-complete) .technique-card > span,
+.smart-trainer:not(.is-complete) .technique-card > strong {
+  left:50%; width:74px; transform:translateX(-50%); transform-origin:center; text-align:center; white-space:normal;
+}
+.smart-trainer:not(.is-complete) .technique-card > span {
+  top:0; min-height:20px; display:flex; align-items:flex-end; justify-content:center;
+  color:#9ebbb3; font-size:7px; line-height:1.15;
+}
+.smart-trainer:not(.is-complete) .technique-card > strong {
+  top:23px; min-height:24px; color:#f1f4e8; font-size:10px; line-height:1.12;
+}
+.smart-trainer:not(.is-complete) .technique-meter {
+  inset:51px auto auto 23px; width:22px; height:108px; padding:4px 3px;
+  display:flex; flex-direction:column-reverse; gap:3px; overflow:hidden;
+  border:1px solid rgba(112,211,190,.42); border-radius:10px;
+  background:rgba(2,15,18,.74); box-shadow:inset 0 0 10px rgba(0,0,0,.48),0 0 8px rgba(91,194,173,.08);
+}
+.smart-trainer:not(.is-complete) .technique-meter::before,
+.smart-trainer:not(.is-complete) .technique-meter::after { display:none; content:none; }
+.smart-trainer:not(.is-complete) .technique-meter i {
+  display:block; flex:1 1 0; min-height:0; border-radius:2px; transform:none;
+  background:rgba(65,103,96,.48); box-shadow:none; transition:background .16s ease,box-shadow .16s ease;
+}
+.smart-trainer:not(.is-complete) .technique-meter i.is-active {
+  background:#69dfbd; box-shadow:0 0 7px rgba(105,223,189,.58);
+}
+.smart-trainer:not(.is-complete) .technique-meter i.is-active:nth-child(n+4) { background:#bde879; }
+.smart-trainer:not(.is-complete) .technique-meter i.is-active:nth-child(n+8) { background:#f3cb60; }
+.smart-trainer:not(.is-complete) .technique-meter.meter-pulse { animation:vertical-meter-pulse .4s ease-out; }
+@keyframes vertical-meter-pulse { 50% { filter:brightness(1.24); transform:translateY(-2px); } }
+
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(-n+4) {
+  top:326px; width:82px; min-height:47px; padding:6px 7px;
+  border-top-color:rgba(112,216,194,.52); background:rgba(3,21,24,.34);
+}
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(1) { right:266px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(2) { right:180px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(3) { right:94px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(4) { right:8px; }
+.smart-trainer:not(.is-complete) .trainer-session-grid { left:80px; right:8px; bottom:49px; }
+.smart-trainer:not(.is-complete) .trainer-actions { right:8px; bottom:8px; width:190px; }
+
+@media (max-height:720px) and (min-width:1001px) {
+  .smart-trainer:not(.is-complete) .trainer-live-grid .technique-card { top:137px; height:148px; min-height:148px; }
+  .smart-trainer:not(.is-complete) .technique-meter { height:90px; }
+  .smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(-n+4) { top:292px; }
+}
+
+/* Smaller court-safe version of the vertical instrument. */
+.smart-trainer:not(.is-complete) { width:min(400px,30vw,calc(100vh - 38px)); }
+.smart-trainer:not(.is-complete) .smart-trainer-heading {
+  top:28px; right:10px; width:190px; padding-bottom:4px;
+}
+.smart-trainer:not(.is-complete) .smart-trainer-heading h3 { font-size:16px; }
+.smart-trainer:not(.is-complete) .trainer-kicker { font-size:8px; letter-spacing:.12em; }
+.smart-trainer:not(.is-complete) .trainer-session-state { padding:4px 7px; font-size:8px; }
+.smart-trainer:not(.is-complete) .shot-identity {
+  top:70px; right:10px; width:245px; min-height:32px; padding:4px 7px;
+}
+.smart-trainer:not(.is-complete) .shot-identity strong { font-size:13px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid .technique-card {
+  top:116px; width:54px; height:130px; min-height:130px;
+}
+.smart-trainer:not(.is-complete) .trainer-live-grid .technique-card:nth-child(5) { right:190px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid .technique-card:nth-child(6) { right:130px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid .technique-card:nth-child(7) { right:70px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid .technique-card:nth-child(8) { right:10px; }
+.smart-trainer:not(.is-complete) .technique-card > span { font-size:6px; }
+.smart-trainer:not(.is-complete) .technique-card > strong { top:21px; width:60px; font-size:8px; }
+.smart-trainer:not(.is-complete) .technique-meter {
+  inset:43px auto auto 18px; width:18px; height:80px; padding:3px 2px; gap:2px; border-radius:8px;
+}
+.smart-trainer:not(.is-complete) .technique-meter i.is-active { background:#63dfb8; }
+.smart-trainer:not(.is-complete) .technique-meter i.is-active:nth-child(n+4) { background:#d6e66c; }
+.smart-trainer:not(.is-complete) .technique-meter i.is-active:nth-child(n+7) { background:#ffad45; }
+.smart-trainer:not(.is-complete) .technique-meter i.is-active:nth-child(n+9) { background:#ff654f; }
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(-n+4) {
+  top:252px; width:65px; min-height:43px; padding:5px;
+}
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(1) { right:205px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(2) { right:139px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(3) { right:73px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(4) { right:7px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(-n+4) span { font-size:6px; }
+.smart-trainer:not(.is-complete) .trainer-live-grid > div:nth-child(-n+4) strong { font-size:10px; }
+.smart-trainer:not(.is-complete) .trainer-session-grid { left:54px; right:7px; bottom:42px; padding-top:5px; }
+.smart-trainer:not(.is-complete) .trainer-session-grid > div { min-height:31px; padding:2px 4px; }
+.smart-trainer:not(.is-complete) .trainer-session-grid span { font-size:6px; }
+.smart-trainer:not(.is-complete) .trainer-session-grid strong { font-size:10px; }
+.smart-trainer:not(.is-complete) .trainer-actions { right:7px; bottom:6px; width:150px; }
+.smart-trainer:not(.is-complete) .trainer-actions #finishTrainingSession { min-height:25px; font-size:9px; }
