@@ -1402,15 +1402,15 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 }
 .smart-trainer:not(.is-complete) .technique-meter i { display:none; }
 .smart-trainer:not(.is-complete) .technique-meter::before {
-  content:""; display:block; position:absolute; left:3px; right:3px; bottom:3px;
+  content:""; display:block; position:absolute; top:auto; left:3px; right:3px; bottom:3px;
   width:auto; height:calc(var(--meter-level, 0) * 10% - 1px); min-height:0;
   border-radius:8px;
   background:linear-gradient(to top,#f8ff68 0%,#ffe34c 28%,#ff9a2f 62%,#ff382f 100%);
   box-shadow:0 0 8px rgba(255,220,71,.9),0 0 15px rgba(255,104,39,.38);
-  transition:height .52s cubic-bezier(.2,.8,.25,1.12),filter .25s ease;
+  transform-origin:50% 100%; transition:height .52s cubic-bezier(.2,.8,.25,1.12),filter .25s ease;
 }
 .smart-trainer:not(.is-complete) .technique-meter::after {
-  content:""; display:block; position:absolute; left:5px; right:5px; bottom:5px;
+  content:""; display:block; position:absolute; top:auto; left:5px; right:5px; bottom:5px;
   width:auto; height:calc(var(--meter-level, 0) * 10% - 7px); min-height:0;
   border-radius:7px; background:linear-gradient(90deg,rgba(255,255,255,.45),transparent 45%);
   transition:height .52s cubic-bezier(.2,.8,.25,1.12);
@@ -1419,7 +1419,7 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
   animation:liquid-gauge-rise .58s cubic-bezier(.2,.82,.22,1.12);
 }
 @keyframes liquid-gauge-rise {
-  0% { transform:translateY(100%); filter:brightness(1.7); }
-  72% { transform:translateY(-3px); }
-  100% { transform:translateY(0); filter:brightness(1); }
+  0% { transform:scaleY(0); filter:brightness(1.8); }
+  72% { transform:scaleY(1.08); }
+  100% { transform:scaleY(1); filter:brightness(1); }
 }
