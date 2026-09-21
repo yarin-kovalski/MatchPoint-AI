@@ -2658,7 +2658,8 @@ function currentWindAcceleration(now: number): THREE.Vector3 {
   const strength = ({ off: 0, light: 0.5, medium: 1.05, strong: 1.75 } as const)[windStrength];
   if (strength === 0) return windAcceleration.set(0, 0, 0);
   const direction = windDirectionComponents();
-  const gust = 0.92 + Math.sin(now * 0.0017) * 0.07 + Math.sin(now * 0.0043 + 1.4) * 0.035;
+  const variation = ({ off: 0, light: 0.025, medium: 0.085, strong: 0.14 } as const)[windStrength];
+  const gust = 0.96 + Math.sin(now * 0.0017) * variation + Math.sin(now * 0.0043 + 1.4) * variation * 0.48;
   return windAcceleration.set(direction[0], 0, direction[1]).normalize().multiplyScalar(strength * gust);
 }
 
@@ -2697,7 +2698,7 @@ function updateWindVisualization(streaks: THREE.LineSegments, elapsed: number): 
   const visibleRibbons = level === 1 ? 5 : level === 2 ? 9 : 14;
   const strandsPerRibbon = 3;
   const segmentsPerStrand = 12;
-  const speed = 1.7 + level * 1.05;
+  const speed = level === 1 ? 1.45 : level === 2 ? 3.35 : 5.65;
   const positions = streaks.geometry.getAttribute("position") as THREE.BufferAttribute;
   let vertex = 0;
   for (let index = 0; index < visibleRibbons; index += 1) {
@@ -2706,7 +2707,10 @@ function updateWindVisualization(streaks: THREE.LineSegments, elapsed: number): 
     const travel = ((elapsed * speed + seed * 42) % 42) - 21;
     const yBase = 0.65 + ((index * 1.73) % 1) * 3.8;
     const ribbonLength = 6.8 + level * 0.9 + (index % 3) * 0.55;
-    const amplitude = 0.2 + level * 0.045;
+    const amplitude = level === 1 ? 0.12 : level === 2 ? 0.34 : 0.56;
+    const turbulence = level === 1 ? 0.04
+      : Math.sin(elapsed * (0.75 + level * 0.18) + index * 2.1) * (level === 2 ? 0.17 : 0.3) +
+        Math.sin(elapsed * 2.15 + index * 0.73) * (level === 2 ? 0.07 : 0.14);
     for (let strand = 0; strand < strandsPerRibbon; strand += 1) {
       const strandOffset = (strand - 1) * 0.075;
       for (let segment = 0; segment < segmentsPerStrand; segment += 1) {
@@ -2715,7 +2719,7 @@ function updateWindVisualization(streaks: THREE.LineSegments, elapsed: number): 
           const along = travel + t * ribbonLength;
           const broadFlow = Math.sin(t * Math.PI * 2 + elapsed * 0.85 + index * 1.7) * amplitude;
           const fineFlow = Math.sin(t * Math.PI * 5.2 - elapsed * 1.45 + index) * amplitude * 0.22;
-          const ribbon = crossSeed + broadFlow + fineFlow + strandOffset;
+          const ribbon = crossSeed + turbulence + broadFlow + fineFlow + strandOffset;
           const x = dx * along + px * ribbon;
           const z = BALL_CONFIG.launch.netDepth + dz * along + pz * ribbon;
           const y = yBase + Math.cos(t * Math.PI * 2.4 + elapsed * 0.72 + index) * amplitude * 0.48 + strandOffset * 0.3;
@@ -2758,8 +2762,16 @@ function updateWindSettings(): void {
 }
 
 function wireBallControls(): void {
-  elements.windStrength.addEventListener("change", () => { tennisSounds.unlock(); updateWindSettings(); });
-  elements.windDirection.addEventListener("change", () => { tennisSounds.unlock(); updateWindSettings(); });
+  elements.windStrength.addEventListener("change", () => {
+    tennisSounds.unlock();
+    updateWindSettings();
+    elements.windControl.open = false;
+  });
+  elements.windDirection.addEventListener("change", () => {
+    tennisSounds.unlock();
+    updateWindSettings();
+    elements.windControl.open = false;
+  });
   elements.windSoundMuted.addEventListener("change", () => {
     tennisSounds.unlock();
     tennisSounds.setWindMuted(elements.windSoundMuted.checked);
