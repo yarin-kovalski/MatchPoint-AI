@@ -2670,69 +2670,106 @@ function windDirectionComponents(): readonly [number, number] {
   } as const)[windDirection];
 }
 
-function createWindVisualization(): THREE.LineSegments {
-  const positions = new Float32Array(14 * 3 * 12 * 2 * 3);
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
-  const material = new THREE.LineBasicMaterial({
-    color: 0xc8fff2, transparent: true, opacity: 0, depthWrite: false,
+function createWindVisualization(): THREE.Group {
+  const volume = new THREE.Group();
+  volume.name = "visibleWindDirection";
+  const flowGeometry = new THREE.BufferGeometry();
+  flowGeometry.setAttribute("position", new THREE.BufferAttribute(
+    new Float32Array(16 * 5 * 18 * 2 * 3), 3
+  ).setUsage(THREE.DynamicDrawUsage));
+  const flowLines = new THREE.LineSegments(flowGeometry, new THREE.LineBasicMaterial({
+    color: 0xcafff5, transparent: true, opacity: 0, depthWrite: false,
     blending: THREE.AdditiveBlending
-  });
-  const streaks = new THREE.LineSegments(geometry, material);
-  streaks.name = "visibleWindDirection";
-  streaks.frustumCulled = false;
-  streaks.renderOrder = 3;
-  return streaks;
+  }));
+  flowLines.name = "windFlowBands";
+  flowLines.frustumCulled = false;
+  flowLines.renderOrder = 3;
+  const particleGeometry = new THREE.BufferGeometry();
+  particleGeometry.setAttribute("position", new THREE.BufferAttribute(
+    new Float32Array(220 * 3), 3
+  ).setUsage(THREE.DynamicDrawUsage));
+  const particles = new THREE.Points(particleGeometry, new THREE.PointsMaterial({
+    color: 0xe5fff9, size: 0.035, sizeAttenuation: true, transparent: true,
+    opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending
+  }));
+  particles.name = "windFlowParticles";
+  particles.frustumCulled = false;
+  particles.renderOrder = 4;
+  volume.add(flowLines, particles);
+  return volume;
 }
 
-function updateWindVisualization(streaks: THREE.LineSegments, elapsed: number): void {
+function updateWindVisualization(volume: THREE.Group, elapsed: number): void {
   const level = ({ off: 0, light: 1, medium: 2, strong: 3 } as const)[windStrength];
-  streaks.visible = level > 0;
+  volume.visible = level > 0;
   if (!level) return;
+  const flowLines = volume.getObjectByName("windFlowBands") as THREE.LineSegments;
+  const particles = volume.getObjectByName("windFlowParticles") as THREE.Points;
   const [rawX, rawZ] = windDirectionComponents();
   const magnitude = Math.hypot(rawX, rawZ) || 1;
   const dx = rawX / magnitude;
   const dz = rawZ / magnitude;
   const px = -dz;
   const pz = dx;
-  const visibleRibbons = level === 1 ? 5 : level === 2 ? 9 : 14;
-  const strandsPerRibbon = 3;
-  const segmentsPerStrand = 12;
+  const visibleRibbons = level === 1 ? 7 : level === 2 ? 12 : 16;
+  const strandsPerRibbon = 5;
+  const segmentsPerStrand = 18;
   const speed = level === 1 ? 1.45 : level === 2 ? 3.35 : 5.65;
-  const positions = streaks.geometry.getAttribute("position") as THREE.BufferAttribute;
+  const positions = flowLines.geometry.getAttribute("position") as THREE.BufferAttribute;
   let vertex = 0;
   for (let index = 0; index < visibleRibbons; index += 1) {
     const seed = (index * 0.61803398875) % 1;
     const crossSeed = ((index * 0.38196601125 + 0.17) % 1 - 0.5) * 17;
     const travel = ((elapsed * speed + seed * 42) % 42) - 21;
     const yBase = 0.65 + ((index * 1.73) % 1) * 3.8;
-    const ribbonLength = 6.8 + level * 0.9 + (index % 3) * 0.55;
-    const amplitude = level === 1 ? 0.12 : level === 2 ? 0.34 : 0.56;
+    const ribbonLength = 10.5 + level * 1.3 + (index % 3) * 0.75;
+    const amplitude = level === 1 ? 0.24 : level === 2 ? 0.62 : 1.02;
     const turbulence = level === 1 ? 0.04
       : Math.sin(elapsed * (0.75 + level * 0.18) + index * 2.1) * (level === 2 ? 0.17 : 0.3) +
         Math.sin(elapsed * 2.15 + index * 0.73) * (level === 2 ? 0.07 : 0.14);
     for (let strand = 0; strand < strandsPerRibbon; strand += 1) {
-      const strandOffset = (strand - 1) * 0.075;
+      const strandOffset = (strand - 2) * (level === 1 ? 0.055 : 0.085);
       for (let segment = 0; segment < segmentsPerStrand; segment += 1) {
         for (const point of [segment, segment + 1]) {
           const t = point / segmentsPerStrand - 0.5;
           const along = travel + t * ribbonLength;
-          const broadFlow = Math.sin(t * Math.PI * 2 + elapsed * 0.85 + index * 1.7) * amplitude;
-          const fineFlow = Math.sin(t * Math.PI * 5.2 - elapsed * 1.45 + index) * amplitude * 0.22;
+          const vortexPhase = t * Math.PI * 2.35 + elapsed * (0.72 + level * 0.12) + index * 1.7;
+          const broadFlow = Math.sin(vortexPhase) * amplitude;
+          const fineFlow = Math.sin(t * Math.PI * 7.2 - elapsed * 1.55 + index) * amplitude * 0.18;
           const ribbon = crossSeed + turbulence + broadFlow + fineFlow + strandOffset;
           const x = dx * along + px * ribbon;
           const z = BALL_CONFIG.launch.netDepth + dz * along + pz * ribbon;
-          const y = yBase + Math.cos(t * Math.PI * 2.4 + elapsed * 0.72 + index) * amplitude * 0.48 + strandOffset * 0.3;
+          const y = yBase + Math.cos(vortexPhase) * amplitude * 0.62 +
+            Math.sin(t * Math.PI * 4.4 - elapsed + index) * amplitude * 0.12 + strandOffset * 0.45;
           positions.setXYZ(vertex++, x, y, z);
         }
       }
     }
   }
-  streaks.geometry.setDrawRange(0, visibleRibbons * strandsPerRibbon * segmentsPerStrand * 2);
+  flowLines.geometry.setDrawRange(0, visibleRibbons * strandsPerRibbon * segmentsPerStrand * 2);
   positions.needsUpdate = true;
-  const material = streaks.material as THREE.LineBasicMaterial;
+  const material = flowLines.material as THREE.LineBasicMaterial;
   const gustGlow = 0.9 + Math.sin(elapsed * 1.8) * 0.1;
-  material.opacity = (level === 1 ? 0.075 : level === 2 ? 0.105 : 0.14) * gustGlow;
+  material.opacity = (level === 1 ? 0.055 : level === 2 ? 0.075 : 0.095) * gustGlow;
+
+  const particleCount = level === 1 ? 65 : level === 2 ? 135 : 220;
+  const particlePositions = particles.geometry.getAttribute("position") as THREE.BufferAttribute;
+  for (let index = 0; index < particleCount; index += 1) {
+    const seed = (index * 0.754877666) % 1;
+    const cross = ((index * 0.56984029 + 0.31) % 1 - 0.5) * 18;
+    const travel = ((elapsed * speed * (1.05 + index % 5 * 0.025) + seed * 44) % 44) - 22;
+    const phase = travel * 0.28 + elapsed * 0.9 + index * 0.37;
+    const curl = Math.sin(phase) * (0.18 + level * 0.13);
+    particlePositions.setXYZ(index,
+      dx * travel + px * (cross + curl),
+      0.45 + ((index * 1.3247) % 1) * 4.6 + Math.cos(phase) * (0.08 + level * 0.055),
+      BALL_CONFIG.launch.netDepth + dz * travel + pz * (cross + curl));
+  }
+  particles.geometry.setDrawRange(0, particleCount);
+  particlePositions.needsUpdate = true;
+  const particleMaterial = particles.material as THREE.PointsMaterial;
+  particleMaterial.opacity = level === 1 ? 0.2 : level === 2 ? 0.3 : 0.4;
+  particleMaterial.size = level === 1 ? 0.025 : level === 2 ? 0.035 : 0.045;
 }
 
 function windConditionLabel(): string {
