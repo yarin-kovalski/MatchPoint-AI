@@ -178,6 +178,8 @@ $MetroProcess = $null
 $PreviousExpoServerUrl = $env:EXPO_PUBLIC_SERVER_URL
 $PreviousPackagerHostname = $env:REACT_NATIVE_PACKAGER_HOSTNAME
 $PreviousExpoOffline = $env:EXPO_OFFLINE
+$PreviousMatchpointExpoUrl = $env:MATCHPOINT_EXPO_URL
+$env:MATCHPOINT_EXPO_URL = $ExpoUrl
 $env:EXPO_PUBLIC_SERVER_URL = $ServerUrl
 $env:REACT_NATIVE_PACKAGER_HOSTNAME = $LanAddress
 $env:EXPO_OFFLINE = "0"
@@ -201,7 +203,7 @@ try {
 
   Write-Host ""
   Write-Host "MatchPoint AI is ready" -ForegroundColor Green
-  Start-Process $PcUrl
+  Start-Process "http://localhost:$BackendPort/pc/welcome.html"
   Write-Host "The PC court opened automatically." -ForegroundColor Green
   Write-Host "Scan this QR code with the iPhone camera:" -ForegroundColor Yellow
   $QrModule = Join-Path $ExpoDir "node_modules\toqr"
@@ -219,6 +221,7 @@ finally {
   $env:EXPO_PUBLIC_SERVER_URL = $PreviousExpoServerUrl
   $env:REACT_NATIVE_PACKAGER_HOSTNAME = $PreviousPackagerHostname
   $env:EXPO_OFFLINE = $PreviousExpoOffline
+  $env:MATCHPOINT_EXPO_URL = $PreviousMatchpointExpoUrl
   if ($ExpoProcess -and -not $ExpoProcess.HasExited) { Stop-ProcessTree -ProcessId $ExpoProcess.Id }
   if ($ServerProcess -and -not $ServerProcess.HasExited) { Stop-ProcessTree -ProcessId $ServerProcess.Id }
 }

@@ -4,6 +4,7 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { extname, normalize, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
+import { createRequire } from "node:module";
 import { Server } from "socket.io";
 
 type SelfsignedAltName = {
@@ -287,15 +288,46 @@ async function handleHttpRequest(
   const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host}`);
   const pathname = decodeURIComponent(requestUrl.pathname);
 
+  if (pathname === "/api/setup") {
+    const configured = process.env.MATCHPOINT_EXPO_URL;
+    let expoUrl: string | null = null;
+    let qrSvg: string | null = null;
+    let ready = false;
+    if (configured) {
+      try {
+        const url = new URL(configured);
+        if (url.protocol !== "exp:") throw new Error("Unexpected controller protocol");
+        const metro = await fetch(`http://${url.host}/status`, { signal: AbortSignal.timeout(1800) });
+        ready = metro.ok && (await metro.text()).includes("packager-status:running");
+        if (ready) {
+          const requireProject = createRequire(resolve(PROJECT_ROOT, "package.json"));
+          const { toQR } = requireProject(resolve(PROJECT_ROOT, "virtucourt-mobile/node_modules/toqr"));
+          const cells = toQR(configured);
+          const size = Math.sqrt(cells.length);
+          const squares: string[] = [];
+          for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+            if (cells[y * size + x]) squares.push(`M${x + 4},${y + 4}h1v1h-1z`);
+          }
+          qrSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size + 8} ${size + 8}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="white"/><path d="${squares.join("")}" fill="black"/></svg>`;
+          expoUrl = configured;
+        }
+      } catch { ready = false; }
+    }
+    response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    response.end(JSON.stringify({ ready, expoUrl, qrSvg, mobileClients: mobileClientCount }));
+    return;
+  }
+
   if (pathname === "/") {
-    sendLandingPage(response);
+    response.writeHead(302, { Location: "/pc/welcome.html" });
+    response.end();
     return;
   }
 
   for (const [route, root] of staticRoutes) {
     if (pathname === route || pathname.startsWith(`${route}/`)) {
       const relativePath = pathname === route ? "index.html" : pathname.slice(route.length + 1);
-      await serveStaticFile(root, relativePath, response);
+      await serveStaticFile(root, relativePath, response, request);
       return;
     }
   }
@@ -307,7 +339,8 @@ async function handleHttpRequest(
 async function serveStaticFile(
   root: string,
   relativePath: string,
-  response: ServerResponse
+  response: ServerResponse,
+  request?: IncomingMessage
 ): Promise<void> {
   const normalizedRelativePath = normalize(relativePath).replace(/^(\.\.[/\\])+/, "");
   const filePath = resolve(root, normalizedRelativePath);
@@ -323,6 +356,30 @@ async function serveStaticFile(
   if (!fileStat?.isFile()) {
     response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     response.end("Not found");
+    return;
+  }
+
+  if (/\.(webm|mp4)$/i.test(filePath)) {
+    const range = request?.headers.range;
+    let start = 0, end = fileStat.size - 1;
+    if (range) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+      if (!match || (!match[1] && !match[2])) {
+        response.writeHead(416, { "Content-Range": `bytes */${fileStat.size}` }); response.end(); return;
+      }
+      if (!match[1]) start = Math.max(0, fileStat.size - Number(match[2]));
+      else { start = Number(match[1]); if (match[2]) end = Math.min(end, Number(match[2])); }
+      if (start > end || start >= fileStat.size) {
+        response.writeHead(416, { "Content-Range": `bytes */${fileStat.size}` }); response.end(); return;
+      }
+    }
+    response.writeHead(range ? 206 : 200, {
+      "Content-Type": getContentType(filePath), "Accept-Ranges": "bytes",
+      "Content-Length": end - start + 1, "Cache-Control": "no-cache",
+      ...(range ? { "Content-Range": `bytes ${start}-${end}/${fileStat.size}` } : {})
+    });
+    if (request?.method === "HEAD") response.end();
+    else createReadStream(filePath, { start, end }).pipe(response);
     return;
   }
 
@@ -406,6 +463,11 @@ function getContentType(filePath: string): string {
       return "text/javascript; charset=utf-8";
     case ".json":
       return "application/json; charset=utf-8";
+    case ".webm": return "video/webm";
+    case ".mp4": return "video/mp4";
+    case ".jpg": return "image/jpeg";
+    case ".png": return "image/png";
+    case ".svg": return "image/svg+xml";
     default:
       return "application/octet-stream";
   }
