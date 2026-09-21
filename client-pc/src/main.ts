@@ -2670,11 +2670,11 @@ function windDirectionComponents(): readonly [number, number] {
 }
 
 function createWindVisualization(): THREE.LineSegments {
-  const positions = new Float32Array(18 * 8 * 2 * 3);
+  const positions = new Float32Array(14 * 3 * 12 * 2 * 3);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
   const material = new THREE.LineBasicMaterial({
-    color: 0xd9f5ec, transparent: true, opacity: 0, depthWrite: false,
+    color: 0xc8fff2, transparent: true, opacity: 0, depthWrite: false,
     blending: THREE.AdditiveBlending
   });
   const streaks = new THREE.LineSegments(geometry, material);
@@ -2694,35 +2694,41 @@ function updateWindVisualization(streaks: THREE.LineSegments, elapsed: number): 
   const dz = rawZ / magnitude;
   const px = -dz;
   const pz = dx;
-  const visibleWaves = level === 1 ? 8 : level === 2 ? 13 : 18;
-  const segmentsPerWave = 8;
-  const speed = 2 + level * 1.15;
+  const visibleRibbons = level === 1 ? 5 : level === 2 ? 9 : 14;
+  const strandsPerRibbon = 3;
+  const segmentsPerStrand = 12;
+  const speed = 1.7 + level * 1.05;
   const positions = streaks.geometry.getAttribute("position") as THREE.BufferAttribute;
   let vertex = 0;
-  for (let index = 0; index < visibleWaves; index += 1) {
+  for (let index = 0; index < visibleRibbons; index += 1) {
     const seed = (index * 0.61803398875) % 1;
     const crossSeed = ((index * 0.38196601125 + 0.17) % 1 - 0.5) * 17;
-    const travel = ((elapsed * speed + seed * 34) % 34) - 17;
+    const travel = ((elapsed * speed + seed * 42) % 42) - 21;
     const yBase = 0.65 + ((index * 1.73) % 1) * 3.8;
-    const waveLength = 1.8 + level * 0.55 + (index % 3) * 0.28;
-    const amplitude = 0.08 + level * 0.035;
-    for (let segment = 0; segment < segmentsPerWave; segment += 1) {
-      for (const point of [segment, segment + 1]) {
-        const t = point / segmentsPerWave - 0.5;
-        const along = travel + t * waveLength;
-        const ripple = Math.sin(t * Math.PI * 2.3 + elapsed * 2.2 + index * 1.7) * amplitude;
-        const x = dx * along + px * (crossSeed + ripple);
-        const z = BALL_CONFIG.launch.netDepth + dz * along + pz * (crossSeed + ripple);
-        const y = yBase + Math.sin(t * Math.PI * 1.6 + elapsed * 1.5 + index) * amplitude * 0.45;
-        positions.setXYZ(vertex++, x, y, z);
+    const ribbonLength = 6.8 + level * 0.9 + (index % 3) * 0.55;
+    const amplitude = 0.2 + level * 0.045;
+    for (let strand = 0; strand < strandsPerRibbon; strand += 1) {
+      const strandOffset = (strand - 1) * 0.075;
+      for (let segment = 0; segment < segmentsPerStrand; segment += 1) {
+        for (const point of [segment, segment + 1]) {
+          const t = point / segmentsPerStrand - 0.5;
+          const along = travel + t * ribbonLength;
+          const broadFlow = Math.sin(t * Math.PI * 2 + elapsed * 0.85 + index * 1.7) * amplitude;
+          const fineFlow = Math.sin(t * Math.PI * 5.2 - elapsed * 1.45 + index) * amplitude * 0.22;
+          const ribbon = crossSeed + broadFlow + fineFlow + strandOffset;
+          const x = dx * along + px * ribbon;
+          const z = BALL_CONFIG.launch.netDepth + dz * along + pz * ribbon;
+          const y = yBase + Math.cos(t * Math.PI * 2.4 + elapsed * 0.72 + index) * amplitude * 0.48 + strandOffset * 0.3;
+          positions.setXYZ(vertex++, x, y, z);
+        }
       }
     }
   }
-  streaks.geometry.setDrawRange(0, visibleWaves * segmentsPerWave * 2);
+  streaks.geometry.setDrawRange(0, visibleRibbons * strandsPerRibbon * segmentsPerStrand * 2);
   positions.needsUpdate = true;
   const material = streaks.material as THREE.LineBasicMaterial;
   const gustGlow = 0.9 + Math.sin(elapsed * 1.8) * 0.1;
-  material.opacity = (level === 1 ? 0.12 : level === 2 ? 0.17 : 0.22) * gustGlow;
+  material.opacity = (level === 1 ? 0.075 : level === 2 ? 0.105 : 0.14) * gustGlow;
 }
 
 function windConditionLabel(): string {

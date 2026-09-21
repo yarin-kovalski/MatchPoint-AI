@@ -55,7 +55,7 @@ export function createSkyDome(): THREE.Mesh {
 export function addPremiumEnvironment(scene: THREE.Scene, _renderer: THREE.WebGLRenderer): THREE.Group {
   const environment = new THREE.Group();
   environment.name = "outdoorEnvironment";
-  environment.add(createSkyDome(), createSun(), createCloudField(), createBirdFlock());
+  environment.add(createSkyDome(), createSun(), createBirdFlock());
   scene.add(environment);
   return environment;
 }
@@ -82,7 +82,7 @@ export function updatePremiumEnvironment(environment: THREE.Object3D, elapsed: n
 function createSun(): THREE.Group {
   const sun = new THREE.Group();
   sun.name = "daylightSun";
-  sun.position.set(27, 11.5, -55);
+  sun.position.set(25, 25, -58);
   const sunTexture = createRadialGlowTexture();
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({
     map: sunTexture, color: 0xffb65c, transparent: true,
