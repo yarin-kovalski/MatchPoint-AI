@@ -2798,6 +2798,12 @@ function updateWindSettings(): void {
   tennisSounds.setWind(({ off: 0, light: 0.34, medium: 0.66, strong: 1 } as const)[windStrength], pan);
 }
 
+function showSingleShotMode(active: boolean): void {
+  elements.playSingleShot.classList.toggle("is-active", active);
+  elements.playSingleShot.setAttribute("aria-pressed", String(active));
+  elements.playSingleShot.textContent = active ? "Single shot mode · Play next" : "Play single shot";
+}
+
 function wireBallControls(): void {
   elements.windStrength.addEventListener("change", () => {
     tennisSounds.unlock();
@@ -2826,8 +2832,10 @@ function wireBallControls(): void {
     }
     practicePaused = false;
     elements.stopPractice.textContent = "Stop";
-    elements.calibratedPracticeLoopToggle.checked = !singleShotArmed;
+    const launchingSingleShot = singleShotArmed;
+    elements.calibratedPracticeLoopToggle.checked = !launchingSingleShot;
     singleShotArmed = false;
+    showSingleShotMode(launchingSingleShot);
     playCalibratedStroke(stroke);
   };
   elements.playCalibratedForehand.addEventListener("click", () => playFromPlayerControls("forehand"));
@@ -2836,6 +2844,7 @@ function wireBallControls(): void {
     practicePaused = false;
     elements.stopPractice.textContent = "Stop";
     elements.calibratedPracticeLoopToggle.checked = false;
+    showSingleShotMode(true);
     if (selectedPracticeStroke && !ballController.ball.active) {
       singleShotArmed = false;
       playCalibratedStroke(selectedPracticeStroke);
@@ -2861,6 +2870,7 @@ function wireBallControls(): void {
       practicePaused = false;
       elements.stopPractice.textContent = "Stop";
       elements.calibratedPracticeLoopToggle.checked = true;
+      showSingleShotMode(false);
       elements.practiceStatus.textContent = selectedPracticeStroke
         ? `Practice resumed · ${selectedPracticeStroke}`
         : "Practice resumed. Choose Forehand or Backhand.";
@@ -2871,6 +2881,7 @@ function wireBallControls(): void {
     elements.stopPractice.textContent = "Resume";
     elements.calibratedPracticeLoopToggle.checked = false;
     singleShotArmed = false;
+    showSingleShotMode(false);
     practiceRelaunchAt = 0;
     ballController.reset();
     ballMesh.visible = false;
@@ -2912,6 +2923,7 @@ function wireBallControls(): void {
       playerAssistLevel = "training";
       elements.calibratedPracticeLoopToggle.checked = false;
       singleShotArmed = false;
+      showSingleShotMode(false);
       practiceRelaunchAt = 0;
       ballController.reset();
       ballMesh.visible = false;
@@ -3321,6 +3333,7 @@ function updateSmartTrainerSummary(): void {
 function finishSmartTrainingSession(): void {
   elements.calibratedPracticeLoopToggle.checked = false;
   singleShotArmed = false;
+  showSingleShotMode(false);
   practiceRelaunchAt = 0;
   if (smartTrainingSessionFinalized) {
     elements.trainingSessionReport.hidden = false;
@@ -3400,6 +3413,7 @@ function startNewSmartTrainingSession(): void {
   elements.stopPractice.textContent = "Stop";
   smartTrainingSession.reset();
   sessionWindConditions.clear();
+  showSingleShotMode(false);
   smartTrainingSessionFinalized = false;
   pendingReturnedTrainingShot = null;
   trainingStrokeEvidence.reset();

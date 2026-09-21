@@ -1067,6 +1067,11 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
   letter-spacing: .02em; cursor: pointer;
 }
 .single-shot-button:hover { border-color: #b9d58b; color: #eff8df; }
+.single-shot-button.is-active {
+  border-color:#d8f58c; background:linear-gradient(135deg,#dcef9f,#aed06b); color:#152319;
+  box-shadow:0 0 0 2px rgba(205,239,135,.16),0 0 16px rgba(190,232,112,.22);
+}
+.single-shot-button.is-active::before { content:"●"; margin-right:6px; color:#38551d; font-size:7px; vertical-align:2px; }
 .player-scoreboard { margin-top: 8px; }
 .player-scoreboard > div { padding: 7px 3px; }
 .player-scoreboard span { font-size: 8px; }
