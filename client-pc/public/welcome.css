@@ -193,8 +193,8 @@ h1 {
   white-space:nowrap;
 }
 h1 span {
-  color:transparent;
-  -webkit-text-stroke:1px #e9eee0c2;
+  color:#f7f7ef;
+  -webkit-text-stroke:0;
 }
 h2 {
   font-size:clamp(44px,5.1vw,88px);
@@ -1128,7 +1128,7 @@ dialog::backdrop {
 .hero-label,.edition { text-shadow:0 1px 8px #172c32; }
 .hero-bottom-copy>p:not(.eyebrow),.chapter-copy>p:not(.eyebrow) { color:#eef0e8; }
 h1 { letter-spacing:-.065em; }
-h1 span { -webkit-text-stroke:1px rgba(255,255,246,.86); }
+h1 span { color:#f7f7ef;-webkit-text-stroke:0; }
 .chapter-copy h2 { font-size:clamp(44px,4.7vw,78px); }
 .chapter-copy .minor { color:#d0dcd7!important; }
 .spec-line { margin:22px 0;padding:16px 0;border-bottom:0; }

@@ -58,16 +58,9 @@ export function createResortWorld(scene,renderer,lowPower) {
   const envTexture=canvasTexture(skyCanvas,true);envTexture.mapping=THREE.EquirectangularReflectionMapping;
   const pmrem=new THREE.PMREMGenerator(renderer);const environment=pmrem.fromEquirectangular(envTexture);scene.environment=environment.texture;scene.environmentIntensity=.55;envTexture.dispose();pmrem.dispose();
   const random=rng(141);
-  const terrainGeometry=new THREE.PlaneGeometry(64,72);terrainGeometry.rotateX(-Math.PI/2);
-  const terrain=new THREE.Mesh(terrainGeometry,new THREE.MeshStandardMaterial({map:groundTexture(),color:'#53654f',roughness:.98}));terrain.position.y=-.12;terrain.receiveShadow=true;scene.add(terrain);
-  const stone=new THREE.MeshStandardMaterial({color:'#b9aa8e',roughness:.9});
-  const edging=new THREE.Mesh(new THREE.BoxGeometry(24,.16,39),stone);edging.position.y=-.13;edging.receiveShadow=true;scene.add(edging);
-  const retaining=new THREE.Mesh(new THREE.BoxGeometry(29,1.05,.4),new THREE.MeshStandardMaterial({color:'#d0c5ae',roughness:.82}));retaining.position.set(0,.25,-21);retaining.castShadow=retaining.receiveShadow=true;scene.add(retaining);
-  const deck=new THREE.Mesh(new THREE.BoxGeometry(10,.18,3.4),stone);deck.position.set(-8.5,.03,-20);deck.receiveShadow=true;scene.add(deck);
-  const timber=new THREE.MeshStandardMaterial({color:'#3f342c',roughness:.72});
-  for(const x of [-12,-9,-6]){const post=new THREE.Mesh(new THREE.BoxGeometry(.16,3.2,.16),timber);post.position.set(x,1.6,-21);post.castShadow=true;scene.add(post);}
-  const pergola=new THREE.Mesh(new THREE.BoxGeometry(7.2,.16,2.8),timber);pergola.position.set(-9,3.2,-21);pergola.castShadow=true;scene.add(pergola);
-  for(let z=-22;z<=-20;z+=.42){const slat=new THREE.Mesh(new THREE.BoxGeometry(7.2,.07,.12),timber);slat.position.set(-9,3.3,z);slat.castShadow=true;scene.add(slat);}
+  const terrainGeometry=new THREE.PlaneGeometry(44,39);terrainGeometry.rotateX(-Math.PI/2);
+  const terrain=new THREE.Mesh(terrainGeometry,new THREE.MeshStandardMaterial({map:groundTexture(),color:'#2b3833',roughness:.96}));terrain.position.y=-.12;terrain.receiveShadow=true;scene.add(terrain);
+  createStadiumSeating(scene,lowPower);
   // A low, fine fence frames the court instead of hiding the mountain horizon.
   const fenceMaterial=new THREE.MeshStandardMaterial({color:'#60736a',roughness:.72,metalness:.15});
   const wires=[];
@@ -102,4 +95,46 @@ function groundTexture(){
  ctx.fillStyle='#7c875b';ctx.fillRect(0,0,512,512);
  for(let i=0;i<60000;i++){ctx.fillStyle=['#4c614c35','#bab88b45','#69784d55','#d0c49925'][i%4];ctx.fillRect(random()*512,random()*512,.4+random()*2,.4+random()*3);}
  const t=canvasTexture(canvas,true);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(70,60);return t;
+}
+
+function roundedPanel(width,height,depth,radius=.09) {
+  const x=-width/2,y=-height/2,shape=new THREE.Shape();
+  shape.moveTo(x+radius,y);shape.lineTo(x+width-radius,y);shape.quadraticCurveTo(x+width,y,x+width,y+radius);
+  shape.lineTo(x+width,y+height-radius);shape.quadraticCurveTo(x+width,y+height,x+width-radius,y+height);
+  shape.lineTo(x+radius,y+height);shape.quadraticCurveTo(x,y+height,x,y+height-radius);
+  shape.lineTo(x,y+radius);shape.quadraticCurveTo(x,y,x+radius,y);
+  const geometry=new THREE.ExtrudeGeometry(shape,{depth,bevelEnabled:true,bevelSegments:2,bevelSize:.025,bevelThickness:.025,curveSegments:8});
+  geometry.center();geometry.computeVertexNormals();return geometry;
+}
+
+function createStadiumSeating(scene,lowPower) {
+  const stand=new THREE.Group();stand.name='welcomeSidelineStands';
+  const concrete=new THREE.MeshStandardMaterial({color:'#9aa09b',roughness:.78,metalness:.04});
+  const metal=new THREE.MeshStandardMaterial({color:'#77848a',roughness:.38,metalness:.72});
+  const blue=new THREE.MeshPhysicalMaterial({color:'#285a78',roughness:.38,metalness:.02,clearcoat:.35,clearcoatRoughness:.5});
+  const accent=new THREE.MeshPhysicalMaterial({color:'#34748a',roughness:.4,metalness:.02,clearcoat:.28});
+  const seatGeometry=roundedPanel(.58,.62,.055,.095);seatGeometry.rotateX(Math.PI/2);
+  const backGeometry=roundedPanel(.64,.68,.065,.11);backGeometry.rotateY(Math.PI/2);
+  const columns=[];for(let z=-14.2;z<=14.2;z+=.82)if(Math.abs(z)>1.22)columns.push(z);
+  const count=columns.length*4*2;
+  const seats=new THREE.InstancedMesh(seatGeometry,blue,count),backs=new THREE.InstancedMesh(backGeometry,accent,count);
+  seats.castShadow=backs.castShadow=!lowPower;seats.receiveShadow=backs.receiveShadow=true;
+  const matrix=new THREE.Matrix4(),quaternion=new THREE.Quaternion(),scale=new THREE.Vector3(1,1,1);let index=0;
+  for(const side of [-1,1]) {
+    for(let row=0;row<4;row++) {
+      const outward=11.15+row*.88,elevation=.38+row*.53;
+      const tread=new THREE.Mesh(new THREE.BoxGeometry(.92,.16,30.2),concrete);tread.position.set(side*outward,elevation-.3,0);tread.castShadow=tread.receiveShadow=true;stand.add(tread);
+      for(const z of columns) {
+        matrix.compose(new THREE.Vector3(side*outward,elevation,z),quaternion,scale);seats.setMatrixAt(index,matrix);
+        matrix.compose(new THREE.Vector3(side*(outward+.25),elevation+.37,z),quaternion,scale);backs.setMatrixAt(index,matrix);index++;
+      }
+    }
+    const aisle=new THREE.Mesh(new THREE.BoxGeometry(3.75,.12,2.15),concrete);aisle.position.set(side*12.5,.72,0);aisle.rotation.z=side*-.16;aisle.castShadow=aisle.receiveShadow=true;stand.add(aisle);
+    for(const z of [-15.2,15.2]) {
+      const rail=new THREE.Mesh(new THREE.CylinderGeometry(.035,.035,4.2,10),metal);rail.rotation.x=Math.PI/2;rail.position.set(side*13.1,2.25,z);rail.castShadow=true;stand.add(rail);
+      for(let row=0;row<5;row++){const post=new THREE.Mesh(new THREE.CylinderGeometry(.026,.026,1.15,8),metal);post.position.set(side*(10.8+row*.9),.72+row*.53,z);stand.add(post);}
+    }
+  }
+  seats.instanceMatrix.needsUpdate=backs.instanceMatrix.needsUpdate=true;stand.add(seats,backs);
+  scene.add(stand);
 }
