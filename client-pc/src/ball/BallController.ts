@@ -216,6 +216,15 @@ export class BallController {
           this.ball.contactTarget,
           this.ball.contactTimeAfterBounce
         ));
+        // The bounce solver keeps training feeds hittable, but should not erase
+        // the wind accumulated on the incoming flight. Carry a capped portion
+        // into the post-bounce velocity; continuous wind then adds a modest,
+        // visible drift without pulling the ball outside the assisted hit area.
+        if (windAcceleration && windAcceleration.lengthSq() > 0) {
+          const windCarry = windAcceleration.clone().multiplyScalar(0.16);
+          if (windCarry.length() > 0.28) windCarry.setLength(0.28);
+          this.ball.velocity.add(windCarry);
+        }
         this.ball.contactDeadline = now + this.ball.contactTimeAfterBounce * 1000;
         this.ball.secondBounceDeadline = now + estimateSecondBounceDelay(this.ball.velocity.y) * 1000;
       }
