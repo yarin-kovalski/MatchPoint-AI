@@ -1041,6 +1041,25 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 .wind-popover select { width: 100%; margin-top: 3px; }
 .wind-popover small { display: block; margin-top: 9px; color: #9fc2ba; font-size: 8px; line-height: 1.35; }
 @keyframes windPulse { 50% { transform: rotate(-8deg) scale(1.1); box-shadow: 0 0 10px rgba(159,222,224,.32); } }
+
+/* Keep calibration guidance in the clear court area, away from the trainer HUD. */
+.visualization-panel .calibration-message {
+  left: 24px;
+  bottom: 18px;
+  width: min(440px, calc(64% - 32px));
+  transform: none;
+  padding: 10px 14px;
+  text-align: left;
+}
+.visualization-panel .calibration-message strong { font-size: 12px; }
+.visualization-panel .calibration-message span { font-size: 10px; line-height: 1.35; }
+@media (max-width: 1000px) {
+  .visualization-panel .calibration-message {
+    left: 50%;
+    width: min(440px, calc(100% - 32px));
+    transform: translateX(-50%);
+  }
+}
 .mode-description { font-size: 9px; line-height: 1.35; }
 .single-shot-button {
   min-height: 28px; align-self: end; border: 1px solid #617b73; border-radius: 5px;
