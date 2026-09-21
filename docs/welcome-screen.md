@@ -15,7 +15,7 @@ Entry: `/pc/welcome.html`, also the broker's `/` redirect. The existing launcher
 
 The page has one fixed Three.js stadium and native document scrolling. Camera position and focus interpolate through court, phone/racket, flight path, cone placement, ball/spin detail and setup chapters. There is no scroll interception and no marketing video. Equipment, trajectories and technique values are explicitly illustrative; the page never starts training or writes session data. Feed and cone buttons affect only the preview.
 
-`welcome-scene.js` reuses the court, net, racket GLB and racket materials. The surrounding night stadium, lighting, ball surface and technical geometry are procedural. `welcome.js` owns chapter navigation, motion preferences, the accessible native setup dialog and existing `/api/setup` polling. The QR comes from the launcher's real Expo address and disappears if Expo is unavailable. Download and troubleshooting links use official Expo pages. No credentials are collected here.
+`welcome-scene.js` reuses the court, net, racket GLB and racket materials. The presentation world uses a curved golden-hour resort landscape, a low court-level camera path, restrained architecture, warm directional lighting and atmospheric haze. The tennis ball uses a generated felt/bump surface plus batched fiber geometry; the shot preview uses one thin flight arc. Training cones and three low-opacity wind strands appear only in the relevant chapter. `welcome.js` owns chapter navigation, motion preferences, the accessible native setup dialog and existing `/api/setup` polling. The QR comes from the launcher's real Expo address and disappears if Expo is unavailable. No credentials are collected here.
 
 The existing Three.js 0.184.0 modules are served locally under `vendor/three` with their license. No animation framework, CDN, web font or video download is needed by the welcome experience. The retained older `film/` sources and `media/court-film.*` are unused by this page.
 
@@ -31,7 +31,7 @@ The existing Three.js 0.184.0 modules are served locally under `vendor/three` wi
 ## Validation — 21 September 2026
 
 - `npm run build`: passed.
-- `npm run all`: reached ready state, opened welcome automatically, printed QR and served iOS bundles. This is a persistent launcher; it remains running rather than returning a completion exit code. Backend/Metro stderr logs were empty; Expo stdout contained only existing terminal color warnings alongside successful bundle messages.
+- `npm run all`: reached ready state, opened welcome automatically, printed QR and served the exact iOS Hermes launch bundle before exposing the QR. This is a persistent launcher; it remains running rather than returning a completion exit code. Backend and Metro stderr logs were empty.
 - Browser checks passed at 390, 768, 1366 and 1440 px: six chapter views, local scene modules, no old video, previews, pause, reduced motion, repeated QR opening, Escape/focus restoration, missing-Expo recovery and WebGL fallback. No welcome console errors, failed resources or external requests.
 - Actual Socket.io mobile-role handshake updated the setup badge. This is a transport check, not a claim of physical iPhone testing.
 - OpenCV decoded the displayed QR to the current launcher's actual `exp://` LAN URL. PC loaded its canvas and connected its socket; single-shot, cone selection and wind controls passed a smoke check without console errors. Added the welcome icon to the PC page to resolve its previous missing-favicon error.

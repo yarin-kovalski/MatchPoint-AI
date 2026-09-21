@@ -47,6 +47,7 @@ function Wait-ForHttp {
   param(
     [string]$Url,
     [int]$TimeoutSeconds = 90,
+    [hashtable]$Headers = @{},
     [System.Diagnostics.Process]$RequiredProcess,
     [string]$ProcessName = "Required",
     [string]$StdoutPath,
@@ -57,7 +58,7 @@ function Wait-ForHttp {
   $lastHttpBody = $null
   do {
     try {
-      $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5
+      $response = Invoke-WebRequest -Uri $Url -Headers $Headers -UseBasicParsing -TimeoutSec 20
       if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) { return $response }
     } catch {
       $statusCode = $null
@@ -190,7 +191,7 @@ try {
   $ServerProcess = Start-Process npm.cmd -ArgumentList @("run", "dev") -WorkingDirectory $RootDir -PassThru -WindowStyle Hidden -RedirectStandardOutput $ServerLog -RedirectStandardError $ServerErrorLog
   Wait-ForHttp -Url $PcUrl -TimeoutSeconds 120 -RequiredProcess $ServerProcess -ProcessName "Backend" -StdoutPath $ServerLog -StderrPath $ServerErrorLog | Out-Null
   $ExpoProcess = Start-Process npx.cmd -PassThru -WindowStyle Hidden -WorkingDirectory $ExpoDir -ArgumentList @(
-    "expo", "start", "--lan", "--go", "--port", "$MetroPort", "--clear"
+    "expo", "start", "--lan", "--go", "--port", "$MetroPort"
   ) -RedirectStandardOutput $ExpoLog -RedirectStandardError $ExpoErrorLog
   Wait-ForHttp -Url $MetroHttpUrl -TimeoutSeconds 120 -RequiredProcess $ExpoProcess -ProcessName "Expo" -StdoutPath $ExpoLog -StderrPath $ExpoErrorLog | Out-Null
   $listener = Get-NetTCPConnection -State Listen -LocalPort $MetroPort -ErrorAction Stop | Select-Object -First 1
@@ -198,7 +199,19 @@ try {
     throw "Metro is listening only on $($listener.LocalAddress), not the LAN interface."
   }
   $MetroProcess = Get-Process -Id $listener.OwningProcess -ErrorAction Stop
-  $bundle = Wait-ForHttp -Url $BundleUrl -TimeoutSeconds 180 -RequiredProcess $MetroProcess -ProcessName "Metro" -StdoutPath $ExpoLog -StderrPath $ExpoErrorLog
+  # Expo Go requests a Hermes bytecode variant, not the generic index.bundle URL.
+  # Resolve and warm the exact manifest asset before inviting the phone to scan.
+  $manifestResponse = Wait-ForHttp -Url $MetroHttpUrl -Headers @{ "expo-platform" = "ios"; "Accept" = "application/expo+json" } -TimeoutSeconds 120 -RequiredProcess $MetroProcess -ProcessName "Expo iOS manifest" -StdoutPath $ExpoLog -StderrPath $ExpoErrorLog
+  # Windows PowerShell treats application/expo+json as binary content.
+  $manifestJson = if ($manifestResponse.Content -is [byte[]]) {
+    [System.Text.Encoding]::UTF8.GetString($manifestResponse.Content)
+  } else { [string]$manifestResponse.Content }
+  $manifest = $manifestJson | ConvertFrom-Json
+  $iosAsset = [Uri]$manifest.launchAsset.url
+  if (-not $iosAsset.IsAbsoluteUri -or $iosAsset.Scheme -ne "http" -or $iosAsset.Host -ne $LanAddress -or $iosAsset.Port -ne $MetroPort) {
+    throw "Expo returned unexpected iOS bundle '$($manifest.launchAsset.url)' (expected http://${LanAddress}:$MetroPort)."
+  }
+  $bundle = Wait-ForHttp -Url $iosAsset.AbsoluteUri -TimeoutSeconds 180 -RequiredProcess $MetroProcess -ProcessName "Expo iPhone bundle" -StdoutPath $ExpoLog -StderrPath $ExpoErrorLog
   if ($bundle.Content.Length -lt 1000) { throw "Metro returned an unexpectedly small iOS bundle ($($bundle.Content.Length) bytes)." }
 
   Write-Host ""

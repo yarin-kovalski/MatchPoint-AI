@@ -1,4 +1,4 @@
-﻿/* The welcome page owns no gameplay or sensor state. Connection uses the existing broker. */
+/* The welcome page owns no gameplay or sensor state. Connection uses the existing broker. */
 const motionToggle = document.getElementById('motionToggle');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const dialog = document.getElementById('connectionDialog');
@@ -96,7 +96,7 @@ async function refreshSetup() {
     message.textContent = 'Keep the MatchPoint terminal running, then refresh the connection.';
   } finally { refreshing = false; }
 }
-document.getElementById('retrySetup').addEventListener('click', refreshSetup);
+
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshSetup(); });
 refreshSetup();
 let setupTimer = setInterval(refreshSetup, 5000);

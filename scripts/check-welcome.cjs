@@ -58,7 +58,7 @@ const base = process.env.MATCHPOINT_PREVIEW_URL || 'http://localhost:3000';
   // Honest unavailable-Expo state and recovery; only this page's API response is overridden.
   await page.route('**/api/setup',route=>route.fulfill({json:{ready:false,mobileClients:0,qrSvg:null,expoUrl:null}}));
   await page.locator('.nav [data-connect]').click();await page.waitForFunction(()=>document.querySelector('#expoQr').hidden);assert.equal(await page.locator('#connectionStatus').textContent(),'Waiting for Expo');
-  await page.unroute('**/api/setup');await page.locator('.pairing-code summary').click();await page.locator('#retrySetup').click();await page.waitForSelector('#expoQr:not([hidden])');await page.locator('#closeConnection').click();
+  await page.unroute('**/api/setup');await page.waitForSelector('#expoQr:not([hidden])');await page.locator('#closeConnection').click();
   console.log('WELCOME PASS: 6 scenes, locally loaded 3D, interactive previews, stable pause, reduced motion, 390/768/1366/1440 layouts, repeated QR dialog, Escape/focus, real broker mobile handshake, Metro recovery, WebGL fallback. No console errors or external requests.');
   console.log('QR address:',api.expoUrl);
   // Keep errors from the existing PC client separate from welcome assertions.
