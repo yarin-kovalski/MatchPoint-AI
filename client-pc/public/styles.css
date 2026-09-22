@@ -945,9 +945,10 @@ input[type="checkbox"] { accent-color: #d9e7b4; }
 
 .landing-announcement {
   position: absolute; top: 74px; left: 50%; transform: translateX(-50%);
-  z-index: 5; padding: 16px 28px; border-radius: 14px;
-  background: #142527; color: #e1f4b0; font-size: clamp(20px, 3vw, 36px);
+  z-index: 5; padding: 8px 12px;
+  background: transparent; color: #e1f4b0; font-size: clamp(20px, 3vw, 36px);
   font-weight: 700; text-align: center; pointer-events: none;
+  text-shadow: 0 2px 5px rgba(4, 15, 18, .82), 0 0 18px rgba(4, 15, 18, .48);
 }
 .landing-announcement[hidden] { display: none; }
 
