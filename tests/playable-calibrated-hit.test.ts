@@ -73,6 +73,17 @@ test("calibrated opportunity rejects early, late, wrong-side, and duplicate cont
   assert.equal(evaluatePlayableCalibratedHit({ ...base, now: 1000, alreadyHit: true }).reason, "CONTACT_ALREADY_USED");
 });
 
+test("left-handed stroke plans accept the reversed court sides", () => {
+  const forehand = createDefaultTrajectoryProfile("forehand", "left");
+  const backhand = createDefaultTrajectoryProfile("backhand", "left");
+  const forehandPlan = createPlayableStrokePlan("forehand", { forehand, backhand })!;
+  const backhandPlan = createPlayableStrokePlan("backhand", { forehand, backhand })!;
+  assert.equal(forehandPlan.expectedSide, "left");
+  assert.equal(backhandPlan.expectedSide, "right");
+  assert.ok(forehandPlan.contactLocalX < 0);
+  assert.ok(backhandPlan.contactLocalX > 0);
+});
+
 test("raw motion classifier retains side evidence for diagnostics", () => {
   const lockedForehand = snapshot("forehand");
   assert.equal(detectedEasySwingSide(lockedForehand), "forehand");

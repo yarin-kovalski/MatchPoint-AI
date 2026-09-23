@@ -81,6 +81,13 @@
                 </div>
               </details>
             </div>
+            <label class="handedness-control">Playing hand
+              <select id="handednessSelect">
+                <option value="right">Right-handed</option>
+                <option value="left">Left-handed</option>
+              </select>
+              <small>Mirrors forehand and backhand sides</small>
+            </label>
             <p id="modeDescription" class="mode-description">Training: practice forehand and backhand with sensor-driven speed, spin, direction, and landing feedback.</p>
             <fieldset id="conePracticePicker" class="cone-practice-picker" hidden>
               <legend>Which shot do you want to practice?</legend>
@@ -226,12 +233,6 @@
         </section>
 
         <div class="stroke-controls">
-          <label>Handedness
-            <select id="handednessSelect">
-              <option value="right">Right-handed</option>
-              <option value="left">Left-handed</option>
-            </select>
-          </label>
           <label>Backhand
             <select id="backhandStyleSelect">
               <option value="one-handed">One-handed</option>

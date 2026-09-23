@@ -50,6 +50,19 @@ test("loading priority is user, validated preset, then default", () => {
   assert.equal(fallback.source, "Default fallback");
 });
 
+test("left-handed loading does not reuse right-handed calibrated paths", () => {
+  const storage = new MemoryStorage();
+  restoreValidatedTrajectoryPreset(storage);
+  const forehand = loadTrajectoryProfileWithPriority(storage, "forehand", "left");
+  const backhand = loadTrajectoryProfileWithPriority(storage, "backhand", "left");
+  assert.equal(forehand.source, "Default fallback");
+  assert.equal(backhand.source, "Default fallback");
+  assert.equal(forehand.profile.handedness, "left");
+  assert.equal(backhand.profile.handedness, "left");
+  assert.ok(forehand.profile.contactPointWorld[0] < 0);
+  assert.ok(backhand.profile.contactPointWorld[0] > 0);
+});
+
 test("restore writes exact values for both sides and retains preset provenance", () => {
   const storage = new MemoryStorage();
   restoreValidatedTrajectoryPreset(storage);

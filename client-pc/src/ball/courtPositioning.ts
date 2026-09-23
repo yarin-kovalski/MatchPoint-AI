@@ -32,7 +32,8 @@ export function getTrainingStrikeZoneGeometry(source: TrajectoryCalibrationProfi
   const headReach = BALL_CONFIG.collision.headCenterLocal[1] * RACKET_MODEL_SCALE;
   const contactHeight = TRAINING_GRIP_HEIGHT - BALL_CONFIG.collision.halfHeightLocal * RACKET_MODEL_SCALE * 0.5;
   const contactDepth = BALL_CONFIG.scale.measuredRacketHeadWorldHeight * 2 / 3;
-  const strokeSign = source.strokeType === "forehand" ? 1 : -1;
+  const handSign = source.handedness === "right" ? 1 : -1;
+  const strokeSign = (source.strokeType === "forehand" ? 1 : -1) * handSign;
   const stringBedCenter = baselineOrigin.clone()
     .addScaledVector(playerRight, strokeSign * headReach)
     .addScaledVector(playerUp, contactHeight)

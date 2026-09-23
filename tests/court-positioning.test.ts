@@ -5,7 +5,7 @@ import {
   CONTACT_EASE_DEPTH_Z, PLAYER_BASELINE_OFFSET_Z, positionValidatedProfileAtBaseline,
   createTrainingComfortProfile, isInsideTrainingStrikeZone
 } from "../client-pc/src/ball/courtPositioning.js";
-import { solveTrajectoryProfile, worldToPlayerLocal } from "../client-pc/src/ball/trajectoryCalibration.js";
+import { profileForHandedness, solveTrajectoryProfile, worldToPlayerLocal } from "../client-pc/src/ball/trajectoryCalibration.js";
 import { VALIDATED_TRAJECTORY_PRESET } from "../client-pc/src/ball/validatedTrajectoryPreset.js";
 
 for (const strokeType of ["forehand", "backhand"] as const) {
@@ -49,4 +49,19 @@ test("Training backhand feed mirrors forehand contact and has a practical cross-
   );
   assert.equal(isInsideTrainingStrikeZone(backhandEdge, new THREE.Vector3().fromArray(backhand.contactPointWorld), "backhand"), true);
   assert.equal(isInsideTrainingStrikeZone(backhandEdge, new THREE.Vector3().fromArray(forehand.contactPointWorld), "forehand"), false);
+});
+
+test("left-handed Training buttons reverse the right-handed contact sides", () => {
+  const rightForehand = createTrainingComfortProfile(VALIDATED_TRAJECTORY_PRESET.forehand);
+  const rightBackhand = createTrainingComfortProfile(VALIDATED_TRAJECTORY_PRESET.backhand);
+  const leftForehand = createTrainingComfortProfile(
+    profileForHandedness(VALIDATED_TRAJECTORY_PRESET.forehand, "left")
+  );
+  const leftBackhand = createTrainingComfortProfile(
+    profileForHandedness(VALIDATED_TRAJECTORY_PRESET.backhand, "left")
+  );
+  assert.equal(leftForehand.contactPointWorld[0], rightBackhand.contactPointWorld[0]);
+  assert.equal(leftBackhand.contactPointWorld[0], rightForehand.contactPointWorld[0]);
+  assert.ok(leftForehand.contactPointWorld[0] < 0);
+  assert.ok(leftBackhand.contactPointWorld[0] > 0);
 });

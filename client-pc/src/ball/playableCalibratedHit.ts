@@ -33,9 +33,11 @@ export function createPlayableStrokePlan(
   if (!profile || profile.strokeType !== strokeType) return null;
   const contactWorld = new THREE.Vector3().fromArray(profile.contactPointWorld);
   const contactLocalX = worldToPlayerLocal(contactWorld, profile.playerBasisAtCalibration).x;
-  const validSide = strokeType === "forehand" ? contactLocalX > 0.25 : contactLocalX < -0.25;
+  const handSign = profile.handedness === "right" ? 1 : -1;
+  const contactOnDominantSide = contactLocalX * handSign;
+  const validSide = strokeType === "forehand" ? contactOnDominantSide > 0.25 : contactOnDominantSide < -0.25;
   if (!validSide) return null;
-  return { strokeType, profile, expectedSide: strokeType === "forehand" ? "right" : "left", contactLocalX, contactWorld };
+  return { strokeType, profile, expectedSide: contactLocalX >= 0 ? "right" : "left", contactLocalX, contactWorld };
 }
 export function evaluatePlayableCalibratedHit(input: {
   now: number;
@@ -66,7 +68,9 @@ export function evaluatePlayableCalibratedHit(input: {
   if (input.bounceCount !== 1 || timing === "TOO EARLY") return { ...base, accepted: false, reason: "SWING_TOO_EARLY" };
   if (timing === "TOO LATE") return { ...base, accepted: false, reason: "SWING_TOO_LATE" };
   const localContact = worldToPlayerLocal(new THREE.Vector3().fromArray(input.profile.contactPointWorld), input.profile.playerBasisAtCalibration);
-  const correctSide = input.expectedStrokeType === "forehand" ? localContact.x > 0 : localContact.x < 0;
+  const handSign = input.profile.handedness === "right" ? 1 : -1;
+  const contactOnDominantSide = localContact.x * handSign;
+  const correctSide = input.expectedStrokeType === "forehand" ? contactOnDominantSide > 0 : contactOnDominantSide < 0;
   if (input.profile.strokeType !== input.expectedStrokeType || !correctSide) return { ...base, accepted: false, reason: "WRONG_STROKE_SIDE" };
   const fusedForwardScore = input.motion?.forwardSwing?.forwardDriveScore ?? 0;
   const measuredForwardScore = input.motion?.motionForwardScore ?? 0;

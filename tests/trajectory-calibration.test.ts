@@ -26,6 +26,15 @@ test("right-handed calibrated contacts occupy independent player sides", () => {
   assert.ok(validateTrajectoryProfile(backhand).some(error => error.includes("CALIBRATION_WRONG_SIDE")));
 });
 
+test("left-handed calibrated contacts mirror forehand and backhand sides", () => {
+  const forehand = createDefaultTrajectoryProfile("forehand", "left");
+  const backhand = createDefaultTrajectoryProfile("backhand", "left");
+  assert.equal(validateTrajectoryProfile(forehand).length, 0);
+  assert.equal(validateTrajectoryProfile(backhand).length, 0);
+  assert.ok(forehand.contactPointWorld[0] < 0);
+  assert.ok(backhand.contactPointWorld[0] > 0);
+});
+
 test("profiles save, reload, and reset independently", () => {
   const storage = new MemoryStorage();
   const forehand = createDefaultTrajectoryProfile("forehand", "right", 100);

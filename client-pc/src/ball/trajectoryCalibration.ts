@@ -94,6 +94,25 @@ export function createDefaultTrajectoryProfile(strokeType: CalibrationStrokeType
   };
 }
 
+export function profileForHandedness(
+  source: TrajectoryCalibrationProfile,
+  handedness: "right" | "left"
+): TrajectoryCalibrationProfile {
+  const profile = structuredClone(source);
+  if (profile.handedness === handedness) return profile;
+  const mirrorX = (value: Vec3): Vec3 => [-value[0], value[1], value[2]];
+  profile.handedness = handedness;
+  profile.launchPointWorld = mirrorX(profile.launchPointWorld);
+  profile.bouncePointWorld = mirrorX(profile.bouncePointWorld);
+  profile.apexPointWorld = mirrorX(profile.apexPointWorld);
+  profile.contactPointWorld = mirrorX(profile.contactPointWorld);
+  profile.contactPointPlayerLocal = mirrorX(profile.contactPointPlayerLocal);
+  profile.contactFaceNormal = mirrorX(profile.contactFaceNormal);
+  const [x, y, z, w] = profile.contactRacketQuaternion;
+  profile.contactRacketQuaternion = [x, -y, -z, w];
+  return profile;
+}
+
 export function setProfileArcHeight(profile: TrajectoryCalibrationProfile, apexHeight: number): void {
   const bounce = new THREE.Vector3().fromArray(profile.bouncePointWorld);
   const contact = new THREE.Vector3().fromArray(profile.contactPointWorld);
@@ -177,10 +196,13 @@ export function validateTrajectoryProfile(profile: TrajectoryCalibrationProfile)
   if (profile.version !== TRAJECTORY_PROFILE_VERSION) errors.push("CALIBRATION_PROFILE_NOT_LOADED: unsupported version");
   const local = worldToPlayerLocal(new THREE.Vector3().fromArray(profile.contactPointWorld), profile.playerBasisAtCalibration);
   const bounceLocal = worldToPlayerLocal(new THREE.Vector3().fromArray(profile.bouncePointWorld), profile.playerBasisAtCalibration);
-  if (profile.strokeType === "forehand" && local.x <= MINIMUM_SIDE_OFFSET) errors.push("CALIBRATION_WRONG_SIDE: forehand must be on player right");
-  if (profile.strokeType === "backhand" && local.x >= -MINIMUM_SIDE_OFFSET) errors.push("CALIBRATION_WRONG_SIDE: backhand must be on player left");
-  if (profile.strokeType === "forehand" && bounceLocal.x <= 0) errors.push("CALIBRATION_WRONG_SIDE: forehand bounce crossed player center");
-  if (profile.strokeType === "backhand" && bounceLocal.x >= 0) errors.push("CALIBRATION_WRONG_SIDE: backhand bounce crossed player center");
+  const handSign = profile.handedness === "right" ? 1 : -1;
+  const contactOnDominantSide = local.x * handSign;
+  const bounceOnDominantSide = bounceLocal.x * handSign;
+  if (profile.strokeType === "forehand" && contactOnDominantSide <= MINIMUM_SIDE_OFFSET) errors.push("CALIBRATION_WRONG_SIDE: forehand must be on the dominant-hand side");
+  if (profile.strokeType === "backhand" && contactOnDominantSide >= -MINIMUM_SIDE_OFFSET) errors.push("CALIBRATION_WRONG_SIDE: backhand must be on the non-dominant side");
+  if (profile.strokeType === "forehand" && bounceOnDominantSide <= 0) errors.push("CALIBRATION_WRONG_SIDE: forehand bounce crossed player center");
+  if (profile.strokeType === "backhand" && bounceOnDominantSide >= 0) errors.push("CALIBRATION_WRONG_SIDE: backhand bounce crossed player center");
   if (profile.contactPointWorld[1] < 0.6) errors.push("CALIBRATION_TOO_LOW");
   if (profile.contactPointWorld[1] > 1.8 || profile.apexPointWorld[1] > 2.5) errors.push("CALIBRATION_TOO_HIGH");
   if (profile.apexPointWorld[1] < 0.8) errors.push("CALIBRATION_TOO_LOW: apex");

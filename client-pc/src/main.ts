@@ -6,7 +6,7 @@ import { BALL_CONFIG } from "./ball/ballConfig.js";
 import { getBallDeliveryTarget, getExpectedRacketContactTransform, projectPixelDiameter } from "./ball/ballDelivery.js";
 import { AssistMode, BallHitEvent, BallMissEvent, BallSpeedPreset, EasyHitMotion, isBackhandPreset, LaunchPreset, PlayerAssistLevel } from "./ball/ballTypes.js";
 import {
-  CalibrationStrokeType, createDefaultTrajectoryProfile, loadTrajectoryProfile,
+  CalibrationStrokeType, createDefaultTrajectoryProfile, loadTrajectoryProfile, profileForHandedness,
   resetTrajectoryProfile, saveTrajectoryProfile, setProfileArcHeight, solveTrajectoryProfile,
   synchronizeProfileApexFromTiming, TrajectoryCalibrationProfile, worldToPlayerLocal
 } from "./ball/trajectoryCalibration.js";
@@ -461,8 +461,12 @@ let targetRotationX = 0;
 let targetRotationY = 0;
 let targetRotationZ = 0;
 let displayedSwingSpeedKmh = 0;
-const initialForehandProfile = loadTrajectoryProfileWithPriority(localStorage, "forehand");
-const initialBackhandProfile = loadTrajectoryProfileWithPriority(localStorage, "backhand");
+const PLAYER_HANDEDNESS_STORAGE_KEY = "matchpoint.player.handedness.v1";
+const storedHandedness = localStorage.getItem(PLAYER_HANDEDNESS_STORAGE_KEY);
+const initialHandedness: Handedness = storedHandedness === "left" ? "left" : "right";
+elements.handednessSelect.value = initialHandedness;
+const initialForehandProfile = loadTrajectoryProfileWithPriority(localStorage, "forehand", initialHandedness);
+const initialBackhandProfile = loadTrajectoryProfileWithPriority(localStorage, "backhand", initialHandedness);
 let trajectoryProfiles: Record<CalibrationStrokeType, TrajectoryCalibrationProfile | null> = {
   forehand: initialForehandProfile.profile, backhand: initialBackhandProfile.profile
 };
@@ -968,7 +972,7 @@ elements.orientationDebug.hidden = !SHOW_ORIENTATION_DEBUG;
 elements.calibrateButton.disabled = true;
 elements.calibrateButton.addEventListener("click", calibrateFromLatestPhonePose);
 const strokeStateMachine = new StrokeStateMachine(
-  "right",
+  initialHandedness,
   "one-handed",
   onEstimatedRacketContact
 );
@@ -2001,7 +2005,17 @@ function updateStrokeDebug(): void {
 
 function wireStrokeControls(): void {
   elements.handednessSelect.addEventListener("change", () => {
-    strokeStateMachine.setHandedness(elements.handednessSelect.value as Handedness);
+    const handedness = elements.handednessSelect.value as Handedness;
+    strokeStateMachine.setHandedness(handedness);
+    localStorage.setItem(PLAYER_HANDEDNESS_STORAGE_KEY, handedness);
+    for (const strokeType of ["forehand", "backhand"] as const) {
+      const loaded = loadTrajectoryProfileWithPriority(localStorage, strokeType, handedness);
+      trajectoryProfiles[strokeType] = loaded.profile;
+      trajectoryProfileSources[strokeType] = loaded.source;
+    }
+    if (editingTrajectory) editingTrajectory = structuredClone(trajectoryProfiles[editingTrajectoryType]!);
+    updateTrajectoryStatuses();
+    elements.practiceStatus.textContent = `${handedness === "left" ? "Left" : "Right"}-handed setup active. Forehand and backhand sides are mirrored.`;
   });
   elements.backhandStyleSelect.addEventListener("change", () => {
     strokeStateMachine.setBackhandStyle(elements.backhandStyleSelect.value as BackhandStyle);
@@ -2349,7 +2363,7 @@ function exportValidatedCalibration(): void {
 function restoreValidatedPreset(): void {
   restoreValidatedTrajectoryPreset(localStorage);
   for (const strokeType of ["forehand", "backhand"] as const) {
-    const loaded = loadTrajectoryProfileWithPriority(localStorage, strokeType);
+    const loaded = loadTrajectoryProfileWithPriority(localStorage, strokeType, strokeStateMachine.getHandedness());
     trajectoryProfiles[strokeType] = loaded.profile;
     trajectoryProfileSources[strokeType] = loaded.source;
   }
@@ -2568,14 +2582,15 @@ function playCalibratedStroke(strokeType: CalibrationStrokeType): void {
   if (style === "random") lastRandomFeedArchetype = resolvedStyle;
   const premium = createArchetypeFeed(baseVariation, resolvedStyle);
   const generatedVariation = premium?.variation ?? baseVariation;
+  const handedProfile = profileForHandedness(generatedVariation.profile, strokeStateMachine.getHandedness());
   currentFeedVariation = {
     ...generatedVariation,
     profile: playerAssistLevel === "training"
       ? applyContactPositionCalibration(
-          createTrainingComfortProfile(positionValidatedProfileAtBaseline(generatedVariation.profile)),
+          createTrainingComfortProfile(positionValidatedProfileAtBaseline(handedProfile)),
           contactPositionCalibrations[strokeType]
         )
-      : positionValidatedProfileAtBaseline(generatedVariation.profile)
+      : positionValidatedProfileAtBaseline(handedProfile)
   };
   const launchProfiles = {
     forehand: strokeType === "forehand" ? currentFeedVariation.profile : VALIDATED_TRAJECTORY_PRESET.forehand,

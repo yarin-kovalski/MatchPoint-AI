@@ -43,12 +43,12 @@ export function loadTrajectoryProfileWithPriority(
 ): { profile: TrajectoryCalibrationProfile; source: TrajectoryProfileSource } {
   const user = loadTrajectoryProfile(storage, strokeType);
   const validated = preset[strokeType];
-  if (user) {
+  if (user?.handedness === handedness) {
     const restoredPreset = storage.getItem(`${PRESET_SOURCE_PREFIX}.${strokeType}`) === "validated-preset" &&
       JSON.stringify(user) === JSON.stringify(validated);
     return { profile: structuredClone(user), source: restoredPreset ? "Validated project preset" : "User calibration" };
   }
-  if (validated?.strokeType === strokeType && solveTrajectoryProfile(validated).valid) {
+  if (validated?.strokeType === strokeType && validated.handedness === handedness && solveTrajectoryProfile(validated).valid) {
     return { profile: structuredClone(validated), source: "Validated project preset" };
   }
   return { profile: createDefaultTrajectoryProfile(strokeType, handedness), source: "Default fallback" };
