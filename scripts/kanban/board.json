@@ -5,7 +5,7 @@
     "prefs_background": "blue"
   },
   "git": {
-    "lastProcessedCommit": "dbb3f192a95bbc75dbc5c9f5b3c1f6a2c5887bc7"
+    "lastProcessedCommit": "94a04240d13a2bd4a744ecb9518f9155d65dd574"
   },
   "lists": ["Backlog", "To Do", "In Progress", "Testing", "Done", "Cancelled / Parked"],
   "labels": [
@@ -46,10 +46,12 @@
     },
     {
       "key": "COURSE-INVITE-INSTRUCTOR",
-      "list": "To Do",
+      "list": "Done",
       "name": "Invite the instructor to the repository",
       "labels": ["Infra & Deploy", "Docs & Course"],
       "desc": "Repository access is a submission action outside the code history. It must be completed and verified against the correct instructor account before the October 1 deadline.",
+      "start": "2026-09-22T09:00:00+03:00",
+      "due": "2026-09-22T18:00:00+03:00",
       "checklist": []
     },
     {
@@ -89,6 +91,8 @@
         "95404da 2026-09-16 improve shot hardness",
         "8622f42 2026-09-16 make the shot easier",
         "87b4f11 2026-09-17 improve player contact"
+        ,"954a011 2026-09-20 improve feed ball"
+        ,"94b98f1 2026-09-20 Move the court view slightly left by adjusting camera composition"
       ]
     },
     {
@@ -247,6 +251,7 @@
       "checklist": [
         "5a57426 2026-08-05 feat(kanban): automate idempotent Trello synchronization [KANBAN-AUTOMATION] [DONE]",
         "19cb7cb 2026-08-05 fix(kanban): register automation work and resolve keyed history [KANBAN-AUTOMATION]"
+        ,"fe0e877 2026-09-17 docs(kanban): publish final project history and screenshots"
       ]
     },
     {
@@ -304,6 +309,7 @@
         "dae409c 2026-09-11 change sdk version from 54 to 57",
         "b46986f 2026-09-11 move form 54 sdk to 57 version",
         "c9fb167 2026-09-12 fix Expo Metro startup"
+        ,"8ea8790 2026-09-21 improve connection and racket data"
       ]
     },
     {
@@ -331,6 +337,89 @@
       "due": "2026-09-16T18:00:00+03:00",
       "desc": "Players needed immediate spatial feedback about where each ball landed. A persistent compact court view and report visualization were added to mark bounce locations and reinforce in/out analysis.",
       "checklist": ["a39350f 2026-09-16 add court vision when hitting"]
+    },
+    {
+      "key": "TARGET-CONE-PRACTICE",
+      "list": "Done",
+      "name": "Add configurable target-cone practice",
+      "labels": ["3D Racket & Scene", "Ball Physics", "Motion Analytics"],
+      "start": "2026-09-20T09:00:00+03:00",
+      "due": "2026-09-21T18:00:00+03:00",
+      "desc": "Target practice was expanded into a complete cone-training mode with deep, regular, and short placement choices, selectable practice focus, persistent 3D targets, realistic fall and reset behavior, impact sound, scoring, and session-report evidence.",
+      "checklist": [
+        "82fd14b 2026-09-20 training game mode targets improvement",
+        "ecebda5 2026-09-20 training game mode adjust cones 3D",
+        "ef134fb 2026-09-20 complete persistent 3D cone targets",
+        "d2ab58c 2026-09-20 add diffrent target cones for each type of shot",
+        "3d227b3 2026-09-20 add change selection option",
+        "5faa419 2026-09-21 add cones sound",
+        "bcdcb0e 2026-09-21 fix cones return to exactly the same location after fall"
+      ]
+    },
+    {
+      "key": "PLAYER-COURT-UX",
+      "list": "Done",
+      "name": "Refine player controls and live court feedback",
+      "labels": ["3D Racket & Scene", "Motion Analytics", "Product & Research"],
+      "start": "2026-09-20T09:00:00+03:00",
+      "due": "2026-09-21T18:00:00+03:00",
+      "desc": "The player view was reorganized into a compact court HUD with animated technique gauges, clearer calibration guidance, reliable stop/resume and finish-session behavior, a visible single-shot state, and improved camera composition.",
+      "checklist": [
+        "af02d61 2026-09-20 vizualization improvement: make the display visible in one frame",
+        "4794fc1 2026-09-20 improve feature display HUD",
+        "04b10cc 2026-09-20 stop resume button",
+        "50039da 2026-09-20 Gauges rise according to shot features",
+        "79bd373 2026-09-20 change the direction of the liquid features rising",
+        "6aa2c18 2026-09-20 Fixed the double gauge animation",
+        "7d3099c 2026-09-20 fix session button",
+        "79e539b 2026-09-21 fix finish session button",
+        "478175d 2026-09-21 Fix the calibration message placement",
+        "a6730c7 2026-09-21 play single shot button improve ui and logic of behavior"
+      ]
+    },
+    {
+      "key": "MATCH-AUDIO-FEEDBACK",
+      "list": "Done",
+      "name": "Add physical tennis audio feedback",
+      "labels": ["Product & Research", "Ball Physics"],
+      "start": "2026-09-21T09:00:00+03:00",
+      "due": "2026-09-21T18:00:00+03:00",
+      "desc": "Racket contact and court bounce events now produce distinct tennis audio cues so timing and ball state remain understandable while the player watches the incoming feed.",
+      "checklist": ["77ef9fd 2026-09-21 add hti and bounced ball sounds"]
+    },
+    {
+      "key": "WIND-TRAINING-CONDITIONS",
+      "list": "Done",
+      "name": "Add configurable wind training conditions",
+      "labels": ["Ball Physics", "3D Racket & Scene", "Motion Analytics"],
+      "start": "2026-09-21T09:00:00+03:00",
+      "due": "2026-09-21T18:00:00+03:00",
+      "desc": "Players can train with selectable wind strength and direction. Wind affects ball direction and pace within playable bounds, provides visible volumetric flow and optional audio, closes its control after selection, and is included in session reporting.",
+      "checklist": [
+        "1d22baf 2026-09-21 add wind feature",
+        "c830bc5 2026-09-21 upgrade the settings view",
+        "6481b49 2026-09-21 improve wind display",
+        "1d8e10f 2026-09-21 improve sky view",
+        "30f3609 2026-09-21 fix wind buton automaticly closing",
+        "1e8de8c 2026-09-21 improve wind vizualization",
+        "9c9ef28 2026-09-21 upgrade the wind ball direction"
+      ]
+    },
+    {
+      "key": "CINEMATIC-WELCOME-EXPERIENCE",
+      "list": "Done",
+      "name": "Build the cinematic product welcome experience",
+      "labels": ["3D Racket & Scene", "Product & Research", "Infra & Deploy"],
+      "start": "2026-09-21T09:00:00+03:00",
+      "due": "2026-09-22T18:00:00+03:00",
+      "desc": "The launcher became a scroll-directed real-time Three.js product experience with a golden-hour resort court, realistic equipment, technical product chapters, responsive and reduced-motion fallbacks, an integrated working Expo QR flow, stadium seating, and final typography refinement.",
+      "checklist": [
+        "23d2758 2026-09-21 Built new cinematic welcome screen",
+        "4e57dae 2026-09-21 start screen improvement of vizualization",
+        "2c8b6bc 2026-09-22 improve visual correction and preserved gameplay behavior",
+        "9331531 2026-09-22 Implement stadium seating",
+        "94a0424 2026-09-22 change headline position and color"
+      ]
     },
     {
       "key": "PARK-MEDIAPIPE-POSE",

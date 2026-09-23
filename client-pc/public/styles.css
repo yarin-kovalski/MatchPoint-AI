@@ -546,7 +546,7 @@ body {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #010511;
+  background: #071419;
 }
 
 #sceneCanvas {
@@ -554,6 +554,102 @@ body {
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+.court-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  color: #f4f5e9;
+  background:
+    linear-gradient(115deg, rgba(3, 15, 18, 0.92), rgba(10, 31, 31, 0.78)),
+    radial-gradient(circle at 72% 22%, rgba(218, 244, 144, 0.16), transparent 34%),
+    #071419;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 420ms ease, visibility 0s linear 420ms;
+}
+
+.court-loading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.045) 48%, transparent 66%);
+  transform: translateX(-70%);
+  animation: court-loading-light 1.8s ease-in-out infinite;
+}
+
+.court-loading.is-ready {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.court-loading-content {
+  position: relative;
+  width: min(420px, calc(100% - 48px));
+  text-align: center;
+}
+
+.court-loading-kicker,
+.court-loading-copy {
+  display: block;
+}
+
+.court-loading-kicker {
+  margin-bottom: 12px;
+  color: #d9f680;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+}
+
+.court-loading-content strong {
+  display: block;
+  font-size: clamp(1.55rem, 3vw, 2.7rem);
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.court-loading-copy {
+  margin-top: 12px;
+  color: rgba(238, 245, 233, 0.68);
+  font-size: 0.82rem;
+}
+
+.court-loading-track {
+  position: relative;
+  display: block;
+  width: min(230px, 70%);
+  height: 2px;
+  margin: 24px auto 0;
+  overflow: hidden;
+  background: rgba(239, 247, 230, 0.14);
+}
+
+.court-loading-track i {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, #d9f680 48%, transparent);
+  transform: translateX(-100%);
+  animation: court-loading-progress 1.15s ease-in-out infinite;
+}
+
+@keyframes court-loading-progress {
+  to { transform: translateX(100%); }
+}
+
+@keyframes court-loading-light {
+  50%, 100% { transform: translateX(70%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .court-loading::before,
+  .court-loading-track i { animation: none; }
+  .court-loading-track i { transform: none; }
+  .court-loading { transition-duration: 160ms; }
 }
 
 .sticky-status {

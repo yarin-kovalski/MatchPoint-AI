@@ -440,6 +440,14 @@
 
       <section id="visualizationPanel" class="visualization-panel" aria-label="Tennis court visualization">
         <canvas id="sceneCanvas"></canvas>
+        <div id="courtLoading" class="court-loading" role="status" aria-live="polite" aria-label="Preparing the tennis court">
+          <div class="court-loading-content">
+            <span class="court-loading-kicker">MATCHPOINT AI</span>
+            <strong>Preparing the court</strong>
+            <span class="court-loading-copy">Setting the scene for your next point</span>
+            <span class="court-loading-track" aria-hidden="true"><i></i></span>
+          </div>
+        </div>
         <div id="landingAnnouncement" class="landing-announcement" role="status" aria-live="polite" hidden></div>
         <div class="scene-topbar"><span>COURT 01 <span class="scene-location">/ HARD COURT</span></span><span id="frameBudget">-- FPS</span></div>
         <aside id="courtVision" class="court-vision" aria-label="Latest shot landing">

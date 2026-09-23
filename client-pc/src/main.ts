@@ -204,6 +204,9 @@ declare const io: SocketFactory;
 const socket = io();
 const canvas = getElement<HTMLCanvasElement>("sceneCanvas");
 const visualizationPanel = getElement<HTMLElement>("visualizationPanel");
+const courtLoading = getElement<HTMLElement>("courtLoading");
+const courtLoadingStartedAt = performance.now();
+let courtLoadingDismissed = false;
 
 const DIAGNOSTIC_ELEMENT_IDS = [
   "recordForehandAttempt",
@@ -1469,6 +1472,7 @@ function animate(): void {
 
   const renderStartedAt = performance.now();
   renderer.render(scene, camera);
+  dismissCourtLoadingAfterFirstFrame();
   telemetryRenderMs += performance.now() - renderStartedAt;
   telemetryFrames += 1;
   const packetAgeMs = lastOrientationPcReceivedAt > 0 ? now - lastOrientationPcReceivedAt : null;
@@ -1884,6 +1888,20 @@ function createEasyHitMotion(): EasyHitMotion | null {
     motion.calibratedSliceConfidence = calibratedSlice.confidence;
   }
   return motion;
+}
+
+function dismissCourtLoadingAfterFirstFrame(): void {
+  if (courtLoadingDismissed) return;
+  courtLoadingDismissed = true;
+
+  // Keep the transition intentional on fast machines while never delaying a slow first render.
+  const remainingMinimumMs = Math.max(0, 320 - (performance.now() - courtLoadingStartedAt));
+  window.setTimeout(() => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      courtLoading.classList.add("is-ready");
+      courtLoading.setAttribute("aria-hidden", "true");
+    }));
+  }, remainingMinimumMs);
 }
 
 function updateTrainingFeedMetrics(now: number): void {

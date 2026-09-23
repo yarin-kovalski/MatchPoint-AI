@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="620" viewBox="0 0 1600 620">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071b20"/><stop offset="1" stop-color="#16343d"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#001014" flood-opacity=".35"/></filter>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto"><path d="M0,0 L11,5.5 L0,11 Z" fill="#d8ef7b"/></marker>
+    <style>.title{font:700 50px Arial,sans-serif;fill:#f5f5ea}.sub{font:700 16px Arial,sans-serif;letter-spacing:3px;fill:#d8ef7b}.box{fill:#102a31;stroke:#5b8588;stroke-width:2}.head{font:700 27px Arial,sans-serif;fill:#f5f5ea}.body{font:18px Arial,sans-serif;fill:#c7d5d2}.small{font:15px Arial,sans-serif;fill:#9eb3b1}.flow{fill:none;stroke:#d8ef7b;stroke-width:4;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1600" height="620" fill="url(#bg)"/>
+  <text x="70" y="72" class="sub">MATCHPOINT AI / SYSTEM FLOW</text>
+  <text x="70" y="128" class="title">From phone motion to coaching insight.</text>
+  <g filter="url(#shadow)">
+    <rect x="70" y="205" width="320" height="260" rx="22" class="box"/>
+    <rect x="485" y="205" width="290" height="260" rx="22" class="box"/>
+    <rect x="870" y="205" width="660" height="260" rx="22" class="box"/>
+  </g>
+  <text x="105" y="255" class="sub">01 / PHONE</text><text x="105" y="300" class="head">Expo Go controller</text>
+  <text x="105" y="342" class="body">DeviceMotion sensors</text><text x="105" y="374" class="body">Permission + calibration</text><text x="105" y="406" class="body">Quaternion + acceleration</text><text x="105" y="438" class="small">16 ms motion sampling</text>
+  <text x="520" y="255" class="sub">02 / BROKER</text><text x="520" y="300" class="head">Node.js + Socket.IO</text>
+  <text x="520" y="342" class="body">Role-aware connection</text><text x="520" y="374" class="body">Latest-state relay</text><text x="520" y="406" class="body">Calibration events</text><text x="520" y="438" class="small">Local Wi-Fi transport</text>
+  <text x="905" y="255" class="sub">03 / DESKTOP TRAINER</text><text x="905" y="300" class="head">Three.js court + analysis pipeline</text>
+  <text x="905" y="342" class="body">Normalize motion  ->  racket pose  ->  stroke detection</text><text x="905" y="374" class="body">Swept contact  ->  fixed-step physics  ->  first bounce</text><text x="905" y="406" class="body">HUD + Court Vision + cones + wind + audio</text><text x="905" y="438" class="small">Session coaching, report download, sensor replay</text>
+  <path d="M390 335 C430 335 445 335 485 335" class="flow"/><path d="M775 335 C815 335 830 335 870 335" class="flow"/>
+  <text x="405" y="316" class="small">motion packets</text><text x="790" y="316" class="small">controller state</text>
+  <text x="70" y="548" class="small">Custom deterministic TypeScript physics - Web Audio feedback - browser-local session history - downloadable HTML/JSON reports</text>
+</svg>
